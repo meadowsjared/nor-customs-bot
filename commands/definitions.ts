@@ -1,4 +1,4 @@
-import { ApplicationCommandDataResolvable } from 'discord.js';
+import { ApplicationCommandDataResolvable, PermissionsBitField } from 'discord.js';
 import { CommandIds } from '../constants';
 
 export const slashCommands: ApplicationCommandDataResolvable[] = [
@@ -68,7 +68,8 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
   },
   {
     name: CommandIds.CLEAR,
-    description: 'Clear the lobby',
+    description: 'Clear the lobby and remove all players',
+    defaultMemberPermissions: PermissionsBitField.Flags.MentionEveryone,
   },
   {
     name: CommandIds.PLAYERS,
