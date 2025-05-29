@@ -4,14 +4,14 @@ dotenv.config();
 import { Client, GatewayIntentBits, ActivityType, ChannelType, PresenceUpdateStatus } from 'discord.js';
 import { botChannelName, CommandIds, roleMap } from './constants';
 import {
-  assignRole,
+  handleAssignRoleCommand,
   handleJoinCommand,
   handleLeaveCommand,
   handleNameCommand,
   handleRejoinCommand,
   handleRoleCommand,
   handleTwitchCommand,
-  respondWithPlayerList,
+  handlePlayersCommand,
 } from './commands';
 import { slashCommands } from './commands/definitions';
 
@@ -99,7 +99,7 @@ client.on('interactionCreate', async interaction => {
       break;
     case CommandIds.PLAYERS:
       // Handle players command
-      respondWithPlayerList(interaction);
+      handlePlayersCommand(interaction);
       break;
     case CommandIds.NAME:
       // Handle name command
@@ -115,7 +115,7 @@ client.on('interactionCreate', async interaction => {
       break;
     default:
       if (commandName && Object.keys(roleMap).includes(commandName)) {
-        assignRole(interaction, commandName);
+        handleAssignRoleCommand(interaction, commandName);
       }
       return; // Ignore unknown commands
   }

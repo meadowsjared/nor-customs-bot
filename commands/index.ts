@@ -18,7 +18,7 @@ import { players } from '../store/player';
  * @param isButton Whether the interaction is a button interaction or not.
  * @returns
  */
-async function respondWithPlayerList(interaction: Interaction<CacheType>) {
+async function handlePlayersCommand(interaction: Interaction<CacheType>) {
   // check if interaction can be replied to
   if (!interaction.isChatInputCommand() && !interaction.isButton()) {
     console.error('Interaction is not a command or button interaction');
@@ -211,7 +211,7 @@ async function handleRoleCommand(interaction: ChatInputCommandInteraction<CacheT
  * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
  * @param role The role to assign, based on the roleMap keys.
  */
-async function assignRole(
+async function handleAssignRoleCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
   role: keyof typeof roleMap
 ) {
@@ -251,12 +251,12 @@ async function handleTwitchCommand(interaction: ChatInputCommandInteraction<Cach
 }
 
 export {
-  respondWithPlayerList,
+  handlePlayersCommand,
   handleLeaveCommand,
   handleRejoinCommand,
   handleJoinCommand,
   handleNameCommand,
   handleRoleCommand,
-  assignRole,
+  handleAssignRoleCommand,
   handleTwitchCommand,
 };
