@@ -67,6 +67,10 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     description: 'Leave the lobby',
   },
   {
+    name: CommandIds.CLEAR,
+    description: 'Clear the lobby',
+  },
+  {
     name: CommandIds.PLAYERS,
     description: 'List all players in the lobby',
   },

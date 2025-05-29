@@ -9,6 +9,7 @@ export const CommandIds = {
   NAME: 'name',
   ROLE: 'role',
   LEAVE: 'leave',
+  CLEAR: 'clear',
   PLAYERS: 'players',
   TWITCH: 'twitch',
   ROLE_TANK: 'T',

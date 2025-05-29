@@ -12,6 +12,7 @@ import {
   handleRoleCommand,
   handleTwitchCommand,
   handlePlayersCommand,
+  handleClearCommand,
 } from './commands';
 import { slashCommands } from './commands/definitions';
 import { players, loadPlayerData } from './store/player';
@@ -102,6 +103,10 @@ client.on('interactionCreate', async interaction => {
     case CommandIds.LEAVE:
       // Handle leave command
       handleLeaveCommand(interaction);
+      break;
+    case CommandIds.CLEAR:
+      // Handle clear command
+      handleClearCommand(interaction);
       break;
     case CommandIds.PLAYERS:
       // Handle players command

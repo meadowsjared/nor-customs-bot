@@ -77,6 +77,20 @@ async function handleLeaveCommand(interaction: ChatInputCommandInteraction<Cache
   }
 }
 
+export async function handleClearCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+) {
+  // go through the list of players and mark them all as inactive
+  players.forEach(player => {
+    player.active = false; // Mark them as inactive
+  });
+  await savePlayerData(players); // Save player data to file
+  await interaction.reply({
+    content: 'All players have been removed from the lobby.',
+    flags: MessageFlags.Ephemeral,
+  });
+}
+
 /**
  *  Handles the rejoin command interaction, allows a user to rejoin the lobby with their previous username and role
  * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
