@@ -13,7 +13,7 @@ import {
 } from 'discord.js';
 import { botChannelName, leaveBtn, nameBtn, rejoinBtn, roleBtn, roleMap, rolesRow } from '../constants';
 import { announce } from '../utils/announce';
-import { players } from '../store/player';
+import { players, savePlayerData } from '../store/player';
 
 /**
  *
@@ -64,6 +64,7 @@ async function handleLeaveCommand(interaction: ChatInputCommandInteraction<Cache
   const player = players.get(interaction.user.id);
   if (player) {
     player.active = false; // Mark player as inactive
+    await savePlayerData(players); // Save player data to file
     // announce in the channel who has left
     await announce(interaction, `<@${interaction.user.id}> (${player.username}) has left the lobby`);
     await interaction.reply({
@@ -102,6 +103,7 @@ async function handleRejoinCommand(interaction: ChatInputCommandInteraction<Cach
       }\``
     );
     previousPlayer.active = true; // Mark player as active
+    await savePlayerData(players); // Save player data to file
     await interaction.reply({
       content: `You have rejoined the lobby as: ${previousPlayer.username}, \`${
         roleMap[previousPlayer.role]
@@ -126,6 +128,7 @@ async function handleJoinCommand(interaction: ChatInputCommandInteraction<CacheT
   const username = interaction.options.getString('username', true);
   const role = interaction.options.getString('role', true);
   players.set(interaction.user.id, { username, role, active: true });
+  await savePlayerData(players); // Save player data to file
   // announce in the channel who has joined
   await announce(interaction, `<@${interaction.user.id}> (${username}) has joined the lobby as \`${roleMap[role]}\``);
   await interaction.reply({
@@ -178,6 +181,7 @@ async function handleNameCommand(interaction: ChatInputCommandInteraction<CacheT
               flags: MessageFlags.Ephemeral,
             });
           }
+          await savePlayerData(players); // Save player data to file
         })
         .catch(reason => {
           console.log('reason:', reason);
@@ -193,6 +197,7 @@ async function handleNameCommand(interaction: ChatInputCommandInteraction<CacheT
   const player = players.get(interaction.user.id);
   if (player && username) {
     player.username = username;
+    await savePlayerData(players); // Save player data to file
     await interaction.reply({
       content: `Your username has been updated to: ${username}`,
       flags: MessageFlags.Ephemeral,
@@ -235,6 +240,7 @@ async function handleRoleCommand(interaction: ChatInputCommandInteraction<CacheT
   const player = players.get(interaction.user.id);
   if (player && role) {
     player.role = role;
+    await savePlayerData(players); // Save player data to file
     await interaction.reply({
       content: `Your role has been updated to: ${roleMap[role]}`,
       flags: MessageFlags.Ephemeral,
@@ -265,6 +271,7 @@ async function handleAssignRoleCommand(
     return;
   }
   player.role = role;
+  await savePlayerData(players); // Save player data to file
   await interaction.reply({
     content: `Your role has been updated to: ${roleMap[role]}`,
     flags: MessageFlags.Ephemeral,
