@@ -7,6 +7,9 @@ import {
   EmbedBuilder,
   Interaction,
   MessageFlags,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle,
 } from 'discord.js';
 import { botChannelName, leaveBtn, nameBtn, rejoinBtn, roleBtn, roleMap, rolesRow } from '../constants';
 import { announce } from '../utils/announce';
@@ -139,12 +142,50 @@ async function handleJoinCommand(interaction: ChatInputCommandInteraction<CacheT
  */
 async function handleNameCommand(interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>) {
   if (interaction.isButton()) {
-    // Discord does not support adding a text box (input field) directly to a message reply.
-    // The only way to collect text input interactively is via a Modal.
-    // As an alternative, you can prompt the user to use the /name command or reply in DM.
-    await interaction.reply({
-      content: 'Please use the `/name` command to change your username.',
-      flags: MessageFlags.Ephemeral,
+    const previousPlayer = players.get(interaction.user.id);
+
+    // create a modal with a text field to collect the username
+    const usernameInput = new TextInputBuilder()
+      .setCustomId('usernameInput')
+      .setLabel('Enter your Heroes of the Storm username')
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true)
+      .setPlaceholder('Your Heroes of the Storm username')
+      .setValue(previousPlayer ? previousPlayer.username : '');
+
+    // Add the input to an action row
+    const actionRow = new ActionRowBuilder<TextInputBuilder>().addComponents(usernameInput);
+
+    // Create the modal
+    const modal = new ModalBuilder().setCustomId('nameModal').setTitle('Set Your Username').addComponents(actionRow);
+    // get the username from the TextInputBuilder
+    await interaction.showModal(modal).then(() => {
+      interaction
+        .awaitModalSubmit({ filter: i => i.customId === 'nameModal', time: 5 * 60 * 1000 }) // 5 minutes timeout
+        .then(async modalInteraction => {
+          const username = modalInteraction.fields.getTextInputValue('usernameInput');
+          const player = players.get(modalInteraction.user.id);
+          if (player) {
+            player.username = username;
+            await modalInteraction.reply({
+              content: `Your username has been updated to: ${username}`,
+              flags: MessageFlags.Ephemeral,
+            });
+          } else {
+            players.set(modalInteraction.user.id, { username, role: 'F', active: false });
+            await modalInteraction.reply({
+              content: 'You are not in the lobby. Use /join to join the lobby.',
+              flags: MessageFlags.Ephemeral,
+            });
+          }
+        })
+        .catch(reason => {
+          console.log('reason:', reason);
+          interaction.followUp({
+            content: 'You did not enter a username in time.',
+            flags: MessageFlags.Ephemeral,
+          });
+        });
     });
     return;
   }
