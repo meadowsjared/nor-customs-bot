@@ -40,9 +40,6 @@ async function handlePlayersCommand(interaction: Interaction<CacheType>) {
     content: `Players in the lobby:\n${playerList}`,
     flags: undefined,
   });
-  if (!interaction.isButton()) {
-    return;
-  }
   if (rawPlayerList.length > 0) {
     // show a public message in the channel, if there are players in the lobby
     const channel = interaction.guild?.channels.cache.find(ch => ch.name === botChannelName);
