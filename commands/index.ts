@@ -31,11 +31,11 @@ async function handlePlayersCommand(interaction: Interaction<CacheType>) {
   const playerList =
     Array.from(players.entries())
       .filter(([_, player]) => player.active)
-      .map(([id, { username, role }]) => `<@${id}>: (${username}) \`${roleMap[role]}\``)
+      .map(([id, { usernames, role }]) => `<@${id}>: (${usernames.hots}) \`${roleMap[role]}\``)
       .join('\n') || 'No players in the lobby';
   const rawPlayerList = Array.from(players.entries())
     .filter(([_, player]) => player.active)
-    .map(([_, { username, role }]) => `${username} ${role}`);
+    .map(([_, { usernames, role }]) => `${usernames.hots} ${role}`);
   await interaction.reply({
     content: `Players in the lobby:\n${playerList}`,
     flags: undefined,
@@ -66,7 +66,7 @@ async function handleLeaveCommand(interaction: ChatInputCommandInteraction<Cache
     player.active = false; // Mark player as inactive
     await savePlayerData(players); // Save player data to file
     // announce in the channel who has left
-    await announce(interaction, `<@${interaction.user.id}> (${player.username}) has left the lobby`);
+    await announce(interaction, `<@${interaction.user.id}> (${player.usernames.hots}) has left the lobby`);
     await interaction.reply({
       content: `You left the lobby`,
       flags: MessageFlags.Ephemeral,
@@ -101,7 +101,7 @@ async function handleRejoinCommand(interaction: ChatInputCommandInteraction<Cach
   if (previousPlayer) {
     if (previousPlayer.active) {
       await interaction.reply({
-        content: `You are already in the lobby as: ${previousPlayer.username}, \`${
+        content: `You are already in the lobby as: ${previousPlayer.usernames.hots}, \`${
           roleMap[previousPlayer.role]
         }\`\nUse /leave to leave the lobby`,
         flags: MessageFlags.Ephemeral,
@@ -112,14 +112,14 @@ async function handleRejoinCommand(interaction: ChatInputCommandInteraction<Cach
     // announce in the channel who has rejoined
     await announce(
       interaction,
-      `<@${interaction.user.id}> (${previousPlayer.username}) has rejoined the lobby as \`${
+      `<@${interaction.user.id}> (${previousPlayer.usernames.hots}) has rejoined the lobby as \`${
         roleMap[previousPlayer.role]
       }\``
     );
     previousPlayer.active = true; // Mark player as active
     await savePlayerData(players); // Save player data to file
     await interaction.reply({
-      content: `You have rejoined the lobby as: ${previousPlayer.username}, \`${
+      content: `You have rejoined the lobby as: ${previousPlayer.usernames.hots}, \`${
         roleMap[previousPlayer.role]
       }\`\nUse /leave to leave the lobby`,
       flags: MessageFlags.Ephemeral,
@@ -141,7 +141,11 @@ async function handleRejoinCommand(interaction: ChatInputCommandInteraction<Cach
 async function handleJoinCommand(interaction: ChatInputCommandInteraction<CacheType>) {
   const username = interaction.options.getString('username', true);
   const role = interaction.options.getString('role', true);
-  players.set(interaction.user.id, { username, role, active: true });
+  players.set(interaction.user.id, {
+    usernames: { hots: username, discord: interaction.user.username },
+    role,
+    active: true,
+  });
   await savePlayerData(players); // Save player data to file
   // announce in the channel who has joined
   await announce(interaction, `<@${interaction.user.id}> (${username}) has joined the lobby as \`${roleMap[role]}\``);
@@ -168,7 +172,7 @@ async function handleNameCommand(interaction: ChatInputCommandInteraction<CacheT
       .setStyle(TextInputStyle.Short)
       .setRequired(true)
       .setPlaceholder('Your Heroes of the Storm username')
-      .setValue(previousPlayer ? previousPlayer.username : '');
+      .setValue(previousPlayer ? previousPlayer.usernames.hots : '');
 
     // Add the input to an action row
     const actionRow = new ActionRowBuilder<TextInputBuilder>().addComponents(usernameInput);
@@ -183,13 +187,17 @@ async function handleNameCommand(interaction: ChatInputCommandInteraction<CacheT
           const username = modalInteraction.fields.getTextInputValue('usernameInput');
           const player = players.get(modalInteraction.user.id);
           if (player) {
-            player.username = username;
+            player.usernames.hots = username;
             await modalInteraction.reply({
               content: `Your username has been updated to: ${username}`,
               flags: MessageFlags.Ephemeral,
             });
           } else {
-            players.set(modalInteraction.user.id, { username, role: 'F', active: false });
+            players.set(modalInteraction.user.id, {
+              usernames: { hots: username, discord: modalInteraction.user.username },
+              role: 'F',
+              active: false,
+            });
             await modalInteraction.reply({
               content: 'You are not in the lobby. Use /join to join the lobby.',
               flags: MessageFlags.Ephemeral,
@@ -210,7 +218,7 @@ async function handleNameCommand(interaction: ChatInputCommandInteraction<CacheT
   const username = interaction.options.getString('username', false);
   const player = players.get(interaction.user.id);
   if (player && username) {
-    player.username = username;
+    player.usernames.hots = username;
     await savePlayerData(players); // Save player data to file
     await interaction.reply({
       content: `Your username has been updated to: ${username}`,
@@ -224,9 +232,14 @@ async function handleNameCommand(interaction: ChatInputCommandInteraction<CacheT
       });
       return;
     }
-    players.set(interaction.user.id, { username, role: 'F', active: false });
+    players.set(interaction.user.id, {
+      usernames: { hots: username, discord: interaction.user.username },
+      role: 'F',
+      active: false,
+    });
+    await savePlayerData(players); // Save player data to file
     await interaction.reply({
-      content: 'You are not in the lobby. Use /join to join the lobby.',
+      content: 'You are not in the lobby. Use `/join` to join the lobby.',
       flags: MessageFlags.Ephemeral,
     });
   }

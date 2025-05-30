@@ -1,8 +1,19 @@
+interface Usernames {
+  /**
+   * The Heroes of the Storm username of the player
+   */
+  hots: string;
+  /**
+   * The discord ID of the player
+   */
+  discord: string;
+}
+
 export interface Player {
   /**
-   * The username of the player in Heroes of the Storm
+   * The usernames of the player in Heroes of the Storm and Discord
    */
-  username: string;
+  usernames: Usernames;
   /**
    * The role of the player in the game
    * T = Tank, A = Assassin, B = Bruiser, H = Healer, F = Flex
