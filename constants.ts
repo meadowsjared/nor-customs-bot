@@ -4,6 +4,7 @@ export const botChannelName = '🫠-nor-customs';
 
 // create an enum for the commands
 export const CommandIds = {
+  NEW_GAME: 'new_game',
   LOAD_TEAMS: 'set_teams',
   SET_CHANNEL_TEAM_ID: 'set_team_channel',
   SET_LOBBY_CHANNEL: 'set_lobby_channel',
@@ -47,4 +48,8 @@ const rolesRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
     return new ButtonBuilder().setCustomId(key).setLabel(label).setStyle(ButtonStyle.Primary);
   })
 );
-export { playersBtn, leaveBtn, rejoinBtn, nameBtn, roleBtn, rolesRow };
+const imPlayingBtn = new ButtonBuilder()
+  .setCustomId(CommandIds.REJOIN)
+  .setLabel("I'm Playing")
+  .setStyle(ButtonStyle.Primary);
+export { playersBtn, leaveBtn, rejoinBtn, nameBtn, roleBtn, rolesRow, imPlayingBtn };

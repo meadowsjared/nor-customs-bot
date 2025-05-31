@@ -3,6 +3,11 @@ import { CommandIds } from '../constants';
 
 export const slashCommands: ApplicationCommandDataResolvable[] = [
   {
+    name: CommandIds.NEW_GAME,
+    description: 'Start a new game',
+    defaultMemberPermissions: PermissionsBitField.Flags.MentionEveryone,
+  },
+  {
     name: CommandIds.LOAD_TEAMS,
     description: 'Load teams data',
     defaultMemberPermissions: PermissionsBitField.Flags.MentionEveryone,

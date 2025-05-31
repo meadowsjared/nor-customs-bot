@@ -12,10 +12,27 @@ import {
   TextInputStyle,
   VoiceChannel,
 } from 'discord.js';
-import { botChannelName, leaveBtn, nameBtn, rejoinBtn, roleBtn, roleMap, rolesRow } from '../constants';
+import { botChannelName, imPlayingBtn, leaveBtn, nameBtn, rejoinBtn, roleBtn, roleMap, rolesRow } from '../constants';
 import { announce } from '../utils/announce';
 import { players, savePlayerData } from '../store/player';
 import { saveChannels } from '../store/channels';
+
+export async function handleNewGameCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+) {
+  // go through and mark all players as inactive
+  players.forEach(player => {
+    player.active = false; // Mark them as inactive
+  });
+  await savePlayerData(players); // Save player data to file
+  // announce in the channel that a new game has started and all players have been marked as inactive, so they need to hit the button if they are going to play
+  await announce(
+    interaction,
+    'A new game has started! All players have been marked as inactive.\nPlease click below if you are going to play.',
+    undefined,
+    [new ActionRowBuilder<ButtonBuilder>().addComponents(imPlayingBtn)]
+  );
+}
 
 // TODO: implement this command
 export async function handleLoadTeamsCommand(

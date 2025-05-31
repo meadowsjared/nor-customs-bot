@@ -19,6 +19,7 @@ import {
   handleSetLobbyChannelCommand,
   handleGatherToLobbyCommand,
   handleMoveToTeamsCommand,
+  handleNewGameCommand,
 } from './commands';
 import { slashCommands } from './commands/definitions';
 import { players, loadPlayerData } from './store/player';
@@ -96,6 +97,9 @@ client.on('interactionCreate', async interaction => {
     : null;
 
   switch (commandName) {
+    case CommandIds.NEW_GAME:
+      // Handle load players command
+      handleNewGameCommand(interaction);
     case CommandIds.LOAD_TEAMS:
       // Handle load teams command
       handleLoadTeamsCommand(interaction);
