@@ -1,7 +1,67 @@
-import { ApplicationCommandDataResolvable, PermissionsBitField } from 'discord.js';
+import { ApplicationCommandDataResolvable, ChannelType, PermissionsBitField } from 'discord.js';
 import { CommandIds } from '../constants';
 
 export const slashCommands: ApplicationCommandDataResolvable[] = [
+  {
+    name: CommandIds.LOAD_TEAMS,
+    description: 'Load teams data',
+    defaultMemberPermissions: PermissionsBitField.Flags.MentionEveryone,
+    options: [
+      {
+        name: 'team_data',
+        type: 3, // STRING type
+        description: 'The team data from the spreasheet',
+      },
+    ],
+  },
+  {
+    name: CommandIds.SET_CHANNEL_TEAM_ID,
+    description: 'Set the channel team ID',
+    defaultMemberPermissions: PermissionsBitField.Flags.MentionEveryone,
+    options: [
+      {
+        name: 'team_number',
+        type: 3, // STRING type
+        description: 'The team number to set the channel for',
+        required: true,
+        choices: [
+          { name: 'Team 1', value: '1' },
+          { name: 'Filthy Team 2', value: '2' },
+        ],
+      },
+      {
+        name: 'channel_id',
+        type: 7, // CHANNEL type
+        description: 'The channel ID to set as the lobby channel',
+        required: true,
+        channelTypes: [ChannelType.GuildVoice],
+      },
+    ],
+  },
+  {
+    name: CommandIds.SET_LOBBY_CHANNEL,
+    description: 'Set the lobby channel',
+    defaultMemberPermissions: PermissionsBitField.Flags.MentionEveryone,
+    options: [
+      {
+        name: 'channel_id',
+        type: 7, // CHANNEL type
+        description: 'The channel ID to set as the lobby channel',
+        required: true,
+        channelTypes: [ChannelType.GuildVoice],
+      },
+    ],
+  },
+  {
+    name: CommandIds.MOVE_TO_TEAMS,
+    description: 'Move players to teams',
+    defaultMemberPermissions: PermissionsBitField.Flags.MentionEveryone,
+  },
+  {
+    name: CommandIds.GATHER_TO_LOBBY,
+    description: 'Gather players to the lobby',
+    defaultMemberPermissions: PermissionsBitField.Flags.MentionEveryone,
+  },
   {
     name: CommandIds.GUIDE,
     description: 'Show the guide for how to play',
@@ -78,6 +138,11 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
   {
     name: CommandIds.PLAYERS,
     description: 'List all players in the lobby',
+  },
+  {
+    name: CommandIds.PLAYERS_RAW,
+    description: 'List all players in the lobby with raw data',
+    defaultMemberPermissions: PermissionsBitField.Flags.MentionEveryone,
   },
   {
     name: CommandIds.TWITCH,

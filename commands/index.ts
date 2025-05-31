@@ -15,6 +15,56 @@ import { botChannelName, leaveBtn, nameBtn, rejoinBtn, roleBtn, roleMap, rolesRo
 import { announce } from '../utils/announce';
 import { players, savePlayerData } from '../store/player';
 
+export async function handleLoadTeamsCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+) {
+  // This command is not implemented yet
+  await interaction.reply({
+    content: 'This command is not implemented yet.',
+    flags: MessageFlags.Ephemeral,
+  });
+}
+
+export async function handleSetChannelTeamIdCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+) {
+  // This command is not implemented yet
+  await interaction.reply({
+    content: 'This command is not implemented yet.',
+    flags: MessageFlags.Ephemeral,
+  });
+}
+
+export async function handleGatherToLobbyCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+) {
+  // This command is not implemented yet
+  await interaction.reply({
+    content: 'This command is not implemented yet.',
+    flags: MessageFlags.Ephemeral,
+  });
+}
+
+export async function handleMoveToTeamsCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+) {
+  // This command is not implemented yet
+  await interaction.reply({
+    content: 'This command is not implemented yet.',
+    flags: MessageFlags.Ephemeral,
+  });
+}
+
+export async function handleSetLobbyChannelCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+) {
+  // This command is not implemented yet
+  await interaction.reply({
+    content: 'This command is not implemented yet.',
+    flags: MessageFlags.Ephemeral,
+  });
+}
+
 export async function handleGuideCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
 ) {
@@ -59,7 +109,7 @@ export async function handleGuideCommand(
  * @param isButton Whether the interaction is a button interaction or not.
  * @returns
  */
-async function handlePlayersCommand(interaction: Interaction<CacheType>) {
+async function handlePlayersCommand(interaction: Interaction<CacheType>, onlyRaw: boolean = false) {
   // check if interaction can be replied to
   if (!interaction.isChatInputCommand() && !interaction.isButton()) {
     console.error('Interaction is not a command or button interaction');
@@ -76,7 +126,7 @@ async function handlePlayersCommand(interaction: Interaction<CacheType>) {
     .map(([_, { usernames, role }]) => `${usernames.hots} ${role}`);
   await interaction.reply({
     content: `Players in the lobby:\n${playerList}`,
-    flags: undefined,
+    flags: onlyRaw ? MessageFlags.Ephemeral : undefined,
   });
   if (rawPlayerList.length > 0) {
     // show a public message in the channel, if there are players in the lobby

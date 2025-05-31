@@ -14,6 +14,11 @@ import {
   handlePlayersCommand,
   handleClearCommand,
   handleGuideCommand,
+  handleLoadTeamsCommand,
+  handleSetChannelTeamIdCommand,
+  handleSetLobbyChannelCommand,
+  handleGatherToLobbyCommand,
+  handleMoveToTeamsCommand,
 } from './commands';
 import { slashCommands } from './commands/definitions';
 import { players, loadPlayerData } from './store/player';
@@ -89,6 +94,26 @@ client.on('interactionCreate', async interaction => {
     : null;
 
   switch (commandName) {
+    case CommandIds.LOAD_TEAMS:
+      // Handle load teams command
+      handleLoadTeamsCommand(interaction);
+      break;
+    case CommandIds.SET_CHANNEL_TEAM_ID:
+      // Handle set channel team ID command
+      handleSetChannelTeamIdCommand(interaction);
+      break;
+    case CommandIds.SET_LOBBY_CHANNEL:
+      // Handle set lobby channel command
+      handleSetLobbyChannelCommand(interaction);
+      break;
+    case CommandIds.GATHER_TO_LOBBY:
+      // Handle gather to lobby command
+      handleGatherToLobbyCommand(interaction);
+      break;
+    case CommandIds.MOVE_TO_TEAMS:
+      // Handle move to teams command
+      handleMoveToTeamsCommand(interaction);
+      break;
     case CommandIds.GUIDE:
       // Handle guide command
       handleGuideCommand(interaction);
@@ -116,6 +141,10 @@ client.on('interactionCreate', async interaction => {
     case CommandIds.PLAYERS:
       // Handle players command
       handlePlayersCommand(interaction);
+      break;
+    case CommandIds.PLAYERS_RAW:
+      // Handle players raw command
+      handlePlayersCommand(interaction, true); // Pass true to get raw player data
       break;
     case CommandIds.NAME:
       // Handle name command

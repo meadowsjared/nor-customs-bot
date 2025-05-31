@@ -4,6 +4,11 @@ export const botChannelName = '🫠-nor-customs';
 
 // create an enum for the commands
 export const CommandIds = {
+  LOAD_TEAMS: 'set_teams',
+  SET_CHANNEL_TEAM_ID: 'set_team_channel',
+  SET_LOBBY_CHANNEL: 'set_lobby_channel',
+  GATHER_TO_LOBBY: 'gather',
+  MOVE_TO_TEAMS: 'move_teams',
   GUIDE: 'guide',
   JOIN: 'join',
   REJOIN: 'rejoin',
@@ -12,6 +17,7 @@ export const CommandIds = {
   LEAVE: 'leave',
   CLEAR: 'clear',
   PLAYERS: 'players',
+  PLAYERS_RAW: 'players_raw',
   TWITCH: 'twitch',
   ROLE_TANK: 'T',
   ROLE_ASSASSIN: 'A',
