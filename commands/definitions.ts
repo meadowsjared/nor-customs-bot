@@ -3,6 +3,10 @@ import { CommandIds } from '../constants';
 
 export const slashCommands: ApplicationCommandDataResolvable[] = [
   {
+    name: CommandIds.GUIDE,
+    description: 'Show the guide for how to play',
+  },
+  {
     name: CommandIds.JOIN,
     description: 'Join with your hots username',
     options: [

@@ -4,6 +4,7 @@ export const botChannelName = '🫠-nor-customs';
 
 // create an enum for the commands
 export const CommandIds = {
+  GUIDE: 'guide',
   JOIN: 'join',
   REJOIN: 'rejoin',
   NAME: 'name',

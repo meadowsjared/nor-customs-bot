@@ -13,6 +13,7 @@ import {
   handleTwitchCommand,
   handlePlayersCommand,
   handleClearCommand,
+  handleGuideCommand,
 } from './commands';
 import { slashCommands } from './commands/definitions';
 import { players, loadPlayerData } from './store/player';
@@ -88,6 +89,10 @@ client.on('interactionCreate', async interaction => {
     : null;
 
   switch (commandName) {
+    case CommandIds.GUIDE:
+      // Handle guide command
+      handleGuideCommand(interaction);
+      break;
     case CommandIds.JOIN:
       // Handle join command
       if (!interaction.isChatInputCommand()) {

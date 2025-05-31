@@ -15,6 +15,44 @@ import { botChannelName, leaveBtn, nameBtn, rejoinBtn, roleBtn, roleMap, rolesRo
 import { announce } from '../utils/announce';
 import { players, savePlayerData } from '../store/player';
 
+export async function handleGuideCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+) {
+  // inside a command, event listener, etc.
+  const exampleEmbed = new EmbedBuilder()
+    .setColor(0x0099ff)
+    .setTitle("Nor's Heroes of the Storm Custom Lobby Guide")
+    // .setDescription(
+    //   'This is a custom lobby for Heroes of the Storm. Use the commands below to join, leave, or manage your role in the lobby.'
+    // )
+    // this shows up in the upper right corner of the embed
+    // .setThumbnail(
+    //   'https://static-cdn.jtvnw.net/jtv_user_pictures/f9bdb9b4-911b-4f2d-8e04-f0bde098a4d9-profile_image-70x70.png'
+    // )
+    .setDescription(
+      [
+        '🟢  **/join** — Join the lobby with your username and role',
+        '🔴  **/leave** — Leave the lobby',
+        '🔄  **/rejoin** — Rejoin the lobby',
+        '✏️  **/name** — Change your username',
+        '🎭  **/role** — Change your role',
+      ].join('\n')
+    )
+    .addFields({ name: 'Roles', value: '🛡️ Tank, ⚔️ Assassin, 💪 Bruiser, 💉 Healer, 🔄 Flex' })
+    // .addFields(
+    //   { name: '`/join`', value: 'Join the lobby with your Heroes of the Storm username and role.' },
+    //   { name: '`/leave`', value: 'Leave the lobby.' },
+    //   { name: '`/rejoin`', value: 'Rejoin the lobby with your previous username and role.' },
+    //   { name: '`/name`', value: 'Change your Heroes of the Storm username.' },
+    //   { name: '`/role`', value: 'Change your role in the lobby.' }
+    // )
+    .setFooter({ text: 'Enjoy playing!' })
+    .setImage(
+      'https://static-cdn.jtvnw.net/jtv_user_pictures/f9bdb9b4-911b-4f2d-8e04-f0bde098a4d9-profile_image-70x70.png'
+    );
+  await interaction.reply({ embeds: [exampleEmbed] });
+}
+
 /**
  *
  * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
