@@ -114,7 +114,11 @@ export async function handleGuideCommand(
  * @param isButton Whether the interaction is a button interaction or not.
  * @returns
  */
-async function handlePlayersCommand(interaction: Interaction<CacheType>, onlyRaw: boolean = false) {
+async function handlePlayersCommand(
+  interaction: Interaction<CacheType>,
+  onlyRaw: boolean = false,
+  pingLobby: boolean = false
+) {
   // check if interaction can be replied to
   if (!interaction.isChatInputCommand() && !interaction.isButton()) {
     console.error('Interaction is not a command or button interaction');
@@ -124,7 +128,14 @@ async function handlePlayersCommand(interaction: Interaction<CacheType>, onlyRaw
   const playerList =
     Array.from(players.entries())
       .filter(([_, player]) => player.active)
-      .map(([id, { usernames, role }]) => `<@${id}>: (${usernames.hots}) \`${roleMap[role]}\``)
+      .map(([id, { usernames, role }]) => {
+        if (pingLobby) {
+          // if pingLobby is true, mention the user
+          return `<@${id}>: (${usernames.hots}) \`${roleMap[role]}\``;
+        }
+        const user = interaction.guild?.members.cache.get(id)?.displayName;
+        return `@${user}: (${usernames.hots}) \`${roleMap[role]}\``;
+      })
       .join('\n') || 'No players in the lobby';
   const rawPlayerList = Array.from(players.entries())
     .filter(([_, player]) => player.active)
