@@ -1,4 +1,11 @@
-import { ButtonInteraction, CacheType, ChatInputCommandInteraction, MessageCreateOptions } from 'discord.js';
+import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonInteraction,
+  CacheType,
+  ChatInputCommandInteraction,
+  MessageCreateOptions,
+} from 'discord.js';
 import { botChannelName } from '../constants';
 
 type InteractionReplyOptionsFlags = MessageCreateOptions['flags'];
@@ -12,13 +19,15 @@ type InteractionReplyOptionsFlags = MessageCreateOptions['flags'];
 export async function announce(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
   message: string,
-  flags?: InteractionReplyOptionsFlags
+  flags?: InteractionReplyOptionsFlags,
+  components?: ActionRowBuilder<ButtonBuilder>[]
 ) {
   const channel = interaction.guild?.channels.cache.find(ch => ch.name === botChannelName);
   if (channel && channel.isTextBased()) {
     await channel.send({
       content: message,
       flags,
+      components,
     });
   }
 }
