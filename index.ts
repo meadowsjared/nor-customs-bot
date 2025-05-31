@@ -22,6 +22,7 @@ import {
 } from './commands';
 import { slashCommands } from './commands/definitions';
 import { players, loadPlayerData } from './store/player';
+import { loadChannels } from './store/channels';
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.DirectMessages],
@@ -83,6 +84,7 @@ client.once('ready', async () => {
   previousPlayers.forEach((player, username) => {
     players.set(username, player);
   });
+  await loadChannels();
 });
 
 client.on('interactionCreate', async interaction => {

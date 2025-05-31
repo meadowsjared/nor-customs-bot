@@ -10,24 +10,15 @@ import {
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
+  VoiceChannel,
 } from 'discord.js';
 import { botChannelName, leaveBtn, nameBtn, rejoinBtn, roleBtn, roleMap, rolesRow } from '../constants';
 import { announce } from '../utils/announce';
 import { players, savePlayerData } from '../store/player';
+import { saveChannels } from '../store/channels';
 
 // TODO: implement this command
 export async function handleLoadTeamsCommand(
-  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
-) {
-  // This command is not implemented yet
-  await interaction.reply({
-    content: 'This command is not implemented yet.',
-    flags: MessageFlags.Ephemeral,
-  });
-}
-
-// TODO: implement this command
-export async function handleSetChannelTeamIdCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
 ) {
   // This command is not implemented yet
@@ -59,13 +50,49 @@ export async function handleMoveToTeamsCommand(
   });
 }
 
-// TODO: implement this command
+export async function handleSetChannelTeamIdCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+) {
+  if (interaction.isButton()) {
+    console.error('Interaction is not a command or button interaction');
+    return;
+  }
+  const channel = interaction.options.getChannel('channel_id', true);
+  const teamId = interaction.options.getString('team_number', true);
+  if (!(channel instanceof VoiceChannel)) {
+    await interaction.reply({
+      content: 'Please select a valid voice channel.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  saveChannels(teamId, channel);
+  await interaction.reply({
+    content: `${teamId} channel set to \`${channel.name}\`.`,
+    flags: MessageFlags.Ephemeral,
+  });
+}
+
 export async function handleSetLobbyChannelCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
 ) {
+  if (!interaction.isChatInputCommand() || interaction.isButton()) {
+    console.error('Interaction is not a command or button interaction');
+    return;
+  }
+  const channel = interaction.options.getChannel('channel_id', true);
+  // if channel isn't guild voice, return
+  if (!(channel instanceof VoiceChannel)) {
+    await interaction.reply({
+      content: 'Please select a valid voice channel.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  await saveChannels('lobby', channel);
   // This command is not implemented yet
   await interaction.reply({
-    content: 'This command is not implemented yet.',
+    content: `lobby channel set to \`${channel.name}\``,
     flags: MessageFlags.Ephemeral,
   });
 }

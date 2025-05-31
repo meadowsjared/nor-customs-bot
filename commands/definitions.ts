@@ -25,8 +25,8 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
         description: 'The team number to set the channel for',
         required: true,
         choices: [
-          { name: 'Team 1', value: '1' },
-          { name: 'Filthy Team 2', value: '2' },
+          { name: 'Team 1', value: 'team1' },
+          { name: 'Filthy Team 2', value: 'team2' },
         ],
       },
       {
