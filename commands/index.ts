@@ -15,6 +15,7 @@ import { botChannelName, leaveBtn, nameBtn, rejoinBtn, roleBtn, roleMap, rolesRo
 import { announce } from '../utils/announce';
 import { players, savePlayerData } from '../store/player';
 
+// TODO: implement this command
 export async function handleLoadTeamsCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
 ) {
@@ -25,6 +26,7 @@ export async function handleLoadTeamsCommand(
   });
 }
 
+// TODO: implement this command
 export async function handleSetChannelTeamIdCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
 ) {
@@ -35,6 +37,7 @@ export async function handleSetChannelTeamIdCommand(
   });
 }
 
+// TODO: implement this command
 export async function handleGatherToLobbyCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
 ) {
@@ -45,6 +48,7 @@ export async function handleGatherToLobbyCommand(
   });
 }
 
+// TODO: implement this command
 export async function handleMoveToTeamsCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
 ) {
@@ -55,6 +59,7 @@ export async function handleMoveToTeamsCommand(
   });
 }
 
+// TODO: implement this command
 export async function handleSetLobbyChannelCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
 ) {
