@@ -34,13 +34,45 @@ export async function handleNewGameCommand(
   );
 }
 
-// TODO: implement this command
+//TODO I still need this to store the teams in a way
+//TODO so that when handleMoveToTeamsCommand is ran, it uses this data to move players to the correct voice channels
+/**
+ * Handles the /load_teams command interaction, which loads teams from a JSON string provided in the command options.
+ * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
+ * @returns
+ * note: If the interaction is not a command or button interaction, it logs an error and returns.
+ **/
 export async function handleLoadTeamsCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
 ) {
+  type TeamName = 'team1' | 'team2';
+  type Teams = {
+    [K in TeamName]: string[];
+  };
+
+  if (interaction.isButton()) {
+    console.error('Interaction is not a command or button interaction');
+    return;
+  }
+  const teamsData: Teams = JSON.parse(interaction.options.getString('teams_data', true));
+  console.log(teamsData, 'teamsData');
+  const activePlayers = Array.from(players.entries()).filter(([_, player]) => player.active);
+  const message = activePlayers
+    .map(([id, player]) => {
+      const hotsName = player.usernames.hots;
+      // Compare lowercased names for case-insensitive matching
+      if (teamsData.team1.some(name => name.toLowerCase() === hotsName.toLowerCase())) {
+        return `${hotsName} (Team 1) ${player.usernames.discord}`;
+      } else if (teamsData.team2.some(name => name.toLowerCase() === hotsName.toLowerCase())) {
+        return `${hotsName} (Team 2) ${player.usernames.discord}`;
+      }
+      return `${hotsName} (Unassigned) ${player.usernames.discord}`;
+    })
+    .join('\n');
+
   // This command is not implemented yet
   await interaction.reply({
-    content: 'This command is not implemented yet.',
+    content: `Here are the teams: \n${message}`,
     flags: MessageFlags.Ephemeral,
   });
 }
