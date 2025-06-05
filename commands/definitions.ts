@@ -8,14 +8,15 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     defaultMemberPermissions: PermissionsBitField.Flags.MentionEveryone,
   },
   {
-    name: CommandIds.LOAD_TEAMS,
+    name: CommandIds.SET_TEAMS,
     description: 'Load teams data',
     defaultMemberPermissions: PermissionsBitField.Flags.MentionEveryone,
     options: [
       {
-        name: 'team_data',
+        name: 'teams_data',
         type: 3, // STRING type
         description: 'The team data from the spreasheet',
+        required: true,
       },
     ],
   },
