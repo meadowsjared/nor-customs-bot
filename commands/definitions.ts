@@ -13,7 +13,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     defaultMemberPermissions: PermissionsBitField.Flags.MentionEveryone,
     options: [
       {
-        name: 'team_data',
+        name: 'teams_data',
         type: 3, // STRING type
         description: 'The team data from the spreasheet',
       },
