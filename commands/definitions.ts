@@ -8,7 +8,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     defaultMemberPermissions: PermissionsBitField.Flags.MentionEveryone,
   },
   {
-    name: CommandIds.LOAD_TEAMS,
+    name: CommandIds.SET_TEAMS,
     description: 'Load teams data',
     defaultMemberPermissions: PermissionsBitField.Flags.MentionEveryone,
     options: [
