@@ -89,7 +89,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
         required: true,
         choices: [
           { name: 'Tank', value: 'T' },
-          { name: 'Assasin', value: 'A' },
+          { name: 'Assassin', value: 'A' },
           { name: 'Bruiser', value: 'B' },
           { name: 'Healer', value: 'H' },
           { name: 'Flex', value: 'F' },
@@ -124,7 +124,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
         required: true,
         choices: [
           { name: 'Tank', value: 'T' },
-          { name: 'Assasin', value: 'A' },
+          { name: 'Assassin', value: 'A' },
           { name: 'Bruiser', value: 'B' },
           { name: 'Healer', value: 'H' },
           { name: 'Flex', value: 'F' },
