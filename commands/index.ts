@@ -383,11 +383,17 @@ async function handleNameCommand(interaction: ChatInputCommandInteraction<CacheT
           await savePlayerData(players); // Save player data to file
         })
         .catch(reason => {
-          console.log('reason:', reason);
-          interaction.followUp({
-            content: 'You did not enter a username in time.',
-            flags: MessageFlags.Ephemeral,
-          });
+          if (reason.code === 'InteractionCollectorError') {
+            // User did not respond in time
+            // so do nothing
+          } else {
+            console.error('message: ', reason.message);
+            console.log('reason:', reason);
+            interaction.followUp({
+              content: 'An error occurred while processing your request. Please try again later.',
+              flags: MessageFlags.Ephemeral,
+            });
+          }
         });
     });
     return;
