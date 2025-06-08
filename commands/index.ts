@@ -217,7 +217,7 @@ async function handlePlayersCommand(
     .filter(([_, player]) => player.active)
     .map(([_, { usernames, role }]) => `${usernames.hots} ${role}`);
   await interaction.reply({
-    content: `Players in the lobby:\n${playerList}`,
+    content: `Players in the lobby: **${rawPlayerList.length}**\n${playerList}`,
     flags: onlyRaw ? MessageFlags.Ephemeral : undefined,
   });
   if (rawPlayerList.length > 0) {
