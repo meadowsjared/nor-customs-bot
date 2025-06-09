@@ -17,7 +17,7 @@ import {
   handleLoadTeamsCommand,
   handleSetChannelTeamIdCommand,
   handleSetLobbyChannelCommand,
-  handleGatherToLobbyCommand,
+  handleMoveToLobbyCommand,
   handleMoveToTeamsCommand,
   handleNewGameCommand,
 } from './commands';
@@ -105,9 +105,9 @@ client.on('interactionCreate', async interaction => {
       // Handle set lobby channel command
       handleSetLobbyChannelCommand(interaction);
       break;
-    case CommandIds.GATHER_TO_LOBBY:
+    case CommandIds.MOVE_TO_LOBBY:
       // Handle gather to lobby command
-      handleGatherToLobbyCommand(interaction);
+      handleMoveToLobbyCommand(interaction);
       break;
     case CommandIds.MOVE_TO_TEAMS:
       // Handle move to teams command

@@ -64,7 +64,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     defaultMemberPermissions: PermissionsBitField.Flags.MentionEveryone,
   },
   {
-    name: CommandIds.GATHER_TO_LOBBY,
+    name: CommandIds.MOVE_TO_LOBBY,
     description: 'Gather players to the lobby',
     defaultMemberPermissions: PermissionsBitField.Flags.MentionEveryone,
   },

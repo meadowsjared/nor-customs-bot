@@ -8,7 +8,7 @@ export const CommandIds = {
   SET_TEAMS: 'set_teams',
   SET_CHANNEL_TEAM_ID: 'set_team_channel',
   SET_LOBBY_CHANNEL: 'set_lobby_channel',
-  GATHER_TO_LOBBY: 'gather',
+  MOVE_TO_LOBBY: 'move_all_to_lobby',
   MOVE_TO_TEAMS: 'move_teams',
   GUIDE: 'guide',
   JOIN: 'join',
