@@ -22,6 +22,9 @@ SELECT * FROM players WHERE active = 1;
 set all these players to active:
 UPDATE players SET active = 1 WHERE hotsName IN ('Nommynoms', 'saika', 'Aviater', 'TravisParty', 'Icon', 'Rev', 'TheCure', 'Aieee', 'Bandayd', 'ducky', 'FeintToAccel', 'selym', 'LadyGeneveve');
 
+find player by part of name:
+select * from players where hotsName LIKE '%Band%';
+
 show schema for channels:
 .schema channels
 
