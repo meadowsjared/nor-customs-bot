@@ -24,3 +24,27 @@ export interface Player {
    */
   active: boolean;
 }
+
+export interface FlatPlayer {
+  /**
+   * The Heroes of the Storm username of the player
+   */
+  hotsName: string;
+  /**
+   * The discord username of the player
+   */
+  discordName: string;
+  /**
+   * The discord ID of the player
+   */
+  discordId: string;
+  /**
+   * The role of the player in the game
+   * T = Tank, A = Assassin, B = Bruiser, H = Healer, F = Flex
+   */
+  role: string;
+  /**
+   * Whether the player is currently active in the lobby
+   */
+  active: number;
+}
