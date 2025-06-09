@@ -1,0 +1,29 @@
+connect:
+sqlite3 ./store/nor_customs.db
+
+show tables:
+.tables
+
+show schema:
+.schema players
+
+get all players:
+SELECT * FROM players;
+
+get player by name:
+SELECT * FROM players WHERE hotsName = 'player_name';
+
+set player by name to active:
+UPDATE players SET active = 1 WHERE hotsName = 'player_name';
+
+get all active players:
+SELECT * FROM players WHERE active = 1;
+
+set all these players to active:
+UPDATE players SET active = 1 WHERE hotsName IN ('Nommynoms', 'saika', 'Aviater', 'TravisParty', 'Icon', 'Rev', 'TheCure', 'Aieee', 'Bandayd', 'ducky', 'FeintToAccel', 'selym', 'LadyGeneveve');
+
+show schema for channels:
+.schema channels
+
+get all channels:
+SELECT * FROM channels;
