@@ -22,8 +22,6 @@ import {
   handleNewGameCommand,
 } from './commands';
 import { slashCommands } from './commands/definitions';
-import { players, loadPlayerData } from './store/player';
-import { loadChannels } from './store/channels';
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.DirectMessages],
@@ -80,12 +78,6 @@ client.once('ready', async () => {
     ],
   });
   console.log(`Bot is ready! Logged in as ${client.user?.tag}`);
-  const previousPlayers = await loadPlayerData();
-  // transfer previous loaded players to the in-memory store
-  previousPlayers.forEach((player, username) => {
-    players.set(username, player);
-  });
-  await loadChannels();
 });
 
 client.on('interactionCreate', async interaction => {
