@@ -124,7 +124,7 @@ export async function handleSetChannelTeamIdCommand(
     });
     return;
   }
-  saveChannels(teamId, channel);
+  await saveChannels(teamId, channel);
   await interaction.reply({
     content: `${teamId} channel set to \`${channel.name}\`.`,
     flags: MessageFlags.Ephemeral,
