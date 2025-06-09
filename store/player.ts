@@ -15,9 +15,6 @@ db.exec(`
   )
 `);
 
-// Store user data in memory
-export const players = new Map<string, Player>();
-
 export function savePlayer(discordId: string, player: Player): void {
   const stmt = db.prepare(`
     INSERT INTO players (discordId, hotsName, discordName, role, active)
@@ -29,7 +26,6 @@ export function savePlayer(discordId: string, player: Player): void {
       active=excluded.active
   `);
   stmt.run(discordId, player.usernames.hots, player.usernames.discord, player.role, player.active ? 1 : 0);
-  players.set(discordId, player);
 }
 
 export async function savePlayerData(players: Map<string, Player>): Promise<void> {
@@ -72,9 +68,6 @@ export function getActivePlayers(): Map<string, Player> {
 export function markAllPlayersInactive(): void {
   const stmt = db.prepare('UPDATE players SET active = 0 WHERE active = 1');
   stmt.run();
-  players.forEach(player => {
-    player.active = false;
-  });
 }
 
 /**
@@ -83,7 +76,7 @@ export function markAllPlayersInactive(): void {
  * @returns boolean true if the player was found and marked inactive, false otherwise.
  */
 export function markPlayerInactive(discordId: string): false | Player {
-  const player = players.get(discordId);
+  const player = getPlayerByDiscordId(discordId);
   if (!player) {
     return false;
   }
@@ -99,7 +92,7 @@ export function markPlayerInactive(discordId: string): false | Player {
  * @returns Player object if the player was found and marked active, false otherwise, true if the player was already active.
  */
 export function markPlayerActive(discordId: string): { alreadyActive: boolean; player: Player | undefined } {
-  const player = players.get(discordId);
+  const player = getPlayerByDiscordId(discordId);
   if (!player) {
     return { alreadyActive: false, player: undefined }; // Player not found
   }
@@ -118,7 +111,19 @@ export function markPlayerActive(discordId: string): { alreadyActive: boolean; p
  * @returns Player object if found, undefined otherwise.
  */
 export function getPlayerByDiscordId(discordId: string): Player | undefined {
-  return players.get(discordId);
+  const stmt = db.prepare<[string], FlatPlayer>('SELECT * FROM players WHERE discordId = ?');
+  const row: FlatPlayer | undefined = stmt.get(discordId);
+  if (!row) {
+    return undefined; // Player not found
+  }
+  return {
+    usernames: {
+      hots: row.hotsName,
+      discord: row.discordName,
+    },
+    role: row.role,
+    active: row.active === 1,
+  };
 }
 
 /**
@@ -131,7 +136,7 @@ export function setPlayerRole(discordId: string, role: string | null): false | P
   if (!role) {
     return false; // Invalid role
   }
-  const player = players.get(discordId);
+  const player = getPlayerByDiscordId(discordId);
   if (!player) {
     return false; // Player not found
   }
