@@ -146,6 +146,26 @@ export function setPlayerRole(discordId: string, role: string | null): false | P
   return player;
 }
 
+/**
+ * Changes the player name in the database.
+ * @param discordId The Discord ID of the player to change the name for.
+ * @param hotsName The new Heroes of the Storm name for the player.
+ * @returns Player object if the player was found and the name was changed, false otherwise.
+ */
+export function setPlayerName(discordId: string, hotsName: string): false | Player {
+  if (!hotsName) {
+    return false; // Invalid name
+  }
+  const player = getPlayerByDiscordId(discordId);
+  if (!player) {
+    return false; // Player not found
+  }
+  const stmt = db.prepare('UPDATE players SET hotsName = ? WHERE discordId = ?');
+  stmt.run(hotsName, discordId);
+  player.usernames.hots = hotsName;
+  return player;
+}
+
 export async function loadPlayerDataIntoSqlite(): Promise<Map<string, Player> | undefined> {
   try {
     const data = await import('./players.json');

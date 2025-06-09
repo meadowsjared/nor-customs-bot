@@ -21,6 +21,7 @@ import {
   markPlayerActive,
   markPlayerInactive,
   savePlayer,
+  setPlayerName,
   setPlayerRole,
 } from '../store/player';
 import { saveChannel, getChannels } from '../store/channels';
@@ -394,7 +395,7 @@ async function handleNameCommand(interaction: ChatInputCommandInteraction<CacheT
           const username = modalInteraction.fields.getTextInputValue('usernameInput');
           const player = getPlayerByDiscordId(modalInteraction.user.id);
           if (player) {
-            player.usernames.hots = username;
+            setPlayerName(modalInteraction.user.id, username); // Update the player's username in the database
             await modalInteraction.reply({
               content: `Your username has been updated to: ${username}`,
               flags: MessageFlags.Ephemeral,
