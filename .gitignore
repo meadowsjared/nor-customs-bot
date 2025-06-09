@@ -2,3 +2,7 @@ node_modules
 .env
 store/*.json
 store/*.db
+bun.lockb
+sqlite3_analyzer.exe
+sqlite3_rsync.exe
+sqldiff.exe
