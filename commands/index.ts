@@ -259,7 +259,7 @@ async function handlePlayersCommand(
   if (rawPlayerList.length > 0) {
     // show a public message in the channel, if there are players in the lobby
     const channel = interaction.guild?.channels.cache.find(ch => ch.name === botChannelName);
-    if (channel && channel.isTextBased()) {
+    if (channel?.isTextBased()) {
       interaction.followUp({
         content: `\`${rawPlayerList.join(',') || 'No players in the lobby'}\``,
         flags: MessageFlags.Ephemeral,
@@ -463,7 +463,6 @@ async function handleNameCommand(interaction: ChatInputCommandInteraction<CacheT
       content: 'You are not in the lobby. Use `/join` to join the lobby.',
       flags: MessageFlags.Ephemeral,
     });
-    return;
   }
 }
 

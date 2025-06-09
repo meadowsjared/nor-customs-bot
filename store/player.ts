@@ -103,7 +103,7 @@ export function markPlayerActive(discordId: string): { alreadyActive: boolean; p
   if (!player) {
     return { alreadyActive: false, player: undefined }; // Player not found
   }
-  if (player && player.active) {
+  if (player?.active) {
     return { alreadyActive: true, player }; // Player already active
   }
   const stmt = db.prepare('UPDATE players SET active = 1 WHERE discordId = ?');
@@ -144,7 +144,7 @@ export function setPlayerRole(discordId: string, role: string | null): false | P
 export async function loadPlayerDataIntoSqlite(): Promise<Map<string, Player> | undefined> {
   try {
     const data = await import('./players.json');
-    const playersMap = new Map<string, Player>(Object.entries(data.default || {}));
+    const playersMap = new Map<string, Player>(Object.entries(data.default ?? {}));
     // transfer the loaded players to the sqlite database
     playersMap.forEach((player, discordId) => {
       savePlayer(discordId, player);
