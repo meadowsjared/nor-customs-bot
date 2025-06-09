@@ -7,6 +7,10 @@ show tables:
 show schema:
 .schema players
 
+Turn on headers and set mode to column for better readability:
+.headers on
+.mode column
+
 get all players:
 SELECT * FROM players;
 
