@@ -1,52 +1,76 @@
 import { VoiceChannel } from 'discord.js';
+import { ChannelExtended, ChannelLocal } from '../types/channel';
+import Database from 'better-sqlite3';
+
 const db = new Database('./store/nor_customs.db');
 
 // Store user data in memory
 export const channelData = new Map<string, ChannelLocal>();
 
+// Ensure the players table exists
+db.exec(`
+  CREATE TABLE IF NOT EXISTS channels (
+    channelType TEXT PRIMARY KEY,
+    channelId TEXT NOT NULL,
+    channelName TEXT NOT NULL
+  )
+`);
+
 /**
- * Saves a voice channel to the local store.
- * @param name The name of the channel to save.
- * @param channel The voice channel object to save.
+ * Saves a Discord VoiceChannel to the local store.
+ * @param channelType The type of the channel, e.g., 'lobby', 'team1', 'team2'
+ * @param channel The Discord VoiceChannel object to save
+ * @returns {void}
  */
-export async function saveChannels(name: string, channel: VoiceChannel): Promise<void> {
-  channelData.set(name, { id: channel.id, name: channel.name });
-  try {
-    // convert channelData to an object
-    const channelObject = Array.from(channelData.entries()).reduce<{ [key: string]: ChannelLocal }>(
-      (acc, [key, value]) => {
-        acc[key] = value;
-        return acc;
-      },
-      {}
-    );
-    await writeFile('./store/channels.json', JSON.stringify(channelObject, null, 2));
-  } catch (error) {
-    console.error('Error saving lobby channel:', error);
-  }
+export function saveChannel(channelType: string, channel: VoiceChannel): void {
+  const stmt = db.prepare(`
+    INSERT INTO channels (channelType, channelId, channelName)
+    VALUES (?, ?, ?)
+    ON CONFLICT(channelType) DO UPDATE SET
+      channelId=excluded.channelId,
+      channelName=excluded.channelName
+  `);
+  stmt.run(channelType, channel.id, channel.name);
+  channelData.set(channelType, {
+    channelId: channel.id,
+    channelName: channel.name,
+  });
 }
 
 /**
- * Loads the channels from the local store.
+ * Retrieves a lobby channel
+ * @return {ChannelLocal} The lobby channel as an object, or undefined if it does not exist.
  */
-export async function loadChannels() {
-  try {
-    // check if the file exists
-    const fileExists = await import('fs').then(fs =>
-      fs.promises
-        .access('./store/channels.json')
-        .then(() => true)
-        .catch(() => false)
-    );
-    if (!fileExists) {
-      console.warn('No channels file found');
-      return;
-    }
-    const data = (await import('./channels.json')).default;
-    Object.entries(data).forEach(([key, value]) => {
-      channelData.set(key, value);
-    });
-  } catch (error) {
-    console.error('Error loading lobby channel:', error);
+export function getChannels(channelTypes: string[]): ChannelLocal[] | undefined {
+  if (channelTypes.length === 0) {
+    return undefined;
   }
+  const placeholders = channelTypes.map(() => '?').join(', ');
+  const stmt = db.prepare<string[], ChannelExtended>(`SELECT * FROM channels WHERE channelType IN (${placeholders})`);
+  const rows: ChannelExtended[] = stmt.all(...channelTypes);
+  if (!rows || rows.length === 0) {
+    return undefined;
+  }
+  return rows.map((row: ChannelExtended) => ({
+    channelId: row.channelId,
+    channelName: row.channelName,
+  }));
+}
+
+/**
+ * Retrieves all channels from the local store.
+ * @returns A Map of channel IDs to ChannelLocal objects.
+ */
+export function getAllChannels(): Map<string, ChannelLocal> {
+  const stmt = db.prepare<[], ChannelExtended>('SELECT * FROM channels');
+  const rows: ChannelExtended[] = stmt.all();
+  return new Map<string, ChannelLocal>(
+    rows.map((row: ChannelExtended) => [
+      row.channelType,
+      {
+        channelId: row.channelId,
+        channelName: row.channelName,
+      },
+    ])
+  );
 }

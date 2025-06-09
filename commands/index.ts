@@ -23,7 +23,7 @@ import {
   savePlayer,
   setPlayerRole,
 } from '../store/player';
-import { saveChannels } from '../store/channels';
+import { saveChannel, getChannels } from '../store/channels';
 import { Player } from '../types/player';
 
 export async function handleNewGameCommand(
@@ -87,12 +87,21 @@ export async function handleLoadTeamsCommand(
 }
 
 // TODO: implement this command
-export async function handleGatherToLobbyCommand(
+export async function handleMoveToLobbyCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
 ) {
+  const result = getChannels(['lobby']);
+  if (!result || result.length === 0) {
+    await interaction.reply({
+      content: 'No lobby channel set. Please set a lobby channel first using `/set_lobby_channel`.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
   // This command is not implemented yet
   await interaction.reply({
-    content: 'This command is not implemented yet.',
+    content: `This command is not implemented yet.\nlobby channel is set to: \`${result[0].channelName}\``,
     flags: MessageFlags.Ephemeral,
   });
 }
@@ -101,9 +110,25 @@ export async function handleGatherToLobbyCommand(
 export async function handleMoveToTeamsCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
 ) {
+  const result = getChannels(['team1', 'team2']);
+  if (!result || result.length === 0) {
+    await interaction.reply({
+      content: 'No team channels set. Please set team channels first using `/set_channel_team_id`.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  if (result.length < 2) {
+    // tell them which channel they need to set
+    await interaction.reply({
+      content: `You need to set both team channels using \`/set_channel_team_id\`.\nCurrently, only one team channel is set: \`${result[0].channelName}\`.`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
   // This command is not implemented yet
   await interaction.reply({
-    content: 'This command is not implemented yet.',
+    content: `This command is not implemented yet.\nTeam channels are set to:\n1:\`${result[0].channelName}\`\n2:\`${result[1].channelName}\``,
     flags: MessageFlags.Ephemeral,
   });
 }
@@ -124,7 +149,7 @@ export async function handleSetChannelTeamIdCommand(
     });
     return;
   }
-  await saveChannels(teamId, channel);
+  saveChannel(teamId, channel);
   await interaction.reply({
     content: `${teamId} channel set to \`${channel.name}\`.`,
     flags: MessageFlags.Ephemeral,
@@ -147,7 +172,7 @@ export async function handleSetLobbyChannelCommand(
     });
     return;
   }
-  await saveChannels('lobby', channel);
+  saveChannel('lobby', channel);
   // This command is not implemented yet
   await interaction.reply({
     content: `lobby channel set to \`${channel.name}\``,
