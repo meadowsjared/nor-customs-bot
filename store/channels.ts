@@ -4,9 +4,6 @@ import Database from 'better-sqlite3';
 
 const db = new Database('./store/nor_customs.db');
 
-// Store user data in memory
-export const channelData = new Map<string, ChannelLocal>();
-
 // Ensure the players table exists
 db.exec(`
   CREATE TABLE IF NOT EXISTS channels (
@@ -31,10 +28,6 @@ export function saveChannel(channelType: string, channel: VoiceChannel): void {
       channelName=excluded.channelName
   `);
   stmt.run(channelType, channel.id, channel.name);
-  channelData.set(channelType, {
-    channelId: channel.id,
-    channelName: channel.name,
-  });
 }
 
 /**
