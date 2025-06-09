@@ -14,17 +14,22 @@ import {
 } from 'discord.js';
 import { botChannelName, imPlayingBtn, leaveBtn, nameBtn, rejoinBtn, roleBtn, roleMap, rolesRow } from '../constants';
 import { announce } from '../utils/announce';
-import { players, savePlayerData } from '../store/player';
+import {
+  getActivePlayers,
+  getPlayerByDiscordId,
+  markAllPlayersInactive,
+  markPlayerActive,
+  markPlayerInactive,
+  savePlayer,
+  setPlayerRole,
+} from '../store/player';
 import { saveChannels } from '../store/channels';
+import { Player } from '../types/player';
 
 export async function handleNewGameCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
 ) {
-  // go through and mark all players as inactive
-  players.forEach(player => {
-    player.active = false; // Mark them as inactive
-  });
-  await savePlayerData(players); // Save player data to file
+  markAllPlayersInactive();
   // announce in the channel that a new game has started and all players have been marked as inactive, so they need to hit the button if they are going to play
   await announce(
     interaction,
@@ -32,6 +37,10 @@ export async function handleNewGameCommand(
     undefined,
     [new ActionRowBuilder<ButtonBuilder>().addComponents(imPlayingBtn)]
   );
+  interaction.reply({
+    content: 'Game announced!', // empty content to avoid sending a message in the channel, since we already announced it'
+    flags: MessageFlags.Ephemeral,
+  });
 }
 
 //TODO I still need this to store the teams in a way
@@ -56,7 +65,7 @@ export async function handleLoadTeamsCommand(
   }
   const teamsData: Teams = JSON.parse(interaction.options.getString('teams_data', true));
   console.log(teamsData, 'teamsData');
-  const activePlayers = Array.from(players.entries()).filter(([_, player]) => player.active);
+  const activePlayers = Array.from(getActivePlayers());
   const message = activePlayers
     .map(([id, player]) => {
       const hotsName = player.usernames.hots;
@@ -201,6 +210,8 @@ async function handlePlayersCommand(
     return;
   }
 
+  const players = getActivePlayers();
+
   const playerList =
     Array.from(players.entries())
       .filter(([_, player]) => player.active)
@@ -238,10 +249,8 @@ async function handlePlayersCommand(
  * @returns
  */
 async function handleLeaveCommand(interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>) {
-  const player = players.get(interaction.user.id);
+  const player = markPlayerInactive(interaction.user.id); // Mark player as inactive in the database
   if (player) {
-    player.active = false; // Mark player as inactive
-    await savePlayerData(players); // Save player data to file
     // announce in the channel who has left
     await announce(interaction, `<@${interaction.user.id}> (${player.usernames.hots}) has left the lobby`);
     await interaction.reply({
@@ -257,11 +266,7 @@ async function handleLeaveCommand(interaction: ChatInputCommandInteraction<Cache
 export async function handleClearCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
 ) {
-  // go through the list of players and mark them all as inactive
-  players.forEach(player => {
-    player.active = false; // Mark them as inactive
-  });
-  await savePlayerData(players); // Save player data to file
+  markAllPlayersInactive(); // Mark all players as inactive in the database
   await interaction.reply({
     content: 'All players have been removed from the lobby.',
     flags: MessageFlags.Ephemeral,
@@ -274,35 +279,35 @@ export async function handleClearCommand(
  * @returns
  */
 async function handleRejoinCommand(interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>) {
-  const previousPlayer = players.get(interaction.user.id);
-  if (previousPlayer) {
-    if (previousPlayer.active) {
-      await interaction.reply({
-        content: `You are already in the lobby as: ${previousPlayer.usernames.hots}, \`${
-          roleMap[previousPlayer.role]
-        }\`\nUse /leave to leave the lobby`,
-        flags: MessageFlags.Ephemeral,
-        components: [new ActionRowBuilder<ButtonBuilder>().addComponents(leaveBtn, nameBtn, roleBtn)],
-      });
-      return;
-    }
-    // announce in the channel who has rejoined
-    await announce(
-      interaction,
-      `<@${interaction.user.id}> (${previousPlayer.usernames.hots}) has rejoined the lobby as \`${
-        roleMap[previousPlayer.role]
-      }\``
-    );
-    previousPlayer.active = true; // Mark player as active
-    await savePlayerData(players); // Save player data to file
+  const result = markPlayerActive(interaction.user.id); // Mark player as active in the database
+  if (result.alreadyActive === true && result.player) {
     await interaction.reply({
-      content: `You have rejoined the lobby as: ${previousPlayer.usernames.hots}, \`${
-        roleMap[previousPlayer.role]
+      content: `You are already in the lobby as: ${result.player.usernames.hots}, \`${
+        roleMap[result.player.role]
       }\`\nUse /leave to leave the lobby`,
       flags: MessageFlags.Ephemeral,
       components: [new ActionRowBuilder<ButtonBuilder>().addComponents(leaveBtn, nameBtn, roleBtn)],
     });
-  } else {
+    return;
+  }
+  if (result.alreadyActive === false && result.player) {
+    // announce in the channel who has rejoined
+    await announce(
+      interaction,
+      `<@${interaction.user.id}> (${result.player.usernames.hots}) has rejoined the lobby as \`${
+        roleMap[result.player.role]
+      }\``
+    );
+    await interaction.reply({
+      content: `You have rejoined the lobby as: ${result.player.usernames.hots}, \`${
+        roleMap[result.player.role]
+      }\`\nUse /leave to leave the lobby`,
+      flags: MessageFlags.Ephemeral,
+      components: [new ActionRowBuilder<ButtonBuilder>().addComponents(leaveBtn, nameBtn, roleBtn)],
+    });
+    return;
+  }
+  if (result.player === undefined) {
     await interaction.reply({
       content: 'You are not in the lobby. Use /join to join first.',
       flags: MessageFlags.Ephemeral,
@@ -318,12 +323,12 @@ async function handleRejoinCommand(interaction: ChatInputCommandInteraction<Cach
 async function handleJoinCommand(interaction: ChatInputCommandInteraction<CacheType>) {
   const username = interaction.options.getString('username', true);
   const role = interaction.options.getString('role', true);
-  players.set(interaction.user.id, {
+  const newPlayer: Player = {
     usernames: { hots: username, discord: interaction.user.username },
     role,
     active: true,
-  });
-  await savePlayerData(players); // Save player data to file
+  };
+  savePlayer(interaction.user.id, newPlayer); // Save player data to the database
   // announce in the channel who has joined
   await announce(interaction, `<@${interaction.user.id}> (${username}) has joined the lobby as \`${roleMap[role]}\``);
   await interaction.reply({
@@ -340,7 +345,7 @@ async function handleJoinCommand(interaction: ChatInputCommandInteraction<CacheT
  */
 async function handleNameCommand(interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>) {
   if (interaction.isButton()) {
-    const previousPlayer = players.get(interaction.user.id);
+    const previousPlayer = getPlayerByDiscordId(interaction.user.id);
 
     // create a modal with a text field to collect the username
     const usernameInput = new TextInputBuilder()
@@ -362,7 +367,7 @@ async function handleNameCommand(interaction: ChatInputCommandInteraction<CacheT
         .awaitModalSubmit({ filter: i => i.customId === 'nameModal', time: 5 * 60 * 1000 }) // 5 minutes timeout
         .then(async modalInteraction => {
           const username = modalInteraction.fields.getTextInputValue('usernameInput');
-          const player = players.get(modalInteraction.user.id);
+          const player = getPlayerByDiscordId(modalInteraction.user.id);
           if (player) {
             player.usernames.hots = username;
             await modalInteraction.reply({
@@ -370,7 +375,7 @@ async function handleNameCommand(interaction: ChatInputCommandInteraction<CacheT
               flags: MessageFlags.Ephemeral,
             });
           } else {
-            players.set(modalInteraction.user.id, {
+            savePlayer(modalInteraction.user.id, {
               usernames: { hots: username, discord: modalInteraction.user.username },
               role: 'F',
               active: false,
@@ -380,7 +385,6 @@ async function handleNameCommand(interaction: ChatInputCommandInteraction<CacheT
               flags: MessageFlags.Ephemeral,
             });
           }
-          await savePlayerData(players); // Save player data to file
         })
         .catch(reason => {
           if (reason.code === 'InteractionCollectorError') {
@@ -399,32 +403,42 @@ async function handleNameCommand(interaction: ChatInputCommandInteraction<CacheT
     return;
   }
   const username = interaction.options.getString('username', false);
-  const player = players.get(interaction.user.id);
+  const player = getPlayerByDiscordId(interaction.user.id); // Get player by Discord ID
   if (player && username) {
-    player.usernames.hots = username;
-    await savePlayerData(players); // Save player data to file
+    // If player exists and username is provided
+    const newPlayer = {
+      ...player,
+      usernames: { ...player.usernames, hots: username }, // Update the hots username
+    };
+    savePlayer(interaction.user.id, newPlayer); // Save player data to the database
     await interaction.reply({
       content: `Your username has been updated to: ${username}`,
       flags: MessageFlags.Ephemeral,
     });
   } else {
+    // If player does not exist or username is not provided
     if (!username) {
+      // If username is not provided, prompt the user to provide it
       await interaction.reply({
         content: 'Please provide a username.',
         flags: MessageFlags.Ephemeral,
       });
       return;
     }
-    players.set(interaction.user.id, {
+
+    // therefore the player does not exist, but we have a username
+    const newPlayer = {
       usernames: { hots: username, discord: interaction.user.username },
-      role: 'F',
-      active: false,
-    });
-    await savePlayerData(players); // Save player data to file
+      discordId: interaction.user.id,
+      role: 'F', // Default role is Flex
+      active: false, // Player is not active until they join
+    };
+    savePlayer(interaction.user.id, newPlayer); // Save player data to the database
     await interaction.reply({
       content: 'You are not in the lobby. Use `/join` to join the lobby.',
       flags: MessageFlags.Ephemeral,
     });
+    return;
   }
 }
 
@@ -446,21 +460,21 @@ async function handleRoleCommand(interaction: ChatInputCommandInteraction<CacheT
     return;
   }
   // Handle role command
-  const role = interaction.options.getString('role', false);
-  const player = players.get(interaction.user.id);
-  if (player && role) {
-    player.role = role;
-    await savePlayerData(players); // Save player data to file
-    await interaction.reply({
-      content: `Your role has been updated to: ${roleMap[role]}`,
-      flags: MessageFlags.Ephemeral,
-    });
-  } else {
+  const role = interaction.options.getString('role', true);
+
+  const player = setPlayerRole(interaction.user.id, role); // Set player role in the database
+  if (player === false) {
+    // If player is not found, prompt to join
     await interaction.reply({
       content: 'You are not in the lobby. Use /join to join first.',
       flags: MessageFlags.Ephemeral,
     });
+    return;
   }
+  await interaction.reply({
+    content: `Your role has been updated to: ${roleMap[role]}`,
+    flags: MessageFlags.Ephemeral,
+  });
 }
 
 /**
@@ -472,7 +486,7 @@ async function handleAssignRoleCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
   role: keyof typeof roleMap
 ) {
-  const player = players.get(interaction.user.id);
+  const player = setPlayerRole(interaction.user.id, role); // Set player role in the database
   if (!player) {
     await interaction.reply({
       content: 'You are not in the lobby. Use /join to join first.',
@@ -480,8 +494,6 @@ async function handleAssignRoleCommand(
     });
     return;
   }
-  player.role = role;
-  await savePlayerData(players); // Save player data to file
   await interaction.reply({
     content: `Your role has been updated to: ${roleMap[role]}`,
     flags: MessageFlags.Ephemeral,
