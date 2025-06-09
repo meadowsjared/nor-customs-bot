@@ -1,6 +1,5 @@
 import { VoiceChannel } from 'discord.js';
-import { writeFile } from 'fs/promises';
-import { ChannelLocal } from '../types/channel';
+const db = new Database('./store/nor_customs.db');
 
 // Store user data in memory
 export const channelData = new Map<string, ChannelLocal>();

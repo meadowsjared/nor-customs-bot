@@ -2,7 +2,7 @@ import { writeFile, rename } from 'fs/promises';
 import Database from 'better-sqlite3';
 import { FlatPlayer, Player } from '../types/player';
 
-const db = new Database('./store/players.db');
+const db = new Database('./store/nor_customs.db');
 
 // Ensure the players table exists
 db.exec(`
