@@ -100,6 +100,7 @@ client.on('interactionCreate', async interaction => {
     case CommandIds.NEW_GAME:
       // Handle load players command
       handleNewGameCommand(interaction);
+      break;
     case CommandIds.SET_TEAMS:
       // Handle load teams command
       handleLoadTeamsCommand(interaction);
