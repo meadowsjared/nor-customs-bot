@@ -371,61 +371,31 @@ async function handleJoinCommand(interaction: ChatInputCommandInteraction<CacheT
  */
 async function handleNameCommand(interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>) {
   if (interaction.isButton()) {
-    const previousPlayer = getPlayerByDiscordId(interaction.user.id);
+    const { username, modalInteraction } = await handleUserNameModalSubmit(interaction);
+    if (!modalInteraction || !username) {
+      // If modal interaction is undefined, it means the user did not respond in time
+      return;
+    }
 
-    // create a modal with a text field to collect the username
-    const usernameInput = new TextInputBuilder()
-      .setCustomId('usernameInput')
-      .setLabel('Enter your Heroes of the Storm username')
-      .setStyle(TextInputStyle.Short)
-      .setRequired(true)
-      .setPlaceholder('Your Heroes of the Storm username')
-      .setValue(previousPlayer ? previousPlayer.usernames.hots : '');
-
-    // Add the input to an action row
-    const actionRow = new ActionRowBuilder<TextInputBuilder>().addComponents(usernameInput);
-
-    // Create the modal
-    const modal = new ModalBuilder().setCustomId('nameModal').setTitle('Set Your Username').addComponents(actionRow);
-    // get the username from the TextInputBuilder
-    await interaction.showModal(modal).then(() => {
-      interaction
-        .awaitModalSubmit({ filter: i => i.customId === 'nameModal', time: 5 * 60 * 1000 }) // 5 minutes timeout
-        .then(async modalInteraction => {
-          const username = modalInteraction.fields.getTextInputValue('usernameInput');
-          const player = getPlayerByDiscordId(modalInteraction.user.id);
-          if (player) {
-            setPlayerName(modalInteraction.user.id, username); // Update the player's username in the database
-            await modalInteraction.reply({
-              content: `Your username has been updated to: ${username}`,
-              flags: MessageFlags.Ephemeral,
-            });
-          } else {
-            savePlayer(modalInteraction.user.id, {
-              usernames: { hots: username, discord: modalInteraction.user.username },
-              role: 'F',
-              active: false,
-            });
-            await modalInteraction.reply({
-              content: 'You are not in the lobby. Use /join to join the lobby.',
-              flags: MessageFlags.Ephemeral,
-            });
-          }
-        })
-        .catch(reason => {
-          if (reason.code === 'InteractionCollectorError') {
-            // User did not respond in time
-            // so do nothing
-          } else {
-            console.error('message: ', reason.message);
-            console.log('reason:', reason);
-            interaction.followUp({
-              content: 'An error occurred while processing your request. Please try again later.',
-              flags: MessageFlags.Ephemeral,
-            });
-          }
-        });
-    });
+    const player = getPlayerByDiscordId(modalInteraction.user.id);
+    if (player) {
+      setPlayerName(modalInteraction.user.id, username); // Update the player's username in the database
+      await modalInteraction.reply({
+        content: `Your username has been updated to: ${username}`,
+        flags: MessageFlags.Ephemeral,
+      });
+    } else {
+      savePlayer(modalInteraction.user.id, {
+        usernames: { hots: username, discord: modalInteraction.user.username },
+        role: 'F',
+        active: false,
+      });
+      await modalInteraction.reply({
+        content: 'You are not in the lobby. Are you playing?',
+        components: [new ActionRowBuilder<ButtonBuilder>().addComponents(imPlayingBtn)],
+        flags: MessageFlags.Ephemeral,
+      });
+    }
     return;
   }
   const username = interaction.options.getString('username', false);
@@ -465,6 +435,40 @@ async function handleNameCommand(interaction: ChatInputCommandInteraction<CacheT
       flags: MessageFlags.Ephemeral,
     });
   }
+}
+
+/**
+ * Handles the user name modal submission.
+ * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
+ * @returns An object containing the username and the modal interaction.
+ */
+async function handleUserNameModalSubmit(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+): Promise<{ username: string | undefined; modalInteraction: ModalSubmitInteraction<CacheType> | undefined }> {
+  const previousPlayer = getPlayerByDiscordId(interaction.user.id);
+
+  // create a modal with a text field to collect the username
+  const usernameInput = new TextInputBuilder()
+    .setCustomId('usernameInput')
+    .setLabel('Enter your Heroes of the Storm username')
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setPlaceholder('Your Heroes of the Storm username')
+    .setValue(previousPlayer?.usernames.hots ?? '');
+
+  // Add the input to an action row
+  const actionRow = new ActionRowBuilder<TextInputBuilder>().addComponents(usernameInput);
+
+  // Create the modal
+  const modal = new ModalBuilder().setCustomId('nameModal').setTitle('Set Your Username').addComponents(actionRow);
+  // get the username from the TextInputBuilder
+  await interaction.showModal(modal);
+  const modalInteraction = await interaction.awaitModalSubmit({
+    filter: i => i.customId === 'nameModal',
+    time: 5 * 60 * 1000,
+  }); // 5 minutes timeout
+  const username = modalInteraction.fields.getTextInputValue('usernameInput');
+  return { username, modalInteraction };
 }
 
 /**
