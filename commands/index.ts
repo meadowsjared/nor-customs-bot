@@ -8,6 +8,7 @@ import {
   Interaction,
   MessageFlags,
   ModalBuilder,
+  ModalSubmitInteraction,
   TextInputBuilder,
   TextInputStyle,
   VoiceChannel,
@@ -334,12 +335,36 @@ async function handleRejoinCommand(interaction: ChatInputCommandInteraction<Cach
     return;
   }
   if (result.player === undefined) {
-    await interaction.reply({
-      content: 'You are not in the lobby. Use /join to join first.',
-      flags: MessageFlags.Ephemeral,
-      components: [new ActionRowBuilder<ButtonBuilder>().addComponents(leaveBtn, nameBtn, roleBtn)],
-    });
+    // show a dialog to collect the username and role
+    await showJoinModal(interaction);
   }
+}
+
+/**
+ * Shows a modal to the user to collect their username and role, then returns the data to the handleJoinCommand function
+ * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
+ * @returns { username: string, role: string } The username and role of the player.
+ */
+async function showJoinModal(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+): Promise<void> {
+  const { username, modalInteraction } = await handleUserNameModalSubmit(interaction);
+  if (!modalInteraction || !username) {
+    // If modal interaction is undefined, it means the user did not respond in time
+    console.log('error: User did not respond to the modal in time');
+    return;
+  }
+  savePlayer(modalInteraction.user.id, {
+    usernames: { hots: username, discord: modalInteraction.user.username },
+    role: 'F', // Default role is Flex
+    active: true,
+  });
+  await handleUserJoined(modalInteraction, username, 'F', true); // Skip reply
+  await modalInteraction.reply({
+    content: 'Please select your new role using the buttons below.',
+    components: [rolesRow],
+    flags: MessageFlags.Ephemeral,
+  });
 }
 
 /**
@@ -356,7 +381,26 @@ async function handleJoinCommand(interaction: ChatInputCommandInteraction<CacheT
   };
   savePlayer(interaction.user.id, newPlayer); // Save player data to the database
   // announce in the channel who has joined
+  await handleUserJoined(interaction, username, role);
+}
+
+/**
+ * Handles the user joining the lobby, announces their presence and provides buttons for further actions
+ * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
+ */
+async function handleUserJoined(
+  interaction:
+    | ChatInputCommandInteraction<CacheType>
+    | ButtonInteraction<CacheType>
+    | ModalSubmitInteraction<CacheType>,
+  username: string,
+  role: string,
+  skipReply = false
+) {
   await announce(interaction, `<@${interaction.user.id}> (${username}) has joined the lobby as \`${roleMap[role]}\``);
+  if (skipReply) {
+    return;
+  }
   await interaction.reply({
     // content: `Use \`/leave\` to leave the lobby`,
     components: [new ActionRowBuilder<ButtonBuilder>().addComponents(leaveBtn, nameBtn, roleBtn)],
