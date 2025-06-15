@@ -5,6 +5,7 @@ import {
   CacheType,
   ChatInputCommandInteraction,
   MessageCreateOptions,
+  ModalSubmitInteraction,
 } from 'discord.js';
 import { botChannelName } from '../constants';
 
@@ -17,13 +18,16 @@ type InteractionReplyOptionsFlags = MessageCreateOptions['flags'];
  * @param flags Optional flags for the message, such as `EPHEMERAL` to make it visible only to the user.
  */
 export async function announce(
-  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+  interaction:
+    | ChatInputCommandInteraction<CacheType>
+    | ButtonInteraction<CacheType>
+    | ModalSubmitInteraction<CacheType>,
   message: string,
   flags?: InteractionReplyOptionsFlags,
   components?: ActionRowBuilder<ButtonBuilder>[]
 ) {
   const channel = interaction.guild?.channels.cache.find(ch => ch.name === botChannelName);
-  if (channel && channel.isTextBased()) {
+  if (channel?.isTextBased()) {
     await channel.send({
       content: message,
       flags,
