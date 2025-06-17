@@ -13,7 +13,17 @@ import {
   TextInputStyle,
   VoiceChannel,
 } from 'discord.js';
-import { botChannelName, imPlayingBtn, leaveBtn, nameBtn, rejoinBtn, roleBtn, roleMap, rolesRow } from '../constants';
+import {
+  botChannelName,
+  imPlayingBtn,
+  joinBtn,
+  leaveBtn,
+  nameBtn,
+  rejoinBtn,
+  roleBtn,
+  roleMap,
+  rolesRow,
+} from '../constants';
 import { announce } from '../utils/announce';
 import {
   getActivePlayers,
@@ -534,8 +544,9 @@ async function handleRoleCommand(interaction: ChatInputCommandInteraction<CacheT
   if (player === false) {
     // If player is not found, prompt to join
     await interaction.reply({
-      content: 'You are not in the lobby. Use /join to join first.',
+      content: 'You are not in the lobby. Click the button below to join.',
       flags: MessageFlags.Ephemeral,
+      components: [new ActionRowBuilder<ButtonBuilder>().addComponents(joinBtn)],
     });
     return;
   }
@@ -557,8 +568,9 @@ async function handleAssignRoleCommand(
   const player = setPlayerRole(interaction.user.id, role); // Set player role in the database
   if (!player) {
     await interaction.reply({
-      content: 'You are not in the lobby. Use /join to join first.',
+      content: 'You are not in the lobby. Click the button below to join.',
       flags: MessageFlags.Ephemeral,
+      components: [new ActionRowBuilder<ButtonBuilder>().addComponents(joinBtn)],
     });
     return;
   }
