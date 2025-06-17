@@ -307,28 +307,23 @@ export async function handleClearCommand(
  */
 async function handleRejoinCommand(interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>) {
   const result = markPlayerActive(interaction.user.id); // Mark player as active in the database
-  if (result.alreadyActive === true && result.player) {
+  if (result.player) {
+    if (result.alreadyActive === false) {
+      // announce in the channel who has rejoined
+      await announce(
+        interaction,
+        `<@${interaction.user.id}> (${result.player.usernames.hots}) has rejoined the lobby as \`${
+          roleMap[result.player.role]
+        }\``
+      );
+    }
+    const content =
+      (result.alreadyActive === true ? `You are already in the lobby as:` : `You have rejoined the lobby as:`) +
+      ` ${result.player.usernames.hots}, \`${
+        roleMap[result.player.role]
+      }\`\nUse /leave to leave the lobby, or use the buttons below.`;
     await interaction.reply({
-      content: `You are already in the lobby as: ${result.player.usernames.hots}, \`${
-        roleMap[result.player.role]
-      }\`\nUse /leave to leave the lobby`,
-      flags: MessageFlags.Ephemeral,
-      components: [new ActionRowBuilder<ButtonBuilder>().addComponents(leaveBtn, nameBtn, roleBtn)],
-    });
-    return;
-  }
-  if (result.alreadyActive === false && result.player) {
-    // announce in the channel who has rejoined
-    await announce(
-      interaction,
-      `<@${interaction.user.id}> (${result.player.usernames.hots}) has rejoined the lobby as \`${
-        roleMap[result.player.role]
-      }\``
-    );
-    await interaction.reply({
-      content: `You have rejoined the lobby as: ${result.player.usernames.hots}, \`${
-        roleMap[result.player.role]
-      }\`\nUse /leave to leave the lobby`,
+      content,
       flags: MessageFlags.Ephemeral,
       components: [new ActionRowBuilder<ButtonBuilder>().addComponents(leaveBtn, nameBtn, roleBtn)],
     });
