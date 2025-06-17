@@ -527,6 +527,17 @@ async function handleUserNameModalSubmit(
  */
 async function handleRoleCommand(interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>) {
   if (interaction.isButton()) {
+    const player = getPlayerByDiscordId(interaction.user.id); // Get player by Discord ID
+    if (!player) {
+      showJoinModal(interaction); // Show the join modal to collect username and role
+      // If player is not found, prompt to join
+      // await interaction.reply({
+      //   content: 'You are not in the lobby. Click the button below to join.',
+      //   flags: MessageFlags.Ephemeral,
+      //   components: [new ActionRowBuilder<ButtonBuilder>().addComponents(joinBtn)],
+      // });
+      return;
+    }
     // Discord does not support adding a text box (input field) directly to a message reply.
     // The only way to collect text input interactively is via a Modal.
     // As an alternative, you can prompt the user to use the /role command or reply in DM.
