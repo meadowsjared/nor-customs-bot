@@ -25,6 +25,11 @@ export const CommandIds = {
   ROLE_BRUISER: 'B',
   ROLE_HEALER: 'H',
   ROLE_FLEX: 'F',
+  ROLE_TANK_ACTIVE: 'T_active',
+  ROLE_ASSASSIN_ACTIVE: 'A_active',
+  ROLE_BRUISER_ACTIVE: 'B_active',
+  ROLE_HEALER_ACTIVE: 'H_active',
+  ROLE_FLEX_ACTIVE: 'F_active',
 };
 
 export const roleMap: Record<string, string> = {
@@ -59,6 +64,11 @@ export const roleBtn = new ButtonBuilder()
 export const rolesRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
   ...Object.entries(roleMap).map(([key, label]) => {
     return new ButtonBuilder().setCustomId(key).setLabel(label).setStyle(ButtonStyle.Primary);
+  })
+);
+export const rolesActiveRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+  ...Object.entries(roleMap).map(([key, label]) => {
+    return new ButtonBuilder().setCustomId(`${key}_active`).setLabel(label).setStyle(ButtonStyle.Primary);
   })
 );
 export const imPlayingBtn = new ButtonBuilder()
