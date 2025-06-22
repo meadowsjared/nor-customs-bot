@@ -35,22 +35,33 @@ export const roleMap: Record<string, string> = {
   F: '🔄 Flex',
 };
 
-const playersBtn = new ButtonBuilder()
+export const playersBtn = new ButtonBuilder()
   .setCustomId(CommandIds.PLAYERS)
   .setLabel('Show Players')
   .setStyle(ButtonStyle.Primary);
-const leaveBtn = new ButtonBuilder().setCustomId(CommandIds.LEAVE).setLabel('Leave').setStyle(ButtonStyle.Primary);
-const rejoinBtn = new ButtonBuilder().setCustomId(CommandIds.REJOIN).setLabel('Rejoin').setStyle(ButtonStyle.Primary);
-const joinBtn = new ButtonBuilder().setCustomId(CommandIds.REJOIN).setLabel('Join').setStyle(ButtonStyle.Primary);
-const nameBtn = new ButtonBuilder().setCustomId(CommandIds.NAME).setLabel('Change Name').setStyle(ButtonStyle.Primary);
-const roleBtn = new ButtonBuilder().setCustomId(CommandIds.ROLE).setLabel('Change Role').setStyle(ButtonStyle.Primary);
-const rolesRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+export const leaveBtn = new ButtonBuilder()
+  .setCustomId(CommandIds.LEAVE)
+  .setLabel('Leave')
+  .setStyle(ButtonStyle.Primary);
+export const rejoinBtn = new ButtonBuilder()
+  .setCustomId(CommandIds.REJOIN)
+  .setLabel('Rejoin')
+  .setStyle(ButtonStyle.Primary);
+export const joinBtn = new ButtonBuilder().setCustomId(CommandIds.JOIN).setLabel('Join').setStyle(ButtonStyle.Primary);
+export const nameBtn = new ButtonBuilder()
+  .setCustomId(CommandIds.NAME)
+  .setLabel('Change Name')
+  .setStyle(ButtonStyle.Primary);
+export const roleBtn = new ButtonBuilder()
+  .setCustomId(CommandIds.ROLE)
+  .setLabel('Change Role')
+  .setStyle(ButtonStyle.Primary);
+export const rolesRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
   ...Object.entries(roleMap).map(([key, label]) => {
     return new ButtonBuilder().setCustomId(key).setLabel(label).setStyle(ButtonStyle.Primary);
   })
 );
-const imPlayingBtn = new ButtonBuilder()
+export const imPlayingBtn = new ButtonBuilder()
   .setCustomId(CommandIds.REJOIN)
   .setLabel("I'm Playing")
   .setStyle(ButtonStyle.Primary);
-export { playersBtn, leaveBtn, joinBtn, rejoinBtn, nameBtn, roleBtn, rolesRow, imPlayingBtn };
