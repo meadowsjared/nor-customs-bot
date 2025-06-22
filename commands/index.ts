@@ -33,6 +33,7 @@ import {
   markPlayerActive,
   markPlayerInactive,
   savePlayer,
+  setPlayerActive,
   setPlayerName,
   setPlayerRole,
 } from '../store/player';
