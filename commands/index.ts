@@ -238,7 +238,7 @@ export async function handleGuideCommand(
  * @param isButton Whether the interaction is a button interaction or not.
  * @returns
  */
-async function handlePlayersCommand(
+export async function handlePlayersCommand(
   interaction: Interaction<CacheType>,
   onlyRaw: boolean = false,
   pingLobby: boolean = false
@@ -287,7 +287,9 @@ async function handlePlayersCommand(
  * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
  * @returns
  */
-async function handleLeaveCommand(interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>) {
+export async function handleLeaveCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+) {
   const player = markPlayerInactive(interaction.user.id); // Mark player as inactive in the database
   if (player) {
     // announce in the channel who has left
@@ -317,7 +319,7 @@ export async function handleClearCommand(
  * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
  * @returns
  */
-async function handleRejoinCommand(
+export async function handleRejoinCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
   newUser = false
 ) {
@@ -406,7 +408,9 @@ async function showRoleButtons(
  * Handles the join command interaction, adds the user to the lobby with their username and role
  * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
  */
-async function handleJoinCommand(interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>) {
+export async function handleJoinCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+) {
   if (interaction.isButton()) {
     await handleRejoinCommand(interaction, true);
     return; // If it's a button interaction, we handle rejoin directly
@@ -456,7 +460,9 @@ async function handleUserJoined(
  * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
  * @returns
  */
-async function handleNameCommand(interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>) {
+export async function handleNameCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+) {
   if (interaction.isButton()) {
     const playerExists = getPlayerByDiscordId(interaction.user.id); // Get player by Discord ID
     if (!playerExists) {
@@ -552,7 +558,9 @@ async function handleUserNameModalSubmit(
  * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
  * @returns
  */
-async function handleRoleCommand(interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>) {
+export async function handleRoleCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+) {
   if (interaction.isButton()) {
     const player = getPlayerByDiscordId(interaction.user.id); // Get player by Discord ID
     if (!player) {
@@ -595,7 +603,7 @@ async function handleRoleCommand(interaction: ChatInputCommandInteraction<CacheT
  * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
  * @param role The role to assign, based on the roleMap keys.
  */
-async function handleAssignRoleCommand(
+export async function handleAssignRoleCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
   role: keyof typeof roleMap,
   setActive = false
@@ -643,7 +651,9 @@ async function handleAssignRoleCommand(
   }
 }
 
-async function handleTwitchCommand(interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>) {
+export async function handleTwitchCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+) {
   // inside a command, event listener, etc.
   const exampleEmbed = new EmbedBuilder()
     .setColor(0x0099ff)
@@ -662,14 +672,3 @@ async function handleTwitchCommand(interaction: ChatInputCommandInteraction<Cach
 
   interaction.reply({ embeds: [exampleEmbed] });
 }
-
-export {
-  handlePlayersCommand,
-  handleLeaveCommand,
-  handleRejoinCommand,
-  handleJoinCommand,
-  handleNameCommand,
-  handleRoleCommand,
-  handleAssignRoleCommand,
-  handleTwitchCommand,
-};
