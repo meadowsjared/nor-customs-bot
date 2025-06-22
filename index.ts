@@ -31,7 +31,7 @@ const client = new Client({
 client.on('messageCreate', msg => {
   if (msg.channel.type == ChannelType.DM) {
     msg.author.send('You are DMing me now!');
-    return;
+    // return;
   }
 });
 
@@ -154,8 +154,8 @@ client.on('interactionCreate', async interaction => {
       handleTwitchCommand(interaction);
       break;
     default:
-      if (commandName && Object.keys(roleMap).includes(commandName)) {
-        handleAssignRoleCommand(interaction, commandName);
+      if (commandName && Object.keys(roleMap).includes(commandName.slice(0, 1))) {
+        handleAssignRoleCommand(interaction, commandName.slice(0, 1), commandName.endsWith('_active'));
       }
       return; // Ignore unknown commands
   }
