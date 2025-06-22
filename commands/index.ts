@@ -493,29 +493,23 @@ async function handleNameCommand(interaction: ChatInputCommandInteraction<CacheT
       content: `Your username has been set to: ${username}`,
       flags: MessageFlags.Ephemeral,
     });
-  } else {
-    // If player does not exist or username is not provided
-    if (!username) {
-      // If username is not provided, prompt the user to provide it
-      await interaction.reply({
-        content: 'Please provide a username.',
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-
-    // therefore the player does not exist, but we have a username
-    const newPlayer = {
+  } else if (username) {
+    savePlayer(interaction.user.id, {
       usernames: { hots: username, discord: interaction.user.username },
-      discordId: interaction.user.id,
       role: 'F', // Default role is Flex
-      active: false, // Player is not active until they join
-    };
-    savePlayer(interaction.user.id, newPlayer); // Save player data to the database
+      active: false,
+    });
     await interaction.reply({
-      content: 'You are not in the lobby. Use `/join` to join the lobby.',
+      content: `Your username has been set to: ${username}`,
       flags: MessageFlags.Ephemeral,
     });
+    // If player does not exist, we know their name, but not their role
+    await showRoleButtons(interaction, true); // Show the role buttons to select a role
+    return;
+  } else {
+    // If player does not exist, show a modal to collect the username and role
+    await showJoinModal(interaction);
+    return;
   }
 }
 
