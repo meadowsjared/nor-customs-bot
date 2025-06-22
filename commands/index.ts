@@ -437,12 +437,16 @@ async function handleUserJoined(
   skipReply = false
 ) {
   await announce(interaction, `<@${interaction.user.id}> (${username}) has joined the lobby as \`${roleMap[role]}\``);
+  const components = [new ActionRowBuilder<ButtonBuilder>().addComponents(leaveBtn, nameBtn, roleBtn)];
   if (skipReply) {
+    await interaction.followUp({
+      components,
+      flags: MessageFlags.Ephemeral,
+    });
     return;
   }
   await interaction.reply({
-    // content: `Use \`/leave\` to leave the lobby`,
-    components: [new ActionRowBuilder<ButtonBuilder>().addComponents(leaveBtn, nameBtn, roleBtn)],
+    components,
     flags: MessageFlags.Ephemeral,
   });
 }
