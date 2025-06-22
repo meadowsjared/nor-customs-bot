@@ -315,21 +315,25 @@ export async function handleClearCommand(
  * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
  * @returns
  */
-async function handleRejoinCommand(interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>) {
+async function handleRejoinCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+  newUser = false
+) {
   const result = markPlayerActive(interaction.user.id); // Mark player as active in the database
   if (result.player) {
     if (result.alreadyActive === false) {
       // announce in the channel who has rejoined
       await announce(
         interaction,
-        `<@${interaction.user.id}> (${result.player.usernames.hots}) has rejoined the lobby as \`${
-          roleMap[result.player.role]
-        }\``
+        `<@${interaction.user.id}> (${result.player.usernames.hots}) has ${
+          newUser ? 'joined' : 'rejoined'
+        } the lobby as \`${roleMap[result.player.role]}\``
       );
     }
+    const joinVerb = newUser ? 'joined' : 'rejoined';
     const content =
-      (result.alreadyActive === true ? `You are already in the lobby as:` : `You have rejoined the lobby as:`) +
-      ` ${result.player.usernames.hots}, \`${
+      (result.alreadyActive === true ? `You are already in` : `You have ${joinVerb}`) +
+      ` the lobby as: ${result.player.usernames.hots}, \`${
         roleMap[result.player.role]
       }\`\nUse /leave to leave the lobby, or use the buttons below.`;
     await interaction.reply({
@@ -376,7 +380,11 @@ async function showJoinModal(
  * Handles the join command interaction, adds the user to the lobby with their username and role
  * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
  */
-async function handleJoinCommand(interaction: ChatInputCommandInteraction<CacheType>) {
+async function handleJoinCommand(interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>) {
+  if (interaction.isButton()) {
+    await handleRejoinCommand(interaction, true);
+    return; // If it's a button interaction, we handle rejoin directly
+  }
   const username = interaction.options.getString('username', true);
   const role = interaction.options.getString('role', true);
   const newPlayer: Player = {

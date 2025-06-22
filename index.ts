@@ -119,10 +119,6 @@ client.on('interactionCreate', async interaction => {
       break;
     case CommandIds.JOIN:
       // Handle join command
-      if (!interaction.isChatInputCommand()) {
-        console.error('Interaction is not a chat input command');
-        return;
-      }
       handleJoinCommand(interaction);
       break;
     case CommandIds.REJOIN:
