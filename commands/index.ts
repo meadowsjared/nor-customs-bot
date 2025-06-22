@@ -438,18 +438,7 @@ async function handleNameCommand(interaction: ChatInputCommandInteraction<CacheT
     if (player) {
       setPlayerName(modalInteraction.user.id, username); // Update the player's username in the database
       await modalInteraction.reply({
-        content: `Your username has been updated to: ${username}`,
-        flags: MessageFlags.Ephemeral,
-      });
-    } else {
-      savePlayer(modalInteraction.user.id, {
-        usernames: { hots: username, discord: modalInteraction.user.username },
-        role: 'F',
-        active: false,
-      });
-      await modalInteraction.reply({
-        content: 'You are not in the lobby. Are you playing?',
-        components: [new ActionRowBuilder<ButtonBuilder>().addComponents(imPlayingBtn)],
+        content: `Your username has been set to: ${username}`,
         flags: MessageFlags.Ephemeral,
       });
     }
@@ -465,7 +454,7 @@ async function handleNameCommand(interaction: ChatInputCommandInteraction<CacheT
     };
     savePlayer(interaction.user.id, newPlayer); // Save player data to the database
     await interaction.reply({
-      content: `Your username has been updated to: ${username}`,
+      content: `Your username has been set to: ${username}`,
       flags: MessageFlags.Ephemeral,
     });
   } else {
