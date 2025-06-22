@@ -22,6 +22,7 @@ import {
   rejoinBtn,
   roleBtn,
   roleMap,
+  rolesActiveRow,
   rolesRow,
 } from '../constants';
 import { announce } from '../utils/announce';
@@ -366,12 +367,36 @@ async function showJoinModal(
   savePlayer(modalInteraction.user.id, {
     usernames: { hots: username, discord: modalInteraction.user.username },
     role: 'F', // Default role is Flex
-    active: true,
+    active: false,
   });
-  await handleUserJoined(modalInteraction, username, 'F', true); // Skip reply
-  await modalInteraction.reply({
+  await showRoleButtons(modalInteraction, false, true); // Show role buttons to select a role
+}
+
+/**
+ * asks the user for their role, and saves it to the database
+ * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
+ * @returns {Promise<void>}
+ */
+async function showRoleButtons(
+  interaction:
+    | ChatInputCommandInteraction<CacheType>
+    | ButtonInteraction<CacheType>
+    | ModalSubmitInteraction<CacheType>,
+  followUp = false,
+  setActive = false
+): Promise<void> {
+  const components = [setActive ? rolesActiveRow : rolesRow];
+  if (followUp) {
+    await interaction.followUp({
+      content: 'Please select your new role using the buttons below.',
+      components,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  await interaction.reply({
     content: 'Please select your new role using the buttons below.',
-    components: [rolesRow],
+    components,
     flags: MessageFlags.Ephemeral,
   });
 }
