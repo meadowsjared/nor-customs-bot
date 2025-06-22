@@ -454,6 +454,12 @@ async function handleUserJoined(
  */
 async function handleNameCommand(interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>) {
   if (interaction.isButton()) {
+    const playerExists = getPlayerByDiscordId(interaction.user.id); // Get player by Discord ID
+    if (!playerExists) {
+      // If player does not exist, show a modal to collect the username and role
+      await showJoinModal(interaction);
+      return;
+    }
     const { username, modalInteraction } = await handleUserNameModalSubmit(interaction);
     if (!modalInteraction || !username) {
       // If modal interaction is undefined, it means the user did not respond in time

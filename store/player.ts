@@ -166,6 +166,23 @@ export function setPlayerName(discordId: string, hotsName: string): false | Play
   return player;
 }
 
+/**
+ * Sets the active status of a player in the database.
+ * @param discordId The Discord ID of the player to set active status for.
+ * @param active Whether the player should be set as active (true) or inactive (false).
+ * @returns The updated Player object if successful, false otherwise.
+ */
+export function setPlayerActive(discordId: string, active: boolean): false | Player {
+  const player = getPlayerByDiscordId(discordId);
+  if (!player) {
+    return false; // Player not found
+  }
+  const stmt = db.prepare('UPDATE players SET active = ? WHERE discordId = ?');
+  stmt.run(active ? 1 : 0, discordId);
+  player.active = active;
+  return player;
+}
+
 export async function loadPlayerDataIntoSqlite(): Promise<Map<string, Player> | undefined> {
   try {
     const data = await import('./players.json');
