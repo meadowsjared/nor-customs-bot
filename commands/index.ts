@@ -529,7 +529,7 @@ async function handleRoleCommand(interaction: ChatInputCommandInteraction<CacheT
   if (interaction.isButton()) {
     const player = getPlayerByDiscordId(interaction.user.id); // Get player by Discord ID
     if (!player) {
-      showJoinModal(interaction); // Show the join modal to collect username and role
+      await showJoinModal(interaction); // Show the join modal to collect username and role
       // If player is not found, prompt to join
       // await interaction.reply({
       //   content: 'You are not in the lobby. Click the button below to join.',
