@@ -1,7 +1,16 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
-import { Client, GatewayIntentBits, ActivityType, ChannelType, PresenceUpdateStatus } from 'discord.js';
+import {
+  Client,
+  GatewayIntentBits,
+  ActivityType,
+  ChannelType,
+  PresenceUpdateStatus,
+  ChatInputCommandInteraction,
+  CacheType,
+  ButtonInteraction,
+} from 'discord.js';
 import { botChannelName, CommandIds, roleMap } from './constants';
 import {
   handleAssignRoleCommand,
@@ -80,13 +89,20 @@ client.once('ready', async () => {
   console.log(`Bot is ready! Logged in as ${client.user?.tag}`);
 });
 
+function getCommandName(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+): string | null {
+  if (interaction.isButton()) {
+    return interaction.customId;
+  } else if (interaction.isChatInputCommand()) {
+    return interaction.commandName;
+  }
+  return null;
+}
+
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand() && !interaction.isButton()) return;
-  const commandName = interaction.isButton()
-    ? interaction.customId
-    : interaction.isChatInputCommand()
-    ? interaction.commandName
-    : null;
+  const commandName = getCommandName(interaction);
 
   switch (commandName) {
     case CommandIds.NEW_GAME:
