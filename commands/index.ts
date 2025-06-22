@@ -563,11 +563,7 @@ async function handleRoleCommand(interaction: ChatInputCommandInteraction<CacheT
     // Discord does not support adding a text box (input field) directly to a message reply.
     // The only way to collect text input interactively is via a Modal.
     // As an alternative, you can prompt the user to use the /role command or reply in DM.
-    await interaction.reply({
-      content: 'Please select your new role using the buttons below.',
-      components: [rolesRow],
-      flags: MessageFlags.Ephemeral,
-    });
+    await showRoleButtons(interaction); // Show the role buttons to select a role
     return;
   }
   // Handle role command
@@ -584,7 +580,7 @@ async function handleRoleCommand(interaction: ChatInputCommandInteraction<CacheT
     return;
   }
   await interaction.reply({
-    content: `Your role has been updated to: ${roleMap[role]}`,
+    content: `Your role has been set to: ${roleMap[role]}`,
     flags: MessageFlags.Ephemeral,
   });
 }
@@ -596,10 +592,22 @@ async function handleRoleCommand(interaction: ChatInputCommandInteraction<CacheT
  */
 async function handleAssignRoleCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
-  role: keyof typeof roleMap
+  role: keyof typeof roleMap,
+  setActive = false
 ) {
   const player = setPlayerRole(interaction.user.id, role); // Set player role in the database
+
   if (!player) {
+    if (setActive) {
+      // player does not exist, but we need to set them as active
+      savePlayer(interaction.user.id, {
+        usernames: { hots: interaction.user.username, discord: interaction.user.username },
+        role,
+        active: true,
+      });
+      await handleUserJoined(interaction, interaction.user.username, role, true);
+      return;
+    }
     await interaction.reply({
       content: 'You are not in the lobby. Click the button below to join.',
       flags: MessageFlags.Ephemeral,
@@ -608,9 +616,26 @@ async function handleAssignRoleCommand(
     return;
   }
   await interaction.reply({
-    content: `Your role has been updated to: ${roleMap[role]}`,
+    content: `Your role has been set to: ${roleMap[role]}`,
     flags: MessageFlags.Ephemeral,
   });
+  if (setActive) {
+    if (player.active === false) {
+      await handleUserJoined(interaction, player.usernames.hots, role, true); // Announce the user has joined
+    }
+    setPlayerActive(interaction.user.id, true); // Mark player as active in the database
+    return;
+  }
+
+  if (player.active === false) {
+    // If player is not active, prompt to rejoin
+    await interaction.followUp({
+      content: 'Click the button below to join the lobby.',
+      flags: MessageFlags.Ephemeral,
+      components: [new ActionRowBuilder<ButtonBuilder>().addComponents(joinBtn)],
+    });
+    // return;
+  }
 }
 
 async function handleTwitchCommand(interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>) {
