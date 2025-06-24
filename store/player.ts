@@ -161,7 +161,7 @@ export function setPlayerRole(discordId: string, role: string | null): false | P
 }
 
 /**
- * Changes the player name in the database.
+ * Changes the player's hots name in the database.
  * @param discordId The Discord ID of the player to change the name for.
  * @param hotsName The new Heroes of the Storm name for the player.
  * @returns Player object if the player was found and the name was changed, false otherwise.
