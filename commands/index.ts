@@ -433,6 +433,9 @@ export async function handleJoinCommand(
 /**
  * Handles the user joining the lobby, announces their presence and provides buttons for further actions
  * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
+ * @param username The hots username of the user who joined.
+ * @param role The role of the user who joined, based on the roleMap keys.
+ * @param skipReply (optional) Whether to skip the reply and just follow up with the components.
  */
 async function handleUserJoined(
   interaction:
