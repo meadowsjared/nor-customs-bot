@@ -1,12 +1,23 @@
-interface Usernames {
+interface Usernames extends DiscordUserNames {
   /**
    * The Heroes of the Storm username of the player
    */
   hots: string;
+}
+
+export interface DiscordUserNames {
   /**
    * The discord ID of the player
    */
-  discord: string;
+  discordName: string;
+  /**
+   * The discord username of the player
+   */
+  discordDisplayName: string;
+  /**
+   * The discord global name of the player
+   */
+  discordGlobalName: string;
 }
 
 export interface Player {
@@ -27,6 +38,10 @@ export interface Player {
 
 export interface FlatPlayer {
   /**
+   * The discord ID of the player
+   */
+  discordId: string;
+  /**
    * The Heroes of the Storm username of the player
    */
   hotsName: string;
@@ -35,9 +50,13 @@ export interface FlatPlayer {
    */
   discordName: string;
   /**
-   * The discord ID of the player
+   * The discord global name of the player
    */
-  discordId: string;
+  discordGlobalName: string;
+  /**
+   * The discord display name of the player
+   */
+  discordDisplayName: string;
   /**
    * The role of the player in the game
    * T = Tank, A = Assassin, B = Bruiser, H = Healer, F = Flex
