@@ -702,7 +702,7 @@ export async function handleLookupCommand(
   const player = getPlayerByDiscordId(id);
   const message = player
     ? `Player found in the lobby with role: \`${roleMap[player.role]}\``
-    : 'Player not found in the lobby, adding them with default role Flex.';
+    : `Player not found in the lobby, adding them with default role \`${roleMap['F']}\`.`;
   await interaction.reply({
     content: `Discord ID: \`${id}\`\ndiscordName: \`${discordData.discordName}\`\ndiscordGlobalName: \`${discordData.discordGlobalName}\`\nDisplay Name: \`${discordData.discordDisplayName}\`\n${message}`,
     flags: MessageFlags.Ephemeral,
@@ -716,10 +716,6 @@ export async function handleLookupCommand(
       },
       role: 'F', // Default role is Flex
       active: false,
-    });
-    await interaction.followUp({
-      content: `Player not found in the lobby. Added them with default role Flex.`,
-      flags: MessageFlags.Ephemeral,
     });
     return;
   }
