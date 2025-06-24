@@ -10,6 +10,8 @@ db.exec(`
     discordId TEXT PRIMARY KEY,
     hotsName TEXT NOT NULL,
     discordName TEXT NOT NULL,
+    discordGlobalName TEXT NOT NULL,
+    discordDisplayName TEXT NOT NULL,
     role TEXT NOT NULL,
     active INTEGER NOT NULL
   )
