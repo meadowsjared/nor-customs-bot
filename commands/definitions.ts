@@ -20,7 +20,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
       {
         name: 'teams_data',
         type: 3, // STRING type
-        description: 'The team data from the spreasheet',
+        description: 'The team data from the spreadsheet',
         required: true,
       },
     ],
