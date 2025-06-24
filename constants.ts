@@ -20,6 +20,7 @@ export const CommandIds = {
   PLAYERS: 'players',
   PLAYERS_RAW: 'players_raw',
   TWITCH: 'twitch',
+  LOOKUP: 'lookup',
   ROLE_TANK: 'T',
   ROLE_ASSASSIN: 'A',
   ROLE_BRUISER: 'B',

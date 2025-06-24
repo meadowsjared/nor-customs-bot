@@ -1,6 +1,6 @@
 import { writeFile, rename } from 'fs/promises';
 import Database from 'better-sqlite3';
-import { FlatPlayer, Player } from '../types/player';
+import { DiscordUserNames, FlatPlayer, Player } from '../types/player';
 
 const db = new Database('./store/nor_customs.db');
 
@@ -176,6 +176,27 @@ export function setPlayerName(discordId: string, hotsName: string): false | Play
   stmt.run(hotsName, discordId);
   player.usernames.hots = hotsName;
   return player;
+}
+
+/**
+ * Sets the Discord user names for a player in the database.
+ * @param discordId The Discord ID of the player to set Discord names for.
+ * @param discordData The Discord user names data to set for the player.
+ * @returns boolean true if the player was found and the names were set, false otherwise.
+ */
+export function setPlayerDiscordNames(discordId: string, discordData: DiscordUserNames) {
+  const { discordName, discordGlobalName, discordDisplayName } = discordData;
+  const player = getPlayerByDiscordId(discordId);
+  if (!player) {
+    return false; // Player not found
+  }
+  const stmt = db.prepare(`
+    UPDATE players
+    SET discordName = ?, discordGlobalName = ?, discordDisplayName = ?
+    WHERE discordId = ?
+  `);
+  stmt.run(discordName, discordGlobalName, discordDisplayName, discordId);
+  return true;
 }
 
 /**

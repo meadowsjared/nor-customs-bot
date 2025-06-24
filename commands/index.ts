@@ -34,6 +34,7 @@ import {
   markPlayerInactive,
   savePlayer,
   setPlayerActive,
+  setPlayerDiscordNames,
   setPlayerName,
   setPlayerRole,
 } from '../store/player';
@@ -680,13 +681,60 @@ export async function handleTwitchCommand(
   interaction.reply({ embeds: [exampleEmbed] });
 }
 
-function fetchDiscordNames(interaction: Interaction): DiscordUserNames {
-  const discordUser = interaction.guild?.members.cache.get(interaction.user.id)?.user;
+export async function handleLookupCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+) {
+  if (interaction.isButton()) {
+    console.error('Interaction is not a command or button interaction');
+    return;
+  }
+  const member = interaction.options.getMember('discord_member');
+  if (!member || 'user' in member === false) {
+    await interaction.reply({
+      content: 'Please provide a valid Discord member to look up.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  const id = member.user.id;
+  const discordData = fetchDiscordNames(interaction, id);
+
+  const player = getPlayerByDiscordId(id);
+  const message = player
+    ? `Player found in the lobby with role: \`${roleMap[player.role]}\``
+    : 'Player not found in the lobby, adding them with default role Flex.';
+  await interaction.reply({
+    content: `Discord ID: \`${id}\`\ndiscordName: \`${discordData.discordName}\`\ndiscordGlobalName: \`${discordData.discordGlobalName}\`\nDisplay Name: \`${discordData.discordDisplayName}\`\n${message}`,
+    flags: MessageFlags.Ephemeral,
+  });
+  // save the player to the database if they are not already there
+  if (!player) {
+    savePlayer(id, {
+      usernames: {
+        ...discordData,
+        hots: '',
+      },
+      role: 'F', // Default role is Flex
+      active: false,
+    });
+    await interaction.followUp({
+      content: `Player not found in the lobby. Added them with default role Flex.`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  // update the player's Discord data in the database
+  setPlayerDiscordNames(id, discordData);
+  return;
+}
+
+function fetchDiscordNames(interaction: Interaction, id?: string): DiscordUserNames {
+  const discordUser = interaction.guild?.members.cache.get(id ?? interaction.user.id)?.user;
   const discordDisplayName = discordUser?.displayName ?? 'N/A';
   const discordGlobalName = discordUser?.globalName ?? 'N/A';
 
   return {
-    discordName: interaction.user.username,
+    discordName: discordUser?.username ?? 'N/A',
     discordDisplayName,
     discordGlobalName,
   };

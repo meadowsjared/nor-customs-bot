@@ -29,6 +29,7 @@ import {
   handleMoveToLobbyCommand,
   handleMoveToTeamsCommand,
   handleNewGameCommand,
+  handleLookupCommand,
 } from './commands';
 import { slashCommands } from './commands/definitions';
 
@@ -168,6 +169,10 @@ client.on('interactionCreate', async interaction => {
     case CommandIds.TWITCH:
       // Handle twitch command
       handleTwitchCommand(interaction);
+      break;
+    case CommandIds.LOOKUP:
+      // Handle lookup command
+      handleLookupCommand(interaction); // Pass true to perform a lookup
       break;
     default:
       if (commandName && Object.keys(roleMap).includes(commandName.slice(0, 1))) {

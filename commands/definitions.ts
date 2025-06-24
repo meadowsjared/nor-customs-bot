@@ -1,4 +1,9 @@
-import { ApplicationCommandDataResolvable, ChannelType, PermissionsBitField } from 'discord.js';
+import {
+  ApplicationCommandDataResolvable,
+  ApplicationCommandOptionType,
+  ChannelType,
+  PermissionsBitField,
+} from 'discord.js';
 import { CommandIds } from '../constants';
 
 export const slashCommands: ApplicationCommandDataResolvable[] = [
@@ -153,5 +158,17 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
   {
     name: CommandIds.TWITCH,
     description: "Show Norator's Twitch channel",
+  },
+  {
+    name: CommandIds.LOOKUP,
+    description: "Import a player's Discord information",
+    options: [
+      {
+        name: 'discord_member',
+        type: ApplicationCommandOptionType.User, // USER type
+        description: 'The Discord ID of the player to lookup',
+        required: true,
+      },
+    ],
   },
 ];
