@@ -38,7 +38,7 @@ import {
   setPlayerRole,
 } from '../store/player';
 import { saveChannel, getChannels } from '../store/channels';
-import { Player } from '../types/player';
+import { DiscordUserNames, Player } from '../types/player';
 
 export async function handleNewGameCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
@@ -85,11 +85,11 @@ export async function handleLoadTeamsCommand(
       const hotsName = player.usernames.hots;
       // Compare lowercased names for case-insensitive matching
       if (teamsData.team1.some(name => name.toLowerCase() === hotsName.toLowerCase())) {
-        return `${hotsName} (Team 1) ${player.usernames.discord}`;
+        return `${hotsName} (Team 1) ${player.usernames.discordDisplayName}`;
       } else if (teamsData.team2.some(name => name.toLowerCase() === hotsName.toLowerCase())) {
-        return `${hotsName} (Team 2) ${player.usernames.discord}`;
+        return `${hotsName} (Team 2) ${player.usernames.discordDisplayName}`;
       }
-      return `${hotsName} (Unassigned) ${player.usernames.discord}`;
+      return `${hotsName} (Unassigned) ${player.usernames.discordDisplayName}`;
     })
     .join('\n');
 
@@ -367,8 +367,9 @@ async function showJoinModal(
     console.log('error: User did not respond to the modal in time');
     return;
   }
+  const discordData = fetchDiscordNames(modalInteraction);
   savePlayer(modalInteraction.user.id, {
-    usernames: { hots: username, discord: modalInteraction.user.username },
+    usernames: { hots: username, ...discordData },
     role: 'F', // Default role is Flex
     active: false,
   });
@@ -417,8 +418,9 @@ export async function handleJoinCommand(
   }
   const username = interaction.options.getString('username', true);
   const role = interaction.options.getString('role', true);
+  const discordData = fetchDiscordNames(interaction);
   const newPlayer: Player = {
-    usernames: { hots: username, discord: interaction.user.username },
+    usernames: { hots: username, ...discordData },
     role,
     active: true,
   };
@@ -500,8 +502,9 @@ export async function handleNameCommand(
       flags: MessageFlags.Ephemeral,
     });
   } else if (username) {
+    const discordData = fetchDiscordNames(interaction);
     savePlayer(interaction.user.id, {
-      usernames: { hots: username, discord: interaction.user.username },
+      usernames: { hots: username, ...discordData },
       role: 'F', // Default role is Flex
       active: false,
     });
@@ -613,8 +616,12 @@ export async function handleAssignRoleCommand(
   if (!player) {
     if (setActive) {
       // player does not exist, but we need to set them as active
+      const discordData = fetchDiscordNames(interaction);
       savePlayer(interaction.user.id, {
-        usernames: { hots: interaction.user.username, discord: interaction.user.username },
+        usernames: {
+          hots: '',
+          ...discordData,
+        },
         role,
         active: true,
       });
@@ -671,4 +678,16 @@ export async function handleTwitchCommand(
     );
 
   interaction.reply({ embeds: [exampleEmbed] });
+}
+
+function fetchDiscordNames(interaction: Interaction): DiscordUserNames {
+  const discordUser = interaction.guild?.members.cache.get(interaction.user.id)?.user;
+  const discordDisplayName = discordUser?.displayName ?? 'N/A';
+  const discordGlobalName = discordUser?.globalName ?? 'N/A';
+
+  return {
+    discordName: interaction.user.username,
+    discordDisplayName,
+    discordGlobalName,
+  };
 }

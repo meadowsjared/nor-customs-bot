@@ -17,15 +17,23 @@ db.exec(`
 
 export function savePlayer(discordId: string, player: Player): void {
   const stmt = db.prepare(`
-    INSERT INTO players (discordId, hotsName, discordName, role, active)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO players (discordId, hotsName, discordName, discordGlobalName, discordDisplayName, role, active)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(discordId) DO UPDATE SET
       hotsName=excluded.hotsName,
       discordName=excluded.discordName,
       role=excluded.role,
       active=excluded.active
   `);
-  stmt.run(discordId, player.usernames.hots, player.usernames.discord, player.role, player.active ? 1 : 0);
+  stmt.run(
+    discordId,
+    player.usernames.hots,
+    player.usernames.discordName,
+    player.usernames.discordGlobalName,
+    player.usernames.discordDisplayName,
+    player.role,
+    player.active ? 1 : 0
+  );
 }
 
 export async function savePlayerData(players: Map<string, Player>): Promise<void> {
@@ -51,7 +59,9 @@ export function getActivePlayers(): Map<string, Player> {
       {
         usernames: {
           hots: row.hotsName,
-          discord: row.discordName,
+          discordName: row.discordName,
+          discordGlobalName: row.discordGlobalName,
+          discordDisplayName: row.discordDisplayName,
         },
         discordId: row.discordId,
         role: row.role,
@@ -119,7 +129,9 @@ export function getPlayerByDiscordId(discordId: string): Player | undefined {
   return {
     usernames: {
       hots: row.hotsName,
-      discord: row.discordName,
+      discordName: row.discordName,
+      discordGlobalName: row.discordGlobalName,
+      discordDisplayName: row.discordDisplayName,
     },
     role: row.role,
     active: row.active === 1,
