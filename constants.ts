@@ -2,6 +2,11 @@ import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 
 export const botChannelName = '🫠-nor-customs';
 
+export const adminUserIds = [
+  '243668219712372736', // Bandayd
+  '192116769870184448', // Nor
+];
+
 // create an enum for the commands
 export const CommandIds = {
   NEW_GAME: 'new_game',

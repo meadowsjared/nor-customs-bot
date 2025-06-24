@@ -14,6 +14,7 @@ import {
   VoiceChannel,
 } from 'discord.js';
 import {
+  adminUserIds,
   botChannelName,
   imPlayingBtn,
   joinBtn,
@@ -737,4 +738,23 @@ function fetchDiscordNames(interaction: Interaction, id?: string): DiscordUserNa
     discordDisplayName,
     discordGlobalName,
   };
+}
+
+/**
+ * Checks if the user is an admin based on their Discord ID.
+ * If the user is an admin, it returns true; otherwise, it replies with a message
+ * indicating they do not have permission and returns false.
+ * @param interaction The ChatInputCommandInteraction object from Discord
+ * @returns boolean indicating if the user is an admin
+ */
+function userIsAdmin(interaction: ChatInputCommandInteraction<CacheType>): boolean {
+  const isAdmin = adminUserIds.includes(interaction.user.id);
+  if (isAdmin) {
+    return true;
+  }
+  interaction.reply({
+    content: 'You do not have permission to use this command.',
+    flags: MessageFlags.Ephemeral,
+  });
+  return false;
 }
