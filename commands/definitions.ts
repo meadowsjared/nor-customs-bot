@@ -4,7 +4,7 @@ import {
   ChannelType,
   PermissionsBitField,
 } from 'discord.js';
-import { CommandIds } from '../constants';
+import { CommandIds, roleMap } from '../constants';
 
 export const slashCommands: ApplicationCommandDataResolvable[] = [
   {
@@ -88,17 +88,14 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
         required: true,
       },
       {
-        name: 'role',
+        name: CommandIds.ROLE,
         type: 3, // STRING type
         description: 'Your role in the game',
         required: true,
-        choices: [
-          { name: 'Tank', value: 'T' },
-          { name: 'Assassin', value: 'A' },
-          { name: 'Bruiser', value: 'B' },
-          { name: 'Healer', value: 'H' },
-          { name: 'Flex', value: 'F' },
-        ],
+        choices: Object.entries(roleMap).map(([key, label]) => ({
+          name: label,
+          value: key,
+        })),
       },
     ],
   },
@@ -107,7 +104,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     description: 'Rejoin the lobby with your previous username and role',
   },
   {
-    name: 'name',
+    name: CommandIds.NAME,
     description: 'Set your username',
     options: [
       {
@@ -123,17 +120,14 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     description: 'Set your role',
     options: [
       {
-        name: 'role',
+        name: CommandIds.ROLE,
         type: 3, // STRING type
         description: 'Your role in the game',
         required: true,
-        choices: [
-          { name: 'Tank', value: 'T' },
-          { name: 'Assassin', value: 'A' },
-          { name: 'Bruiser', value: 'B' },
-          { name: 'Healer', value: 'H' },
-          { name: 'Flex', value: 'F' },
-        ],
+        choices: Object.entries(roleMap).map(([key, label]) => ({
+          name: label,
+          value: key,
+        })),
       },
     ],
   },

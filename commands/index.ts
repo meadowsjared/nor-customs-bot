@@ -16,6 +16,7 @@ import {
 import {
   adminUserIds,
   botChannelName,
+  CommandIds,
   imPlayingBtn,
   joinBtn,
   leaveBtn,
@@ -419,7 +420,7 @@ export async function handleJoinCommand(
     return; // If it's a button interaction, we handle rejoin directly
   }
   const username = interaction.options.getString('username', true);
-  const role = interaction.options.getString('role', true);
+  const role = interaction.options.getString(CommandIds.ROLE, true);
   const discordData = fetchDiscordNames(interaction);
   const newPlayer: Player = {
     usernames: { hots: username, ...discordData },
@@ -588,7 +589,7 @@ export async function handleRoleCommand(
     return;
   }
   // Handle role command
-  const role = interaction.options.getString('role', true);
+  const role = interaction.options.getString(CommandIds.ROLE, true);
 
   const player = setPlayerRole(interaction.user.id, role); // Set player role in the database
   if (player === false) {
