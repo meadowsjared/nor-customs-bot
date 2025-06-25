@@ -741,6 +741,77 @@ function fetchDiscordNames(interaction: Interaction, id?: string): DiscordUserNa
   };
 }
 
+export function handleAdminSetNameCommand(interaction: ChatInputCommandInteraction<CacheType>) {
+  if (!userIsAdmin(interaction)) {
+    return;
+  }
+  const member = interaction.options.getMember('discord_member');
+  if (!member || 'user' in member === false) {
+    interaction.reply({
+      content: 'Please provide a valid Discord member to set their name.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  const newName = interaction.options.getString(CommandIds.NAME, true);
+  const id = member.user.id;
+  setPlayerName(id, newName);
+  interaction.reply({
+    content: `Set ${member.user.username}'s Heroes of the Storm name to \`${newName}\``,
+    flags: MessageFlags.Ephemeral,
+  });
+  return;
+}
+
+export function handleAdminSetRoleCommand(interaction: ChatInputCommandInteraction<CacheType>) {
+  if (!userIsAdmin(interaction)) {
+    return;
+  }
+  const member = interaction.options.getMember('discord_member');
+  if (!member || 'user' in member === false) {
+    interaction.reply({
+      content: 'Please provide a valid Discord member to set their name.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  const role = interaction.options.getString(CommandIds.ROLE, true);
+  const id = member.user.id;
+  const player = setPlayerRole(id, role);
+  if (!player) {
+    interaction.reply({
+      content: 'Player not found in the lobby. Please make sure they have joined first.',
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+  interaction.reply({
+    content: `Set ${member.user.username}'s role to \`${roleMap[role]}\``,
+    flags: MessageFlags.Ephemeral,
+  });
+  return;
+}
+
+export function handleAdminSetActiveCommand(interaction: ChatInputCommandInteraction<CacheType>) {
+  if (!userIsAdmin(interaction)) {
+    return;
+  }
+  const member = interaction.options.getMember('discord_member');
+  if (!member || 'user' in member === false) {
+    interaction.reply({
+      content: 'Please provide a valid Discord member to set their active status.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  const id = member.user.id;
+  setPlayerActive(id, true); // Set player as active in the database
+  interaction.reply({
+    content: `Set ${member.user.username} as active in the lobby.`,
+    flags: MessageFlags.Ephemeral,
+  });
+  return;
+}
+
 /**
  * Checks if the user is an admin based on their Discord ID.
  * If the user is an admin, it returns true; otherwise, it replies with a message

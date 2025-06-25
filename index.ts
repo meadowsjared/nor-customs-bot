@@ -30,6 +30,9 @@ import {
   handleMoveToTeamsCommand,
   handleNewGameCommand,
   handleLookupCommand,
+  handleAdminSetNameCommand,
+  handleAdminSetRoleCommand,
+  handleAdminSetActiveCommand,
 } from './commands';
 import { slashCommands } from './commands/definitions';
 
@@ -173,6 +176,29 @@ client.on('interactionCreate', async interaction => {
     case CommandIds.LOOKUP:
       // Handle lookup command
       handleLookupCommand(interaction); // Pass true to perform a lookup
+      break;
+    case CommandIds.ADMIN:
+      {
+        if (!interaction.isChatInputCommand()) {
+          interaction.reply({
+            content: 'This command can only be used as a slash command.',
+            ephemeral: true,
+          });
+          return;
+        }
+        const subCommand = interaction.options.getSubcommand(true);
+        switch (subCommand) {
+          case CommandIds.NAME:
+            handleAdminSetNameCommand(interaction);
+            break;
+          case CommandIds.ROLE:
+            handleAdminSetRoleCommand(interaction);
+            break;
+          case CommandIds.ACTIVE:
+            handleAdminSetActiveCommand(interaction);
+            break;
+        }
+      }
       break;
     default:
       if (commandName && Object.keys(roleMap).includes(commandName.slice(0, 1))) {

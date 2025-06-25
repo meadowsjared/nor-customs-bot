@@ -165,4 +165,72 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
       },
     ],
   },
+  {
+    name: CommandIds.ADMIN,
+    description: 'Admin commands to manage players.',
+    defaultMemberPermissions: PermissionsBitField.Flags.MentionEveryone,
+    options: [
+      {
+        name: CommandIds.NAME,
+        description: "Change a player's hots name.",
+        type: ApplicationCommandOptionType.Subcommand,
+        options: [
+          {
+            name: 'discord_member',
+            description: 'The user to modify.',
+            type: ApplicationCommandOptionType.User,
+            required: true,
+          },
+          {
+            name: CommandIds.NAME,
+            description: "The player's new hots name.",
+            type: ApplicationCommandOptionType.String,
+            required: true,
+          },
+        ],
+      },
+      {
+        name: CommandIds.ROLE,
+        description: "Change a player's role.",
+        type: ApplicationCommandOptionType.Subcommand,
+        options: [
+          {
+            name: 'discord_member',
+            description: 'The user to modify.',
+            type: ApplicationCommandOptionType.User,
+            required: true,
+          },
+          {
+            name: CommandIds.ROLE,
+            description: "The player's new role.",
+            type: ApplicationCommandOptionType.String,
+            required: true,
+            choices: Object.entries(roleMap).map(([key, label]) => ({
+              name: label,
+              value: key,
+            })),
+          },
+        ],
+      },
+      {
+        name: CommandIds.ACTIVE,
+        description: 'Change if a player is active.',
+        type: ApplicationCommandOptionType.Subcommand,
+        options: [
+          {
+            name: 'discord_member',
+            description: 'The user to modify.',
+            type: ApplicationCommandOptionType.User,
+            required: true,
+          },
+          {
+            name: CommandIds.ACTIVE,
+            description: 'Set the player as active (true) or inactive (false).',
+            type: ApplicationCommandOptionType.Boolean,
+            required: true,
+          },
+        ],
+      },
+    ],
+  },
 ];
