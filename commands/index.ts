@@ -33,6 +33,7 @@ import { announce } from '../utils/announce';
 import {
   getActivePlayers,
   getPlayerByDiscordId,
+  getTeams,
   markAllPlayersInactive,
   markPlayerActive,
   markPlayerInactive,
@@ -107,7 +108,6 @@ export async function handleLoadTeamsCommand(
   });
 }
 
-// TODO: implement this command
 export async function handleMoveToLobbyCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
 ) {
@@ -119,10 +119,64 @@ export async function handleMoveToLobbyCommand(
     });
     return;
   }
+  const { team1, team2 } = getTeams();
 
-  // This command is not implemented yet
+  if (team1.length === 0 || team2.length === 0) {
+    if (team1.length === 0 && team2.length === 0) {
+      // tell them they need to set teams first
+      await interaction.reply({
+        content: 'No teams set. Please set teams first using `/set_teams`.',
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    if (team1.length === 0) {
+      // tell them they need to set team 1 first
+      await interaction.reply({
+        content: 'No team 1 set. Please set team 1 first using `/set_teams`.',
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    if (team2.length === 0) {
+      // tell them they need to set team 2 first
+      await interaction.reply({
+        content: 'No team 2 set. Please set team 2 first using `/set_teams`.',
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+  }
+  const lobby = getChannels(['lobby'])?.[0];
+  if (!lobby) {
+    await interaction.reply({
+      content: 'No lobby channel set. Please set a lobby channel first using `/set_lobby_channel`.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  // move everybody to the lobby channel
+  const lobbyChannel = interaction.guild?.channels.cache.get(lobby.channelId);
+  if (!lobbyChannel || !(lobbyChannel instanceof VoiceChannel)) {
+    await interaction.reply({
+      content: 'Lobby channel is not a valid voice channel.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  const teams = [team1, team2];
+  teams.forEach(team => {
+    team.forEach(player => {
+      const member = interaction.guild?.members.cache.get(player.discordId);
+      if (member?.voice.channel) {
+        member.voice.setChannel(lobbyChannel).catch(err => {
+          console.error(`Failed to move ${member.displayName} to lobby:`, err);
+        });
+      }
+    });
+  });
   await interaction.reply({
-    content: `This command is not implemented yet.\nlobby channel is set to: \`${result[0].channelName}\``,
+    content: `Moved all players to the lobby channel: \`${lobby.channelName}\``,
     flags: MessageFlags.Ephemeral,
   });
 }
