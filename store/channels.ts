@@ -30,11 +30,13 @@ export function saveChannel(channelType: string, channel: VoiceChannel): void {
   stmt.run(channelType, channel.id, channel.name);
 }
 
+type channelTypes = 'lobby' | 'team1' | 'team2';
+
 /**
  * Retrieves a lobby channel
  * @return {ChannelLocal} The lobby channel as an object, or undefined if it does not exist.
  */
-export function getChannels(channelTypes: string[]): ChannelLocal[] | undefined {
+export function getChannels(channelTypes: channelTypes[]): ChannelLocal[] | undefined {
   if (channelTypes.length === 0) {
     return undefined;
   }
