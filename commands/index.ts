@@ -176,12 +176,11 @@ export async function handleMoveToLobbyCommand(
     });
   });
   await interaction.reply({
-    content: `Moved all players to the lobby channel: \`${lobby.channelName}\``,
+    content: `Moved all ${team1.length + team2.length} players to the lobby channel: \`${lobby.channelName}\``,
     flags: MessageFlags.Ephemeral,
   });
 }
 
-// TODO: implement this command
 export async function handleMoveToTeamsCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
 ) {
@@ -203,7 +202,9 @@ export async function handleMoveToTeamsCommand(
   }
   // This command is not implemented yet
   await interaction.reply({
-    content: `This command is not implemented yet.\nTeam channels are set to:\n1:\`${result[0].channelName}\`\n2:\`${result[1].channelName}\``,
+    content: `Moved all ${teams.team1.length + teams.team2.length} players to their respective team channels: \`${result
+      .map(c => c.channelName)
+      .join('`, `')}\``,
     flags: MessageFlags.Ephemeral,
   });
 }
