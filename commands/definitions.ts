@@ -163,6 +163,12 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
         description: 'The Discord ID of the player to lookup',
         required: true,
       },
+      {
+        name: 'hots_name',
+        type: ApplicationCommandOptionType.String, // STRING type
+        description: 'The Heroes of the Storm username of the player',
+        required: false,
+      },
     ],
   },
   {
