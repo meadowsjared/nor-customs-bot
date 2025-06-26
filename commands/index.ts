@@ -2,6 +2,7 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonInteraction,
+  ButtonStyle,
   CacheType,
   ChatInputCommandInteraction,
   EmbedBuilder,
@@ -409,6 +410,28 @@ async function showRoleButtons(
 }
 
 /**
+ * Handles the admin command interaction, shows buttons to manage roles and players
+ * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
+ */
+export async function handleAdminShowRoleButtons(interaction: ButtonInteraction<CacheType>, pId: string) {
+  const rolesRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    ...Object.entries(roleMap).map(([key, label]) => {
+      return new ButtonBuilder()
+        .setCustomId(`${CommandIds.ROLE_ADMIN}_${pId}_${key}`)
+        .setLabel(label)
+        .setStyle(ButtonStyle.Primary);
+    })
+  );
+
+  const components = [rolesRow];
+  await interaction.reply({
+    content: 'Please select their new role using the buttons below.',
+    components,
+    flags: MessageFlags.Ephemeral,
+  });
+}
+
+/**
  * Handles the join command interaction, adds the user to the lobby with their username and role
  * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
  */
@@ -554,11 +577,72 @@ async function handleUserNameModalSubmit(
   const modal = new ModalBuilder().setCustomId('nameModal').setTitle('Set Your Username').addComponents(actionRow);
   // get the username from the TextInputBuilder
   await interaction.showModal(modal);
-  const modalInteraction = await interaction.awaitModalSubmit({
-    filter: i => i.customId === 'nameModal',
-    time: 5 * 60 * 1000,
-  }); // 5 minutes timeout
+  let modalInteraction: ModalSubmitInteraction<CacheType>;
+  try {
+    modalInteraction = await interaction.awaitModalSubmit({
+      filter: i => i.customId === 'nameModal',
+      time: 5 * 60 * 1000,
+    }); // 5 minutes timeout
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'InteractionCollectorError') {
+      return { username: undefined, modalInteraction: undefined }; // Return undefined if the modal interaction is not received
+    }
+    console.error('Error awaiting modal submit:', error);
+    return { username: undefined, modalInteraction: undefined }; // Return undefined if the modal interaction is not received
+  }
   const username = modalInteraction.fields.getTextInputValue('usernameInput');
+  return { username, modalInteraction };
+}
+
+/**
+ * Handles the admin show name modal interaction, shows a modal to set the player's Heroes of the Storm username
+ * @param interaction The interaction object from Discord, either a ButtonInteraction.
+ * @param pId The Discord ID of the player whose name is being set.
+ */
+export async function handleAdminShowNameModal(
+  interaction: ButtonInteraction<CacheType>,
+  pId: string
+): Promise<{ username?: string; modalInteraction?: ModalSubmitInteraction<CacheType> }> {
+  const previousPlayer = getPlayerByDiscordId(pId);
+  // create a modal with a text field to collect the username
+  const adminUsernameInput = new TextInputBuilder()
+    .setCustomId('adminUsernameInput')
+    .setLabel('Enter their Heroes of the Storm username')
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setPlaceholder('Their Heroes of the Storm username')
+    .setValue(previousPlayer?.usernames.hots ?? '');
+
+  // Add the input to an action row
+  const actionRow = new ActionRowBuilder<TextInputBuilder>().addComponents(adminUsernameInput);
+
+  // Create the modal
+  const modal = new ModalBuilder().setCustomId('nameModal').setTitle('Set Their Username').addComponents(actionRow);
+  // get the username from the TextInputBuilder
+  await interaction.showModal(modal);
+
+  let modalInteraction: ModalSubmitInteraction<CacheType>;
+  try {
+    modalInteraction = await interaction.awaitModalSubmit({
+      filter: i => i.customId === 'nameModal',
+      time: 5 * 60 * 1000,
+    }); // 5 minutes timeout
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'InteractionCollectorError') {
+      return { username: undefined, modalInteraction: undefined }; // Return undefined if the modal interaction is not received
+    }
+    console.error('Error awaiting modal submit:', error);
+    return { username: undefined, modalInteraction: undefined }; // Return undefined if the modal interaction is not received
+  }
+  const username = modalInteraction.fields.getTextInputValue('adminUsernameInput');
+  if (!username) {
+    await modalInteraction.reply({
+      content: 'You must provide a username.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return { username: undefined, modalInteraction: undefined };
+  }
+  handleAdminSetNameCommand(modalInteraction, pId, username);
   return { username, modalInteraction };
 }
 
@@ -707,7 +791,7 @@ export async function handleLookupCommand(
   const player = getPlayerByDiscordId(id);
   const message = player
     ? `Player found in the lobby with role: \`${roleMap[player.role]}\``
-    : `Player not found in the lobby, adding them with default role \`${roleMap['F']}\`.`;
+    : `Player not found in the lobby, adding them with default role \`${roleMap[CommandIds.ROLE_FLEX]}\`.`;
   await interaction.reply({
     content: `Discord ID: \`${id}\`\ndiscordName: \`${discordData.discordName}\`\ndiscordGlobalName: \`${discordData.discordGlobalName}\`\nDisplay Name: \`${discordData.discordDisplayName}\`\n${message}`,
     flags: MessageFlags.Ephemeral,
@@ -741,11 +825,26 @@ function fetchDiscordNames(interaction: Interaction, id?: string): DiscordUserNa
   };
 }
 
-export function handleAdminSetNameCommand(interaction: ChatInputCommandInteraction<CacheType>) {
+export function handleAdminSetNameCommand(
+  interaction: ModalSubmitInteraction<CacheType>,
+  pId: string,
+  hotsName: string
+): void;
+export function handleAdminSetNameCommand(interaction: ChatInputCommandInteraction<CacheType>): void;
+export function handleAdminSetNameCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ModalSubmitInteraction<CacheType>,
+  pId?: string,
+  hotsName?: string
+): void {
   if (!userIsAdmin(interaction)) {
     return;
   }
-  const member = interaction.options.getMember('discord_member');
+
+  const member = interaction.isChatInputCommand()
+    ? interaction.options.getMember('discord_member')
+    : !pId
+    ? null
+    : interaction.guild?.members.cache.get(pId) ?? null;
   if (!member || 'user' in member === false) {
     interaction.reply({
       content: 'Please provide a valid Discord member to set their name.',
@@ -753,21 +852,37 @@ export function handleAdminSetNameCommand(interaction: ChatInputCommandInteracti
     });
     return;
   }
-  const newName = interaction.options.getString(CommandIds.NAME, true);
+  const newName = interaction.isChatInputCommand()
+    ? interaction.options.getString(CommandIds.NAME, true)
+    : hotsName ?? '';
   const id = member.user.id;
   setPlayerName(id, newName);
   interaction.reply({
-    content: `Set ${member.user.username}'s Heroes of the Storm name to \`${newName}\``,
+    content: `Set ${member.user.displayName}'s Heroes of the Storm name to \`${newName}\``,
     flags: MessageFlags.Ephemeral,
   });
   return;
 }
 
-export function handleAdminSetRoleCommand(interaction: ChatInputCommandInteraction<CacheType>) {
+export function handleAdminSetRoleCommand(interaction: ChatInputCommandInteraction<CacheType>): void;
+export function handleAdminSetRoleCommand(
+  interaction: ButtonInteraction<CacheType>,
+  pId: string,
+  pRole: keyof typeof roleMap
+): void;
+export function handleAdminSetRoleCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+  pId?: string,
+  pRole?: keyof typeof roleMap
+) {
   if (!userIsAdmin(interaction)) {
     return;
   }
-  const member = interaction.options.getMember('discord_member');
+  const member = interaction.isChatInputCommand()
+    ? interaction.options.getMember('discord_member')
+    : !pId
+    ? null
+    : interaction.guild?.members.cache.get(pId) ?? null;
   if (!member || 'user' in member === false) {
     interaction.reply({
       content: 'Please provide a valid Discord member to set their name.',
@@ -775,7 +890,7 @@ export function handleAdminSetRoleCommand(interaction: ChatInputCommandInteracti
     });
     return;
   }
-  const role = interaction.options.getString(CommandIds.ROLE, true);
+  const role = interaction.isChatInputCommand() ? interaction.options.getString(CommandIds.ROLE, true) : pRole ?? 'F';
   const id = member.user.id;
   const player = setPlayerRole(id, role);
   if (!player) {
@@ -785,17 +900,35 @@ export function handleAdminSetRoleCommand(interaction: ChatInputCommandInteracti
     });
   }
   interaction.reply({
-    content: `Set ${member.user.username}'s role to \`${roleMap[role]}\``,
+    content: `Set ${member.user.displayName}'s role to \`${roleMap[role]}\``,
     flags: MessageFlags.Ephemeral,
   });
   return;
 }
 
-export function handleAdminSetActiveCommand(interaction: ChatInputCommandInteraction<CacheType>) {
+export async function handleAdminSetActiveCommand(interaction: ChatInputCommandInteraction<CacheType>): Promise<void>;
+export async function handleAdminSetActiveCommand(
+  interaction: ButtonInteraction<CacheType>,
+  pId: string,
+  pActive: boolean
+): Promise<void>;
+export async function handleAdminSetActiveCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+  pId?: string,
+  pActive?: boolean
+): Promise<void> {
   if (!userIsAdmin(interaction)) {
+    interaction.reply({
+      content: 'You do not have permission to use this command.',
+      flags: MessageFlags.Ephemeral,
+    });
     return;
   }
-  const member = interaction.options.getMember('discord_member');
+  const member = interaction.isChatInputCommand()
+    ? interaction.options.getMember('discord_member')
+    : pId === undefined
+    ? null
+    : interaction.guild?.members.cache.get(pId) ?? null;
   if (!member || 'user' in member === false) {
     interaction.reply({
       content: 'Please provide a valid Discord member to set their active status.',
@@ -803,12 +936,61 @@ export function handleAdminSetActiveCommand(interaction: ChatInputCommandInterac
     });
     return;
   }
-  const id = member.user.id;
-  setPlayerActive(id, true); // Set player as active in the database
-  interaction.reply({
-    content: `Set ${member.user.username} as active in the lobby.`,
-    flags: MessageFlags.Ephemeral,
-  });
+  const isActive =
+    pActive === undefined && interaction.isChatInputCommand()
+      ? interaction.options.getBoolean('active', true)
+      : pActive ?? true;
+  const id = pId ?? member.user.id;
+  const { player, updated } = setPlayerActive(id, isActive); // Set player as active in the database
+  if (!player) {
+    interaction.reply({
+      content: 'Player not found in the lobby. Please make sure they have joined first.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  if (updated) {
+    const adminJoinBtn = new ButtonBuilder()
+      .setCustomId(`${CommandIds.JOIN}_${id}`)
+      .setLabel('Admin Join')
+      .setStyle(ButtonStyle.Primary);
+    const adminLeaveBtn = new ButtonBuilder()
+      .setCustomId(`${CommandIds.LEAVE}_${id}`)
+      .setLabel('Admin Leave')
+      .setStyle(ButtonStyle.Danger);
+    const adminNameBtn = new ButtonBuilder()
+      .setCustomId(`${CommandIds.NAME}_${id}`)
+      .setLabel('Admin Name')
+      .setStyle(ButtonStyle.Secondary);
+    const adminRoleBtn = new ButtonBuilder()
+      .setCustomId(`${CommandIds.ROLE}_${id}`)
+      .setLabel('Admin Role')
+      .setStyle(ButtonStyle.Secondary);
+    interaction.reply({
+      content: `Set ${member.user.displayName}'s active status to \`${isActive ? 'active' : 'inactive'}\``,
+      flags: MessageFlags.Ephemeral,
+      components: [
+        new ActionRowBuilder<ButtonBuilder>().addComponents(
+          isActive ? adminLeaveBtn : adminJoinBtn,
+          adminNameBtn,
+          adminRoleBtn
+        ),
+      ],
+    });
+    if (isActive) {
+      await announce(
+        interaction,
+        `<@${id}> (${player.usernames.hots}) has joined the lobby as \`${roleMap[player.role]}\``
+      );
+    } else {
+      await announce(interaction, `<@${id}> (${player.usernames.hots}) has left the lobby`);
+    }
+  } else {
+    interaction.reply({
+      content: `${player.usernames.hots} is already ${isActive ? 'active' : 'inactive'}.`,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
   return;
 }
 
@@ -819,7 +1001,9 @@ export function handleAdminSetActiveCommand(interaction: ChatInputCommandInterac
  * @param interaction The ChatInputCommandInteraction object from Discord
  * @returns boolean indicating if the user is an admin
  */
-function userIsAdmin(interaction: ChatInputCommandInteraction<CacheType>): boolean {
+function userIsAdmin(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType> | ModalSubmitInteraction<CacheType>
+): boolean {
   const isAdmin = adminUserIds.includes(interaction.user.id);
   if (isAdmin) {
     return true;

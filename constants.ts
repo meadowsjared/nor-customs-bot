@@ -20,6 +20,7 @@ export const CommandIds = {
   REJOIN: 'rejoin',
   NAME: 'name',
   ROLE: 'role',
+  ROLE_ADMIN: 'role-admin',
   ACTIVE: 'active',
   LEAVE: 'leave',
   CLEAR: 'clear',

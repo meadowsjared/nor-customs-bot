@@ -33,6 +33,8 @@ import {
   handleAdminSetNameCommand,
   handleAdminSetRoleCommand,
   handleAdminSetActiveCommand,
+  handleAdminShowRoleButtons,
+  handleAdminShowNameModal,
 } from './commands';
 import { slashCommands } from './commands/definitions';
 
@@ -200,11 +202,42 @@ client.on('interactionCreate', async interaction => {
         }
       }
       break;
-    default:
-      if (commandName && Object.keys(roleMap).includes(commandName.slice(0, 1))) {
-        handleAssignRoleCommand(interaction, commandName.slice(0, 1), commandName.endsWith('_active'));
+    default: {
+      // if the interaction is not a button, reply with an error
+      if (!commandName?.includes('_') || interaction.isChatInputCommand()) {
+        interaction.reply({
+          content: 'Unknown command. Please use a valid command.',
+          ephemeral: true,
+        });
+        return;
+      }
+      const parts = commandName.split('_');
+      if (parts.length === 2) {
+        if (parts.length === 2 && Object.keys(roleMap).includes(parts[0]) && parts[1] === 'active') {
+          handleAssignRoleCommand(interaction, parts[0], parts[1] === 'active');
+          return;
+        }
+        switch (parts[0]) {
+          case CommandIds.JOIN:
+            handleAdminSetActiveCommand(interaction, parts[1], true);
+            return;
+          case CommandIds.LEAVE:
+            handleAdminSetActiveCommand(interaction, parts[1], false);
+            return;
+          case CommandIds.ROLE:
+            handleAdminShowRoleButtons(interaction, parts[1]);
+            return;
+          case CommandIds.NAME:
+            handleAdminShowNameModal(interaction, parts[1]);
+            return;
+        }
+      }
+      if (parts.length === 3 && parts[0] === CommandIds.ROLE_ADMIN) {
+        handleAdminSetRoleCommand(interaction, parts[1], parts[2]);
+        return;
       }
       return; // Ignore unknown commands
+    }
   }
 });
 
