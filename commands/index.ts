@@ -200,12 +200,37 @@ export async function handleMoveToTeamsCommand(
     });
     return;
   }
-  // This command is not implemented yet
+  const teams = getTeams();
+  for (const [index, channel] of result.entries()) {
+    // result.forEach((channel, index) => {
+    const teamChannel = interaction.guild?.channels.cache.get(channel.channelId);
+    if (!teamChannel || !(teamChannel instanceof VoiceChannel)) {
+      interaction.reply({
+        content: `Team channel \`${channel.channelName}\` is not a valid voice channel.`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    const team = index === 0 ? teams.team1 : teams.team2; // team1 for index 0, team2 for index 1
+    moveTeamMembersToChannel(interaction, team, teamChannel);
+    // });
+  }
   await interaction.reply({
     content: `Moved all ${teams.team1.length + teams.team2.length} players to their respective team channels: \`${result
       .map(c => c.channelName)
       .join('`, `')}\``,
     flags: MessageFlags.Ephemeral,
+  });
+}
+
+function moveTeamMembersToChannel(interaction: Interaction, team: Player[], channel: VoiceChannel) {
+  team.forEach(player => {
+    const member = interaction.guild?.members.cache.get(player.discordId);
+    if (member?.voice.channel) {
+      member.voice.setChannel(channel).catch(err => {
+        console.error(`Failed to move ${member.displayName} to team channel:`, err);
+      });
+    }
   });
 }
 
