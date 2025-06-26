@@ -384,19 +384,17 @@ async function showJoinModal(
   await showRoleButtons(modalInteraction, false, true); // Show role buttons to select a role
 }
 
+type chatOrButtonOrModal =
+  | ChatInputCommandInteraction<CacheType>
+  | ButtonInteraction<CacheType>
+  | ModalSubmitInteraction<CacheType>;
+
 /**
  * asks the user for their role, and saves it to the database
  * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
  * @returns {Promise<void>}
  */
-async function showRoleButtons(
-  interaction:
-    | ChatInputCommandInteraction<CacheType>
-    | ButtonInteraction<CacheType>
-    | ModalSubmitInteraction<CacheType>,
-  followUp = false,
-  setActive = false
-): Promise<void> {
+async function showRoleButtons(interaction: chatOrButtonOrModal, followUp = false, setActive = false): Promise<void> {
   const components = [setActive ? rolesActiveRow : rolesRow];
   if (followUp) {
     await interaction.followUp({
@@ -468,15 +466,7 @@ export async function handleJoinCommand(
  * @param role The role of the user who joined, based on the roleMap keys.
  * @param skipReply (optional) Whether to skip the reply and just follow up with the components.
  */
-async function handleUserJoined(
-  interaction:
-    | ChatInputCommandInteraction<CacheType>
-    | ButtonInteraction<CacheType>
-    | ModalSubmitInteraction<CacheType>,
-  username: string,
-  role: string,
-  skipReply = false
-) {
+async function handleUserJoined(interaction: chatOrButtonOrModal, username: string, role: string, skipReply = false) {
   await announce(interaction, `<@${interaction.user.id}> (${username}) has joined the lobby as \`${roleMap[role]}\``);
   const components = [new ActionRowBuilder<ButtonBuilder>().addComponents(leaveBtn, nameBtn, roleBtn)];
   if (skipReply) {
@@ -828,7 +818,7 @@ export async function handleLookupCommand(
   if (hotsName && hotsName !== player.usernames.hots) {
     setPlayerName(id, hotsName); // Update the player's Heroes of the Storm name in the database
   }
-  return;
+  // return;
 }
 
 function fetchDiscordNames(interaction: Interaction, id?: string): DiscordUserNames {
@@ -841,6 +831,22 @@ function fetchDiscordNames(interaction: Interaction, id?: string): DiscordUserNa
     discordDisplayName,
     discordGlobalName,
   };
+}
+
+function getMemberFromInteraction(
+  interaction:
+    | ChatInputCommandInteraction<CacheType>
+    | ButtonInteraction<CacheType>
+    | ModalSubmitInteraction<CacheType>,
+  pId?: string
+) {
+  if (interaction.isChatInputCommand()) {
+    return interaction.options.getMember('discord_member');
+  }
+  if (pId) {
+    return interaction.guild?.members.cache.get(pId) ?? null;
+  }
+  return null;
 }
 
 export function handleAdminSetNameCommand(
@@ -858,11 +864,7 @@ export function handleAdminSetNameCommand(
     return;
   }
 
-  const member = interaction.isChatInputCommand()
-    ? interaction.options.getMember('discord_member')
-    : !pId
-    ? null
-    : interaction.guild?.members.cache.get(pId) ?? null;
+  const member = getMemberFromInteraction(interaction, pId);
   if (!member || 'user' in member === false) {
     interaction.reply({
       content: 'Please provide a valid Discord member to set their name.',
@@ -879,7 +881,7 @@ export function handleAdminSetNameCommand(
     content: `Set ${member.user.displayName}'s Heroes of the Storm name to \`${newName}\``,
     flags: MessageFlags.Ephemeral,
   });
-  return;
+  // return;
 }
 
 export function handleAdminSetRoleCommand(interaction: ChatInputCommandInteraction<CacheType>): void;
@@ -896,11 +898,7 @@ export function handleAdminSetRoleCommand(
   if (!userIsAdmin(interaction)) {
     return;
   }
-  const member = interaction.isChatInputCommand()
-    ? interaction.options.getMember('discord_member')
-    : !pId
-    ? null
-    : interaction.guild?.members.cache.get(pId) ?? null;
+  const member = getMemberFromInteraction(interaction, pId);
   if (!member || 'user' in member === false) {
     interaction.reply({
       content: 'Please provide a valid Discord member to set their name.',
@@ -921,7 +919,18 @@ export function handleAdminSetRoleCommand(
     content: `Set ${member.user.displayName}'s role to \`${roleMap[role]}\``,
     flags: MessageFlags.Ephemeral,
   });
-  return;
+  // return;
+}
+
+function getActiveFromInteraction(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+  pActive?: boolean
+): boolean {
+  if (interaction.isChatInputCommand()) {
+    return interaction.options.getBoolean('active', true);
+  }
+  // If it's a button interaction, we assume the active status is true
+  return pActive ?? true; // Default to true if not provided
 }
 
 export async function handleAdminSetActiveCommand(interaction: ChatInputCommandInteraction<CacheType>): Promise<void>;
@@ -942,11 +951,7 @@ export async function handleAdminSetActiveCommand(
     });
     return;
   }
-  const member = interaction.isChatInputCommand()
-    ? interaction.options.getMember('discord_member')
-    : pId === undefined
-    ? null
-    : interaction.guild?.members.cache.get(pId) ?? null;
+  const member = getMemberFromInteraction(interaction, pId);
   if (!member || 'user' in member === false) {
     interaction.reply({
       content: 'Please provide a valid Discord member to set their active status.',
@@ -954,10 +959,7 @@ export async function handleAdminSetActiveCommand(
     });
     return;
   }
-  const isActive =
-    pActive === undefined && interaction.isChatInputCommand()
-      ? interaction.options.getBoolean('active', true)
-      : pActive ?? true;
+  const isActive = getActiveFromInteraction(interaction, pActive); // Get the active status from the interaction or use the provided value
   const id = pId ?? member.user.id;
   const { player, updated } = setPlayerActive(id, isActive); // Set player as active in the database
   if (!player) {
@@ -1009,7 +1011,7 @@ export async function handleAdminSetActiveCommand(
       flags: MessageFlags.Ephemeral,
     });
   }
-  return;
+  // return;
 }
 
 /**
