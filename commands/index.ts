@@ -22,6 +22,7 @@ import {
   joinBtn,
   leaveBtn,
   nameBtn,
+  norDiscordId,
   rejoinBtn,
   roleBtn,
   roleMap,
@@ -40,6 +41,7 @@ import {
   setPlayerDiscordNames,
   setPlayerName,
   setPlayerRole,
+  setTeams,
 } from '../store/player';
 import { saveChannel, getChannels } from '../store/channels';
 import { DiscordUserNames, Player } from '../types/player';
@@ -61,13 +63,12 @@ export async function handleNewGameCommand(
   });
 }
 
-//TODO I still need this to store the teams in a way
-//TODO so that when handleMoveToTeamsCommand is ran, it uses this data to move players to the correct voice channels
 /**
  * Handles the /load_teams command interaction, which loads teams from a JSON string provided in the command options.
  * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
  * @returns
  * note: If the interaction is not a command or button interaction, it logs an error and returns.
+ * This function also sets the teams in the database, for use with the handleMoveToTeamsCommand and handleMoveToLobbyCommand functions.
  **/
 export async function handleLoadTeamsCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
@@ -82,29 +83,27 @@ export async function handleLoadTeamsCommand(
     return;
   }
   const teamsData: Teams = JSON.parse(interaction.options.getString('teams_data', true));
-  console.log(teamsData, 'teamsData');
   const activePlayers = getActivePlayers();
-  console.log(
-    activePlayers.map(player => player.usernames.discordDisplayName),
-    'activePlayers'
-  );
-  const message = activePlayers
-    .map(player => {
-      const hotsName = player.usernames.hots;
-      // Compare lowercased names for case-insensitive matching
-      if (teamsData.team1.some(name => name.toLowerCase() === hotsName.toLowerCase())) {
-        return `${hotsName} (Team 1) ${player.usernames.discordDisplayName} <@${player.discordId}> ${player.discordId}`;
-      } else if (teamsData.team2.some(name => name.toLowerCase() === hotsName.toLowerCase())) {
-        return `${hotsName} (Team 2) ${player.usernames.discordDisplayName} <@${player.discordId}> ${player.discordId}`;
-      }
-      return `${hotsName} (sitting) ${player.usernames.discordDisplayName} <@${player.discordId}> ${player.discordId}`;
-    })
-    .join('\n');
+  const team1 = teamsData.team1
+    .map(name => activePlayers.find(player => player.usernames.hots.toLowerCase() === name.toLowerCase()))
+    .filter(p => p !== undefined);
+  const team2 = teamsData.team2
+    .map(name => activePlayers.find(player => player.usernames.hots.toLowerCase() === name.toLowerCase()))
+    .filter(p => p !== undefined);
+  setTeams(
+    team1.map(p => p.discordId),
+    team2.map(p => p.discordId)
+  ); // Save the teams to the database
 
-  // This command is not implemented yet
+  const message =
+    '**Team 1**:\n' +
+    team1.map(p => `${p.usernames.discordDisplayName} (${p.usernames.hots})`).join('\n') +
+    '\n\n**Team2**:\n' +
+    team2.map(p => `${p.usernames.discordDisplayName} (${p.usernames.hots})`).join('\n');
+
   await interaction.reply({
-    content: `Here are the teams: \n${message}`,
-    flags: MessageFlags.Ephemeral,
+    content: `<@${norDiscordId}>\nHere are the teams: \n${message}`,
+    // flags: MessageFlags.Ephemeral,
   });
 }
 

@@ -2,9 +2,11 @@ import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 
 export const botChannelName = '🫠-nor-customs';
 
+export const norDiscordId = '192116769870184448'; // Nor's Discord ID
+
 export const adminUserIds = [
   '243668219712372736', // Bandayd
-  '192116769870184448', // Nor
+  norDiscordId, // Nor
 ];
 
 // create an enum for the commands
