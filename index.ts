@@ -180,66 +180,75 @@ client.on('interactionCreate', async interaction => {
       handleLookupCommand(interaction); // Pass true to perform a lookup
       break;
     case CommandIds.ADMIN:
-      {
-        if (!interaction.isChatInputCommand()) {
-          interaction.reply({
-            content: 'This command can only be used as a slash command.',
-            ephemeral: true,
-          });
-          return;
-        }
-        const subCommand = interaction.options.getSubcommand(true);
-        switch (subCommand) {
-          case CommandIds.NAME:
-            handleAdminSetNameCommand(interaction);
-            break;
-          case CommandIds.ROLE:
-            handleAdminSetRoleCommand(interaction);
-            break;
-          case CommandIds.ACTIVE:
-            handleAdminSetActiveCommand(interaction);
-            break;
-        }
-      }
-      break;
-    default: {
-      // if the interaction is not a button, reply with an error
-      if (!commandName?.includes('_') || interaction.isChatInputCommand()) {
+      if (!interaction.isChatInputCommand()) {
         interaction.reply({
-          content: 'Unknown command. Please use a valid command.',
+          content: 'This command can only be used as a slash command.',
           ephemeral: true,
         });
         return;
       }
-      const parts = commandName.split('_');
-      if (parts.length === 2) {
-        if (parts.length === 2 && Object.keys(roleMap).includes(parts[0]) && parts[1] === 'active') {
-          handleAssignRoleCommand(interaction, parts[0], parts[1] === 'active');
-          return;
-        }
-        switch (parts[0]) {
-          case CommandIds.JOIN:
-            handleAdminSetActiveCommand(interaction, parts[1], true);
-            return;
-          case CommandIds.LEAVE:
-            handleAdminSetActiveCommand(interaction, parts[1], false);
-            return;
-          case CommandIds.ROLE:
-            handleAdminShowRoleButtons(interaction, parts[1]);
-            return;
-          case CommandIds.NAME:
-            handleAdminShowNameModal(interaction, parts[1]);
-            return;
-        }
-      }
-      if (parts.length === 3 && parts[0] === CommandIds.ROLE_ADMIN) {
-        handleAdminSetRoleCommand(interaction, parts[1], parts[2]);
-        return;
-      }
-      return; // Ignore unknown commands
-    }
+      handleAdminSubCommand(interaction);
+      break;
+    default:
+      handleDefaultCommand(interaction);
+      break;
   }
 });
+
+function handleAdminSubCommand(interaction: ChatInputCommandInteraction<CacheType>) {
+  const subCommand = interaction.options.getSubcommand(true);
+  switch (subCommand) {
+    case CommandIds.NAME:
+      handleAdminSetNameCommand(interaction);
+      break;
+    case CommandIds.ROLE:
+      handleAdminSetRoleCommand(interaction);
+      break;
+    case CommandIds.ACTIVE:
+      handleAdminSetActiveCommand(interaction);
+      break;
+  }
+}
+
+function handleDefaultCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+  commandName: string | null = null
+) {
+  // if the interaction is not a button, reply with an error
+  if (!commandName?.includes('_') || interaction.isChatInputCommand()) {
+    interaction.reply({
+      content: 'Unknown command. Please use a valid command.',
+      ephemeral: true,
+    });
+    return;
+  }
+  const parts = commandName.split('_');
+  if (parts.length === 2) {
+    if (parts.length === 2 && Object.keys(roleMap).includes(parts[0]) && parts[1] === 'active') {
+      handleAssignRoleCommand(interaction, parts[0], parts[1] === 'active');
+      return;
+    }
+    switch (parts[0]) {
+      case CommandIds.JOIN:
+        handleAdminSetActiveCommand(interaction, parts[1], true);
+        return;
+      case CommandIds.LEAVE:
+        handleAdminSetActiveCommand(interaction, parts[1], false);
+        return;
+      case CommandIds.ROLE:
+        handleAdminShowRoleButtons(interaction, parts[1]);
+        return;
+      case CommandIds.NAME:
+        handleAdminShowNameModal(interaction, parts[1]);
+        return;
+    }
+  }
+  if (parts.length === 3 && parts[0] === CommandIds.ROLE_ADMIN) {
+    handleAdminSetRoleCommand(interaction, parts[1], parts[2]);
+    // return;
+  }
+  // return; // Ignore unknown commands
+}
 
 client.login(process.env.DISCORD_TOKEN);
 
