@@ -83,17 +83,21 @@ export async function handleLoadTeamsCommand(
   }
   const teamsData: Teams = JSON.parse(interaction.options.getString('teams_data', true));
   console.log(teamsData, 'teamsData');
-  const activePlayers = Array.from(getActivePlayers());
+  const activePlayers = getActivePlayers();
+  console.log(
+    activePlayers.map(player => player.usernames.discordDisplayName),
+    'activePlayers'
+  );
   const message = activePlayers
-    .map(([id, player]) => {
+    .map(player => {
       const hotsName = player.usernames.hots;
       // Compare lowercased names for case-insensitive matching
       if (teamsData.team1.some(name => name.toLowerCase() === hotsName.toLowerCase())) {
-        return `${hotsName} (Team 1) ${player.usernames.discordDisplayName}`;
+        return `${hotsName} (Team 1) ${player.usernames.discordDisplayName} <@${player.discordId}> ${player.discordId}`;
       } else if (teamsData.team2.some(name => name.toLowerCase() === hotsName.toLowerCase())) {
-        return `${hotsName} (Team 2) ${player.usernames.discordDisplayName}`;
+        return `${hotsName} (Team 2) ${player.usernames.discordDisplayName} <@${player.discordId}> ${player.discordId}`;
       }
-      return `${hotsName} (Unassigned) ${player.usernames.discordDisplayName}`;
+      return `${hotsName} (sitting) ${player.usernames.discordDisplayName} <@${player.discordId}> ${player.discordId}`;
     })
     .join('\n');
 
@@ -256,14 +260,13 @@ export async function handlePlayersCommand(
   const players = getActivePlayers();
 
   const playerList =
-    Array.from(players.entries())
-      .filter(([_, player]) => player.active)
-      .map(([id, { usernames, role }]) => {
+    players
+      .map(({ discordId, usernames, role }) => {
         if (pingLobby) {
           // if pingLobby is true, mention the user
-          return `<@${id}>: (${usernames.hots}) \`${roleMap[role]}\``;
+          return `<@${discordId}>: (${usernames.hots}) \`${roleMap[role]}\``;
         }
-        const user = interaction.guild?.members.cache.get(id)?.displayName;
+        const user = interaction.guild?.members.cache.get(discordId)?.displayName;
         return `@${user}: (${usernames.hots}) \`${roleMap[role]}\``;
       })
       .join('\n') || 'No players in the lobby';

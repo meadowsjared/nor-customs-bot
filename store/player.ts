@@ -52,26 +52,21 @@ export async function savePlayerData(players: Map<string, Player>): Promise<void
  * Retrieves all active players from the database.
  * @returns Map<string, Player> a Map of active players, where the key is the Discord ID and the value is the Player object.
  */
-export function getActivePlayers(): Map<string, Player> {
+export function getActivePlayers(): Player[] {
   const stmt = db.prepare<[], FlatPlayer>('SELECT * FROM players WHERE active = 1');
   const rows: FlatPlayer[] = stmt.all();
-  return new Map<string, Player>(
-    rows.map(row => [
-      row.discordId,
-      {
-        usernames: {
-          hots: row.hotsName,
-          discordName: row.discordName,
-          discordGlobalName: row.discordGlobalName,
-          discordDisplayName: row.discordDisplayName,
-        },
-        discordId: row.discordId,
-        role: row.role,
-        active: row.active === 1,
-        team: row.team,
-      },
-    ])
-  );
+  return rows.map<Player>(row => ({
+    discordId: row.discordId,
+    usernames: {
+      hots: row.hotsName,
+      discordName: row.discordName,
+      discordGlobalName: row.discordGlobalName,
+      discordDisplayName: row.discordDisplayName,
+    },
+    role: row.role,
+    active: row.active === 1,
+    team: row.team ?? undefined,
+  }));
 }
 
 /**
