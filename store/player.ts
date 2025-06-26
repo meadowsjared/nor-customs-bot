@@ -237,6 +237,28 @@ export function setTeams(team1Ids: string[], team2Ids: string[]): void {
   stmts2.run(2);
 }
 
+/**
+ * Retrieves the teams from the database.
+ * This function queries the players table for all players with a non-null team assignment,
+ * and organizes them into two separate arrays based on their team number.
+ * @returns An object containing two arrays: team1 and team2, each containing Player objects for the respective teams.
+ */
+export function getTeams(): { team1: Player[]; team2: Player[] } {
+  const stmt = db.prepare<[], FlatPlayer>('SELECT * FROM players WHERE team IS NOT NULL');
+  const rows: FlatPlayer[] = stmt.all();
+  const team1: Player[] = [];
+  const team2: Player[] = [];
+  rows.forEach(row => {
+    const player: Player = getPlayerFromRow(row);
+    if (row.team === 1) {
+      team1.push(player);
+    } else if (row.team === 2) {
+      team2.push(player);
+    }
+  });
+  return { team1, team2 };
+}
+
 export async function loadPlayerDataIntoSqlite(): Promise<Player[] | undefined> {
   interface PlayerJSON extends Omit<Player, 'team'> {
     team: number | null;
