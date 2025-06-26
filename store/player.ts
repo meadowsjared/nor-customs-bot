@@ -48,14 +48,8 @@ export async function savePlayerData(players: Map<string, Player>): Promise<void
   }
 }
 
-/**
- * Retrieves all active players from the database.
- * @returns Map<string, Player> a Map of active players, where the key is the Discord ID and the value is the Player object.
- */
-export function getActivePlayers(): Player[] {
-  const stmt = db.prepare<[], FlatPlayer>('SELECT * FROM players WHERE active = 1');
-  const rows: FlatPlayer[] = stmt.all();
-  return rows.map<Player>(row => ({
+function getPlayerFromRow(row: FlatPlayer): Player {
+  return {
     discordId: row.discordId,
     usernames: {
       hots: row.hotsName,
@@ -65,8 +59,18 @@ export function getActivePlayers(): Player[] {
     },
     role: row.role,
     active: row.active === 1,
-    team: row.team ?? undefined,
-  }));
+    team: row.team ?? undefined, // Ensure team is undefined if null
+  };
+}
+
+/**
+ * Retrieves all active players from the database.
+ * @returns Map<string, Player> a Map of active players, where the key is the Discord ID and the value is the Player object.
+ */
+export function getActivePlayers(): Player[] {
+  const stmt = db.prepare<[], FlatPlayer>('SELECT * FROM players WHERE active = 1');
+  const rows: FlatPlayer[] = stmt.all();
+  return rows.map<Player>(row => getPlayerFromRow(row));
 }
 
 /**
@@ -124,18 +128,8 @@ export function getPlayerByDiscordId(discordId: string): Player | undefined {
   if (!row) {
     return undefined; // Player not found
   }
-  return {
-    discordId: row.discordId,
-    usernames: {
-      hots: row.hotsName,
-      discordName: row.discordName,
-      discordGlobalName: row.discordGlobalName,
-      discordDisplayName: row.discordDisplayName,
-    },
-    role: row.role,
-    active: row.active === 1,
-    team: row.team ?? undefined, // Ensure team is undefined if null
-  };
+
+  return getPlayerFromRow(row);
 }
 
 /**
