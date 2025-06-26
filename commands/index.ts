@@ -373,9 +373,11 @@ async function showJoinModal(
   }
   const discordData = fetchDiscordNames(modalInteraction);
   savePlayer(modalInteraction.user.id, {
+    discordId: modalInteraction.user.id,
     usernames: { hots: username, ...discordData },
     role: 'F', // Default role is Flex
     active: false,
+    team: undefined,
   });
   await showRoleButtons(modalInteraction, false, true); // Show role buttons to select a role
 }
@@ -446,9 +448,11 @@ export async function handleJoinCommand(
   const role = interaction.options.getString(CommandIds.ROLE, true);
   const discordData = fetchDiscordNames(interaction);
   const newPlayer: Player = {
+    discordId: interaction.user.id,
     usernames: { hots: username, ...discordData },
     role,
     active: true,
+    team: undefined,
   };
   savePlayer(interaction.user.id, newPlayer); // Save player data to the database
   // announce in the channel who has joined
@@ -533,9 +537,11 @@ export async function handleNameCommand(
   } else if (username) {
     const discordData = fetchDiscordNames(interaction);
     savePlayer(interaction.user.id, {
+      discordId: interaction.user.id,
       usernames: { hots: username, ...discordData },
       role: 'F', // Default role is Flex
       active: false,
+      team: undefined,
     });
     await interaction.reply({
       content: `Your username has been set to: ${username}`,
@@ -708,12 +714,14 @@ export async function handleAssignRoleCommand(
       // player does not exist, but we need to set them as active
       const discordData = fetchDiscordNames(interaction);
       savePlayer(interaction.user.id, {
+        discordId: interaction.user.id,
         usernames: {
           hots: '',
           ...discordData,
         },
         role,
         active: true,
+        team: undefined,
       });
       await handleUserJoined(interaction, interaction.user.username, role, true);
       return;
@@ -799,12 +807,14 @@ export async function handleLookupCommand(
   // save the player to the database if they are not already there
   if (!player) {
     savePlayer(id, {
+      discordId: id,
       usernames: {
         ...discordData,
         hots: '',
       },
       role: 'F', // Default role is Flex
       active: false,
+      team: undefined,
     });
     return;
   }

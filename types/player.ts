@@ -22,6 +22,10 @@ export interface DiscordUserNames {
 
 export interface Player {
   /**
+   * The discord ID of the player
+   */
+  discordId: string;
+  /**
    * The usernames of the player in Heroes of the Storm and Discord
    */
   usernames: Usernames;
@@ -34,6 +38,12 @@ export interface Player {
    * Whether the player is currently active in the lobby
    */
   active: boolean;
+  /**
+   * The team number of the player
+   * undefined = not assigned, 1 = team 1, 2 = team 2
+   * This is used to determine which team the player is on
+   */
+  team: number | undefined;
 }
 
 export interface FlatPlayer {
@@ -66,4 +76,10 @@ export interface FlatPlayer {
    * Whether the player is currently active in the lobby
    */
   active: number;
+  /**
+   * The team number of the player
+   * undefined = not assigned, 1 = team 1, 2 = team 2
+   * This is used to determine which team the player is on
+   */
+  team: number;
 }

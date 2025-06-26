@@ -68,6 +68,7 @@ export function getActivePlayers(): Map<string, Player> {
         discordId: row.discordId,
         role: row.role,
         active: row.active === 1,
+        team: row.team,
       },
     ])
   );
@@ -129,6 +130,7 @@ export function getPlayerByDiscordId(discordId: string): Player | undefined {
     return undefined; // Player not found
   }
   return {
+    discordId: row.discordId,
     usernames: {
       hots: row.hotsName,
       discordName: row.discordName,
@@ -137,6 +139,7 @@ export function getPlayerByDiscordId(discordId: string): Player | undefined {
     },
     role: row.role,
     active: row.active === 1,
+    team: row.team ?? undefined, // Ensure team is undefined if null
   };
 }
 
@@ -222,15 +225,29 @@ export function setPlayerActive(discordId: string, active: boolean): { updated: 
   return { updated: true, player };
 }
 
-export async function loadPlayerDataIntoSqlite(): Promise<Map<string, Player> | undefined> {
+export async function loadPlayerDataIntoSqlite(): Promise<Player[] | undefined> {
+  interface PlayerJSON extends Omit<Player, 'team'> {
+    team: number | null;
+  }
   try {
     const data = await import('./players.json');
-    const playersMap = new Map<string, Player>(Object.entries(data.default ?? {}));
+    const playersMap = new Map<string, PlayerJSON>(Object.entries(data.default ?? {}));
     // transfer the loaded players to the sqlite database
-    playersMap.forEach((player, discordId) => {
-      savePlayer(discordId, player);
+    // const adaptedPlayersMap = Array.from(playersMap).map((player, discordId) => {
+    const adaptedPlayersMap = Array.from(playersMap.entries()).map(([discordId, player]) => {
+      const playerData: Player = {
+        ...player,
+        usernames: {
+          ...player.usernames,
+        },
+        discordId,
+        team: player.team ?? undefined, // Ensure team is undefined if null
+      };
+
+      savePlayer(discordId, playerData);
+      return playerData;
     });
-    return playersMap;
+    return adaptedPlayersMap;
   } catch (error) {
     console.error('Error loading player data:', error);
     throw error; // Re-throw the error to handle it upstream
