@@ -23,6 +23,9 @@ UPDATE players SET active = 1 WHERE hotsName = 'player_name';
 get all active players:
 SELECT * FROM players WHERE active = 1;
 
+get the teams:
+SELECT * FROM players ORDER BY team ASC;
+
 set all these players to active:
 UPDATE players SET active = 1 WHERE hotsName IN ('Nommynoms', 'saika', 'Aviater', 'TravisParty', 'Icon', 'Rev', 'TheCure', 'Aieee', 'Bandayd', 'ducky', 'FeintToAccel', 'selym', 'LadyGeneveve');
 UPDATE players SET active = 1 WHERE hotsName IN ('Finalstand','W4lterplinge','PiNkBlAcKoUt','Ducky','Bandayd','Urid','Feint','Rift','hunterlust','Okiryu');
