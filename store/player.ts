@@ -220,6 +220,29 @@ export function setPlayerActive(discordId: string, active: boolean): { updated: 
   return { updated: true, player };
 }
 
+/**
+ * clears the team assignments for all players in the database.
+ * This sets the team field to NULL for all players.
+ * @returns void
+ */
+export function clearTeams(): void {
+  const stmt = db.prepare('UPDATE players SET team = NULL');
+  stmt.run();
+}
+
+/**
+ * sets the team for all players in the database.
+ * @returns void
+ */
+export function setTeams(team1Ids: string[], team2Ids: string[]): void {
+  const clearStmt = db.prepare('UPDATE players SET team = NULL');
+  const stmts1 = db.prepare(`UPDATE players SET team = ? WHERE discordId IN ('${team1Ids.join(', ')}')`);
+  const stmts2 = db.prepare(`UPDATE players SET team = ? WHERE discordId IN ('${team2Ids.join(', ')}')`);
+  clearStmt.run();
+  stmts1.run(1);
+  stmts2.run(2);
+}
+
 export async function loadPlayerDataIntoSqlite(): Promise<Player[] | undefined> {
   interface PlayerJSON extends Omit<Player, 'team'> {
     team: number | null;
