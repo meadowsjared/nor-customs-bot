@@ -50,11 +50,31 @@ import { DiscordUserNames, Player } from '../types/player';
 export async function handleNewGameCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
 ) {
+  const activePlayers = getActivePlayers();
+  const observers = activePlayers
+    .filter(p => p?.team === undefined)
+    .map(p => `<@${p.discordId}>`)
+    .join('');
+  const team1 = activePlayers
+    .filter(p => p.team === 1)
+    .map(p => `<@${p.discordId}>`)
+    .join('');
+  const team2 = activePlayers
+    .filter(p => p.team === 2)
+    .map(p => `<@${p.discordId}>`)
+    .join('');
+  // combine the observers, team1, and team2, into one string, labeling each section, but skip a section if there are no players in that section
+  const playerListWithLabels = [];
+  if (observers) playerListWithLabels.push(`**Observers**:\n${observers}`);
+  if (team1) playerListWithLabels.push(`**Team 1**:\n${team1}`);
+  if (team2) playerListWithLabels.push(`**💩 Filthy Team 2**:\n${team2}`);
+  const playerListWithLabelsString = playerListWithLabels.join('\n');
+
   markAllPlayersInactive();
   // announce in the channel that a new game has started and all players have been marked as inactive, so they need to hit the button if they are going to play
   await announce(
     interaction,
-    'A new game has started! All players have been marked as inactive.\nPlease click below if you are going to play.',
+    `${playerListWithLabelsString}\nA new game has started! All players have been marked as inactive.\nPlease click below if you are going to play.`,
     undefined,
     [new ActionRowBuilder<ButtonBuilder>().addComponents(imPlayingBtn)]
   );
