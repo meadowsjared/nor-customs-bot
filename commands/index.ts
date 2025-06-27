@@ -943,6 +943,50 @@ export async function handleMoveCommand(interaction: ChatInputCommandInteraction
   });
 }
 
+export async function handleDeleteMessageCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+) {
+  if (!interaction.isChatInputCommand()) {
+    interaction.reply({
+      content: 'This command can only be used as a slash command.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  if (userIsAdmin(interaction) === false) {
+    interaction.reply({
+      content: 'You do not have permission to use this command.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  const messageId = interaction.options.getString('message_id', true);
+  const channel = interaction.channel;
+
+  if (!channel) {
+    interaction.reply({
+      content: 'Channel not found.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  try {
+    const message = await channel.messages.fetch(messageId);
+    await message.delete();
+    interaction.reply({
+      content: `Deleted message: ${message.content}`,
+      flags: MessageFlags.Ephemeral,
+    });
+  } catch (error) {
+    console.error('Error deleting message:', error);
+    interaction.reply({
+      content: 'Failed to delete message. Please make sure the message ID is correct.',
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+}
+
 function fetchDiscordNames(interaction: Interaction, id?: string): DiscordUserNames {
   const discordUser = interaction.guild?.members.cache.get(id ?? interaction.user.id)?.user;
   const discordDisplayName = discordUser?.displayName ?? 'N/A';

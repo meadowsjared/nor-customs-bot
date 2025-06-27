@@ -205,6 +205,10 @@ client.on('interactionCreate', async interaction => {
       }
       handleMoveCommand(interaction);
       break;
+    case CommandIds.DELETE_MESSAGE:
+      // Handle delete message command
+      handleDeleteMessageCommand(interaction);
+      break;
     case CommandIds.ADMIN:
       if (!interaction.isChatInputCommand()) {
         interaction.reply({

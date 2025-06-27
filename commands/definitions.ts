@@ -62,6 +62,19 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     ],
   },
   {
+    name: CommandIds.DELETE_MESSAGE,
+    description: 'Delete a message by ID',
+    defaultMemberPermissions: PermissionsBitField.Flags.MentionEveryone,
+    options: [
+      {
+        name: 'message_id',
+        type: ApplicationCommandOptionType.String, // STRING type
+        description: 'The ID of the message to delete',
+        required: true,
+      },
+    ],
+  },
+  {
     name: CommandIds.NEW_GAME,
     description: 'Start a new game',
     defaultMemberPermissions: PermissionsBitField.Flags.MentionEveryone,
