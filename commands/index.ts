@@ -116,14 +116,22 @@ export async function handleLoadTeamsCommand(
     team2.map(p => p.discordId)
   ); // Save the teams to the database
 
-  const message =
-    '**Team 1**:\n' +
-    team1.map(p => `${p.usernames.discordDisplayName} (${p.usernames.hots})`).join('\n') +
-    '\n\n**Team2**:\n' +
-    team2.map(p => `${p.usernames.discordDisplayName} (${p.usernames.hots})`).join('\n');
+  const team1Message = team1.map(p => `* ${p.usernames.discordDisplayName} (${p.usernames.hots})`).join('\n');
+  const team2Message = team2.map(p => `* ${p.usernames.discordDisplayName} (${p.usernames.hots})`).join('\n');
 
+  const team1lengthMessage = team1.length === 5 ? '' : ` (${team1.length} players)`;
+  const team2lengthMessage = team2.length === 5 ? '' : ` (${team2.length} players)`;
+  const team1embed = new EmbedBuilder()
+    .setTitle(`Team 1${team1lengthMessage}`)
+    .setDescription(team1Message)
+    .setColor('#0099ff');
+  const team2embed = new EmbedBuilder()
+    .setTitle(`💩 Filthy Team 2${team2lengthMessage}`)
+    .setDescription(team2Message)
+    .setColor('#8B4513');
   await interaction.reply({
-    content: `<@${norDiscordId}>\nHere are the teams: \n${message}`,
+    content: `<@${norDiscordId}>`,
+    embeds: [team1embed, team2embed],
     // flags: MessageFlags.Ephemeral,
   });
 }
