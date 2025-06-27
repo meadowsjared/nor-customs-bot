@@ -77,6 +77,19 @@ client.once('ready', async () => {
   await client.application?.commands.set(slashCommands);
   console.log('Slash command /join registered!');
 
+  if (client.application) {
+    console.log('--- Fetching Command IDs ---');
+    try {
+      const commands = await client.application.commands.fetch();
+      commands.forEach(command => {
+        console.log(`Command: ${command.name}, ID: ${command.id}`);
+      });
+    } catch (error) {
+      console.error('Error fetching application commands:', error);
+    }
+    console.log('--------------------------');
+  }
+
   // Log all guilds the bot is in
   client.guilds.cache.forEach(guild => {
     console.log(`Guild: ${guild.name} (ID: ${guild.id})`);
