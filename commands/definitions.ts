@@ -8,6 +8,60 @@ import { CommandIds, roleMap } from '../constants';
 
 export const slashCommands: ApplicationCommandDataResolvable[] = [
   {
+    name: CommandIds.JOIN,
+    description: 'Join with your hots username',
+    options: [
+      {
+        name: 'username',
+        type: 3, // STRING type
+        description: 'Your hots username',
+        required: true,
+      },
+      {
+        name: CommandIds.ROLE,
+        type: 3, // STRING type
+        description: 'Your role in the game',
+        required: true,
+        choices: Object.entries(roleMap).map(([key, label]) => ({
+          name: label,
+          value: key,
+        })),
+      },
+    ],
+  },
+  {
+    name: CommandIds.LEAVE,
+    description: 'Leave the lobby',
+  },
+  {
+    name: CommandIds.NAME,
+    description: 'Set your username',
+    options: [
+      {
+        name: 'username',
+        type: 3, // STRING type
+        description: 'Your hots username',
+        required: true,
+      },
+    ],
+  },
+  {
+    name: CommandIds.ROLE,
+    description: 'Set your role',
+    options: [
+      {
+        name: CommandIds.ROLE,
+        type: 3, // STRING type
+        description: 'Your role in the game',
+        required: true,
+        choices: Object.entries(roleMap).map(([key, label]) => ({
+          name: label,
+          value: key,
+        })),
+      },
+    ],
+  },
+  {
     name: CommandIds.NEW_GAME,
     description: 'Start a new game',
     defaultMemberPermissions: PermissionsBitField.Flags.MentionEveryone,
@@ -78,62 +132,8 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     description: 'Show the guide for how to play',
   },
   {
-    name: CommandIds.JOIN,
-    description: 'Join with your hots username',
-    options: [
-      {
-        name: 'username',
-        type: 3, // STRING type
-        description: 'Your hots username',
-        required: true,
-      },
-      {
-        name: CommandIds.ROLE,
-        type: 3, // STRING type
-        description: 'Your role in the game',
-        required: true,
-        choices: Object.entries(roleMap).map(([key, label]) => ({
-          name: label,
-          value: key,
-        })),
-      },
-    ],
-  },
-  {
     name: 'rejoin',
     description: 'Rejoin the lobby with your previous username and role',
-  },
-  {
-    name: CommandIds.NAME,
-    description: 'Set your username',
-    options: [
-      {
-        name: 'username',
-        type: 3, // STRING type
-        description: 'Your hots username',
-        required: true,
-      },
-    ],
-  },
-  {
-    name: CommandIds.ROLE,
-    description: 'Set your role',
-    options: [
-      {
-        name: CommandIds.ROLE,
-        type: 3, // STRING type
-        description: 'Your role in the game',
-        required: true,
-        choices: Object.entries(roleMap).map(([key, label]) => ({
-          name: label,
-          value: key,
-        })),
-      },
-    ],
-  },
-  {
-    name: CommandIds.LEAVE,
-    description: 'Leave the lobby',
   },
   {
     name: CommandIds.CLEAR,
