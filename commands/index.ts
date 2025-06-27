@@ -139,34 +139,6 @@ export async function handleMoveToLobbyCommand(
     });
     return;
   }
-  const { team1, team2 } = getTeams();
-
-  if (team1.length === 0 || team2.length === 0) {
-    if (team1.length === 0 && team2.length === 0) {
-      // tell them they need to set teams first
-      await interaction.reply({
-        content: 'No teams set. Please set teams first using `/set_teams`.',
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-    if (team1.length === 0) {
-      // tell them they need to set team 1 first
-      await interaction.reply({
-        content: 'No team 1 set. Please set team 1 first using `/set_teams`.',
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-    if (team2.length === 0) {
-      // tell them they need to set team 2 first
-      await interaction.reply({
-        content: 'No team 2 set. Please set team 2 first using `/set_teams`.',
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-  }
   const lobby = getChannels(['lobby'])?.[0];
   if (!lobby) {
     await interaction.reply({
@@ -184,19 +156,17 @@ export async function handleMoveToLobbyCommand(
     });
     return;
   }
-  const teams = [team1, team2];
-  teams.forEach(team => {
-    team.forEach(player => {
-      const member = interaction.guild?.members.cache.get(player.discordId);
-      if (member?.voice.channel) {
-        member.voice.setChannel(lobbyChannel).catch(err => {
-          console.error(`Failed to move ${member.displayName} to lobby:`, err);
-        });
-      }
-    });
+  const players = getActivePlayers();
+  players.forEach(player => {
+    const member = interaction.guild?.members.cache.get(player.discordId);
+    if (member?.voice.channel) {
+      member.voice.setChannel(lobbyChannel).catch(err => {
+        console.error(`Failed to move ${member.displayName} to lobby:`, err);
+      });
+    }
   });
   await interaction.reply({
-    content: `Moved all ${team1.length + team2.length} players to the lobby channel: \`${lobby.channelName}\``,
+    content: `Moved all ${players.length} players to the lobby channel: \`${lobby.channelName}\``,
     flags: MessageFlags.Ephemeral,
   });
 }
