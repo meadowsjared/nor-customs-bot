@@ -285,7 +285,7 @@ export async function handleGuideCommand(
   // inside a command, event listener, etc.
   const exampleEmbed = new EmbedBuilder()
     .setColor(0x0099ff)
-    .setTitle("Nor's Heroes of the Storm Custom Lobby Guide")
+    .setTitle("Nor's Hots Customs — Lobby Guide")
     // .setDescription(
     //   'This is a custom lobby for Heroes of the Storm. Use the commands below to join, leave, or manage your role in the lobby.'
     // )
@@ -295,11 +295,12 @@ export async function handleGuideCommand(
     // )
     .setDescription(
       [
-        '🟢  **/join** — Join the lobby with your username and role',
-        '🔴  **/leave** — Leave the lobby',
-        '🔄  **/rejoin** — Rejoin the lobby',
-        '✏️  **/name** — Change your username',
-        '🎭  **/role** — Change your role',
+        'Commands:',
+        '```🟢 /join   — Join the lobby with your username and role',
+        '🔴 /leave  — Leave the lobby',
+        '🔄 /rejoin — Rejoin the lobby',
+        '✏️ /name   — Change your username',
+        '🎭 /role   — Change your role```',
       ].join('\n')
     )
     .addFields({ name: 'Roles', value: '🛡️ Tank, ⚔️ Assassin, 💪 Bruiser, 💉 Healer, 🔄 Flex' })
