@@ -10,6 +10,7 @@ import {
   ChatInputCommandInteraction,
   CacheType,
   ButtonInteraction,
+  MessageFlags,
 } from 'discord.js';
 import { botChannelName, CommandIds, roleMap } from './constants';
 import {
@@ -183,7 +184,7 @@ client.on('interactionCreate', async interaction => {
       if (!interaction.isChatInputCommand()) {
         interaction.reply({
           content: 'This command can only be used as a slash command.',
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
         return;
       }
@@ -218,7 +219,7 @@ function handleDefaultCommand(
   if (!commandName?.includes('_') || interaction.isChatInputCommand()) {
     interaction.reply({
       content: 'Unknown command. Please use a valid command.',
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
