@@ -68,7 +68,7 @@ function getPlayerFromRow(row: FlatPlayer): Player {
  * @returns Map<string, Player> a Map of active players, where the key is the Discord ID and the value is the Player object.
  */
 export function getActivePlayers(): Player[] {
-  const stmt = db.prepare<[], FlatPlayer>('SELECT * FROM players WHERE active = 1');
+  const stmt = db.prepare<[], FlatPlayer>('SELECT * FROM players WHERE active = 1 ORDER BY active, team;');
   const rows: FlatPlayer[] = stmt.all();
   return rows.map<Player>(row => getPlayerFromRow(row));
 }
@@ -78,7 +78,7 @@ export function getActivePlayers(): Player[] {
  * @returns void
  */
 export function markAllPlayersInactive(): void {
-  const stmt = db.prepare('UPDATE players SET active = 0 WHERE active = 1');
+  const stmt = db.prepare('UPDATE players SET active = 0, team = NULL WHERE active = 1 OR team IS NOT NULL');
   stmt.run();
 }
 
