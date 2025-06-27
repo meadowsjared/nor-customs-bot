@@ -31,6 +31,7 @@ export const CommandIds = {
   TWITCH: 'twitch',
   LOOKUP: 'lookup',
   ADMIN: 'admin',
+  MOVE: 'move',
   ROLE_TANK: 'T',
   ROLE_ASSASSIN: 'A',
   ROLE_BRUISER: 'B',

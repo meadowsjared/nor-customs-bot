@@ -239,4 +239,24 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
       },
     ],
   },
+  {
+    name: CommandIds.MOVE,
+    description: 'Move player',
+    defaultMemberPermissions: PermissionsBitField.Flags.MentionEveryone,
+    options: [
+      {
+        name: 'discord_member',
+        description: 'The user to move.',
+        type: ApplicationCommandOptionType.User,
+        required: true,
+      },
+      {
+        name: 'channel',
+        description: 'The channel to move the user to.',
+        type: ApplicationCommandOptionType.Channel,
+        required: true,
+        channelTypes: [ChannelType.GuildVoice],
+      },
+    ],
+  },
 ];

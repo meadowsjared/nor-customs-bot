@@ -36,6 +36,7 @@ import {
   handleAdminSetActiveCommand,
   handleAdminShowRoleButtons,
   handleAdminShowNameModal,
+  handleMoveCommand,
 } from './commands';
 import { slashCommands } from './commands/definitions';
 
@@ -179,6 +180,17 @@ client.on('interactionCreate', async interaction => {
     case CommandIds.LOOKUP:
       // Handle lookup command
       handleLookupCommand(interaction); // Pass true to perform a lookup
+      break;
+    case CommandIds.MOVE:
+      // Handle move command
+      if (!interaction.isChatInputCommand()) {
+        interaction.reply({
+          content: 'This command can only be used as a slash command.',
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+      handleMoveCommand(interaction);
       break;
     case CommandIds.ADMIN:
       if (!interaction.isChatInputCommand()) {

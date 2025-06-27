@@ -921,6 +921,39 @@ export async function handleLookupCommand(
   // return;
 }
 
+/**
+ * Handles the move command interaction, moves a Discord member to a specified voice channel
+ * @param interaction The interaction object from Discord, will be a ChatInputCommandInteraction
+ * @returns <void>
+ */
+export function handleMoveCommand(interaction: ChatInputCommandInteraction<CacheType>) {
+  const member = interaction.options.getMember('discord_member');
+  if (!member || 'user' in member === false) {
+    interaction.reply({
+      content: 'Please provide a valid Discord member to move.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  const channel = interaction.options.getChannel('channel', true);
+  if (!(channel instanceof VoiceChannel)) {
+    interaction.reply({
+      content: 'Please provide a valid voice channel to move the member to.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  // Move the member to the specified voice channel
+  const memberToMove = interaction.guild?.members.cache.get(member.user.id);
+  if (memberToMove?.voice.channel) {
+    memberToMove.voice.setChannel(channel);
+  }
+  interaction.reply({
+    content: `Moved ${member.user.username} to ${channel.name}.`,
+    flags: MessageFlags.Ephemeral,
+  });
+}
+
 function fetchDiscordNames(interaction: Interaction, id?: string): DiscordUserNames {
   const discordUser = interaction.guild?.members.cache.get(id ?? interaction.user.id)?.user;
   const discordDisplayName = discordUser?.displayName ?? 'N/A';
