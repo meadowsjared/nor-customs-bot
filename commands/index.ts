@@ -123,11 +123,11 @@ export async function handleLoadTeamsCommand(
   const team2lengthMessage = team2.length === 5 ? '' : ` (${team2.length} players)`;
   const team1embed = new EmbedBuilder()
     .setTitle(`Team 1${team1lengthMessage}`)
-    .setDescription(team1Message)
+    .setDescription(team1Message || '* No players in this team')
     .setColor('#0099ff');
   const team2embed = new EmbedBuilder()
     .setTitle(`💩 Filthy Team 2${team2lengthMessage}`)
-    .setDescription(team2Message)
+    .setDescription(team2Message || '* No players in this team')
     .setColor('#8B4513');
   await interaction.reply({
     content: `<@${norDiscordId}>`,
