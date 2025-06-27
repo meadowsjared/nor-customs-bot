@@ -926,7 +926,7 @@ export async function handleLookupCommand(
  * @param interaction The interaction object from Discord, will be a ChatInputCommandInteraction
  * @returns <void>
  */
-export function handleMoveCommand(interaction: ChatInputCommandInteraction<CacheType>) {
+export async function handleMoveCommand(interaction: ChatInputCommandInteraction<CacheType>) {
   const member = interaction.options.getMember('discord_member');
   if (!member || 'user' in member === false) {
     interaction.reply({
@@ -946,7 +946,17 @@ export function handleMoveCommand(interaction: ChatInputCommandInteraction<Cache
   // Move the member to the specified voice channel
   const memberToMove = interaction.guild?.members.cache.get(member.user.id);
   if (memberToMove?.voice.channel) {
-    memberToMove.voice.setChannel(channel);
+    try {
+      await memberToMove.voice.setChannel(channel);
+    } catch (error) {
+      console.error('Error moving member:', error);
+      console.log('resuming...');
+      interaction.reply({
+        content: `Failed to move ${member.user.username} to ${channel.name}.`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
   }
   interaction.reply({
     content: `Moved ${member.user.username} to ${channel.name}.`,
