@@ -726,51 +726,6 @@ export async function handleAdminShowNameModal(
   return { username, modalInteraction };
 }
 
-/**
- * Handles the role command interaction, changes the users role in the lobby
- * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
- * @returns
- */
-export async function handleRoleCommand(
-  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
-) {
-  if (interaction.isButton()) {
-    const player = getPlayerByDiscordId(interaction.user.id); // Get player by Discord ID
-    if (!player) {
-      await showJoinModal(interaction); // Show the join modal to collect username and role
-      // If player is not found, prompt to join
-      // await interaction.reply({
-      //   content: 'You are not in the lobby. Click the button below to join.',
-      //   flags: MessageFlags.Ephemeral,
-      //   components: [new ActionRowBuilder<ButtonBuilder>().addComponents(joinBtn)],
-      // });
-      return;
-    }
-    // Discord does not support adding a text box (input field) directly to a message reply.
-    // The only way to collect text input interactively is via a Modal.
-    // As an alternative, you can prompt the user to use the /role command or reply in DM.
-    await showRoleButtons(interaction); // Show the role buttons to select a role
-    return;
-  }
-  // Handle role command
-  const role = interaction.options.getString(CommandIds.ROLE, true);
-
-  const player = setPlayerRole(interaction.user.id, role); // Set player role in the database
-  if (player === false) {
-    // If player is not found, prompt to join
-    await interaction.reply({
-      content: 'You are not in the lobby. Click the button below to join.',
-      flags: MessageFlags.Ephemeral,
-      components: [new ActionRowBuilder<ButtonBuilder>().addComponents(joinBtn)],
-    });
-    return;
-  }
-  await interaction.reply({
-    content: `Your role has been set to: ${getPlayerRolesFormatted(role)}`,
-    flags: MessageFlags.Ephemeral,
-  });
-}
-
 function createEditRoleButtonDisabled(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
   commandId: string,
@@ -940,65 +895,6 @@ function getPlayerRolesFormatted(role: string): string {
     .split('')
     .map(r => roleMap[r])
     .join(', ');
-}
-
-/**
- * Assigns a role to the user based on the button interaction.
- * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
- * @param role The role to assign, based on the roleMap keys.
- */
-export async function handleAssignRoleCommand(
-  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
-  role: keyof typeof roleMap,
-  setActive = false
-) {
-  const player = setPlayerRole(interaction.user.id, role); // Set player role in the database
-
-  if (!player) {
-    if (setActive) {
-      // player does not exist, but we need to set them as active
-      const discordData = fetchDiscordNames(interaction);
-      savePlayer(interaction.user.id, {
-        discordId: interaction.user.id,
-        usernames: {
-          hots: '',
-          ...discordData,
-        },
-        role,
-        active: true,
-        team: undefined,
-      });
-      await handleUserJoined(interaction, interaction.user.username, role, true);
-      return;
-    }
-    await interaction.reply({
-      content: 'You are not in the lobby. Click the button below to join.',
-      flags: MessageFlags.Ephemeral,
-      components: [new ActionRowBuilder<ButtonBuilder>().addComponents(joinBtn)],
-    });
-    return;
-  }
-  await interaction.reply({
-    content: `Your role has been set to: ${getPlayerRolesFormatted(role)}`,
-    flags: MessageFlags.Ephemeral,
-  });
-  if (setActive) {
-    if (player.active === false) {
-      await handleUserJoined(interaction, player.usernames.hots, role, true); // Announce the user has joined
-    }
-    setPlayerActive(interaction.user.id, true); // Mark player as active in the database
-    return;
-  }
-
-  if (player.active === false) {
-    // If player is not active, prompt to rejoin
-    await interaction.followUp({
-      content: 'Click the button below to join the lobby.',
-      flags: MessageFlags.Ephemeral,
-      components: [new ActionRowBuilder<ButtonBuilder>().addComponents(joinBtn)],
-    });
-    // return;
-  }
 }
 
 export async function handleTwitchCommand(

@@ -12,14 +12,12 @@ import {
   ButtonInteraction,
   MessageFlags,
 } from 'discord.js';
-import { botChannelName, CommandIds, roleMap } from './constants';
+import { botChannelName, CommandIds } from './constants';
 import {
-  handleAssignRoleCommand,
   handleJoinCommand,
   handleLeaveCommand,
   handleNameCommand,
   handleRejoinCommand,
-  handleRoleCommand,
   handleTwitchCommand,
   handlePlayersCommand,
   handleClearCommand,
@@ -186,9 +184,6 @@ client.on('interactionCreate', async interaction => {
       handleNameCommand(interaction);
       break;
     case CommandIds.ROLE:
-      // Handle role command
-      handleRoleCommand(interaction);
-      break;
     case CommandIds.EDIT_ROLES:
       // Handle edit roles command
       handleEditRoleCommand(interaction); // Pass true to edit roles
@@ -254,17 +249,13 @@ function handleDefaultCommand(
   // if the interaction is not a button, reply with an error
   if (!commandName?.includes('_') || interaction.isChatInputCommand()) {
     interaction.reply({
-      content: 'Unknown command. Please use a valid command.' + (commandName ?? ''),
+      content: 'Unknown command. Please use a valid command. ' + (commandName ?? ''),
       flags: MessageFlags.Ephemeral,
     });
     return;
   }
   const parts = commandName.split('_');
   if (parts.length === 2) {
-    if (parts.length === 2 && Object.keys(roleMap).includes(parts[0]) && parts[1] === 'active') {
-      handleAssignRoleCommand(interaction, parts[0], parts[1] === 'active');
-      return;
-    }
     switch (parts[0]) {
       case CommandIds.JOIN:
         handleAdminSetActiveCommand(interaction, parts[1], true);
