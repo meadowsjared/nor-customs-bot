@@ -771,6 +771,156 @@ export async function handleRoleCommand(
   });
 }
 
+function createEditRoleButtonDisabled(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+  commandId: string,
+  emoji: string
+): ButtonBuilder {
+  return new ButtonBuilder()
+    .setCustomId(`${commandId}_${interaction.user.id}`)
+    .setLabel(emoji)
+    .setStyle(ButtonStyle.Secondary);
+}
+
+function createEditRoleButtonEnabled(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+  commandId: string,
+  emoji: string
+): ButtonBuilder {
+  return new ButtonBuilder()
+    .setCustomId(`${commandId}_${interaction.user.id}`)
+    .setEmoji(emoji)
+    .setStyle(ButtonStyle.Primary);
+}
+
+/**
+ * Handles the edit role command interaction, shows buttons to edit the user's role
+ * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
+ * @returns {Promise<void>}
+ */
+export async function handleEditRoleCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+) {
+  const player = getPlayerByDiscordId(interaction.user.id); // Get player by Discord ID
+  if (!player) {
+    await interaction.reply({
+      content: 'You are not in the lobby. Click the button below to join.',
+      flags: MessageFlags.Ephemeral,
+      components: [new ActionRowBuilder<ButtonBuilder>().addComponents(joinBtn)],
+    });
+    return;
+  }
+  let roles = ', current role: ' + getPlayerRolesFormatted(player.role);
+  // create a button that will set this interaction to add mode
+  await interaction.reply({
+    content: 'Replace Mode' + roles,
+    flags: MessageFlags.Ephemeral,
+    components: [
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_ADD, '➕'),
+        createEditRoleButtonEnabled(interaction, CommandIds.ROLE_EDIT_REPLACE, '🔄'),
+        createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_REMOVE, '➖')
+      ),
+    ],
+  });
+}
+
+export async function handleEditRoleButtonCommand(
+  interaction: ButtonInteraction<CacheType> | ChatInputCommandInteraction<CacheType>,
+  discordId: string,
+  action: string,
+  role?: keyof typeof roleMap
+) {
+  if (!interaction.isButton()) {
+    interaction.reply({
+      content: 'This command can only be used with buttons.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const player = getPlayerByDiscordId(discordId);
+  if (!player) {
+    await interaction.reply({
+      content: 'You are not in the lobby. Click the button below to join.',
+      flags: MessageFlags.Ephemeral,
+      components: [new ActionRowBuilder<ButtonBuilder>().addComponents(joinBtn)],
+    });
+    return;
+  }
+  let roles = ', current role: ' + getPlayerRolesFormatted(player.role); // Get the formatted roles of the player
+
+  const row2 = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    ...Object.entries(roleMap).map(([key, label]) => {
+      return new ButtonBuilder()
+        .setCustomId(`${action}_${interaction.user.id}_${key}`) // Use the action
+        .setLabel(label)
+        .setStyle(ButtonStyle.Primary);
+    })
+  );
+  // Handle the role editing logic based on the action
+  switch (action) {
+    case CommandIds.ROLE_EDIT_ADD:
+      if (role && !player.role.includes(role)) {
+        // If the role is specified and does not exist in the player's roles, add it
+        const newRoles = player.role + role; // Append the new role
+        setPlayerRole(interaction.user.id, newRoles); // Update the player's role in the database
+        roles = ', current role: ' + getPlayerRolesFormatted(newRoles);
+      }
+      interaction.update({
+        content: 'Add Mode' + roles,
+        components: [
+          new ActionRowBuilder<ButtonBuilder>().addComponents(
+            createEditRoleButtonEnabled(interaction, CommandIds.ROLE_EDIT_ADD, '➕'),
+            createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_REPLACE, '🔄'),
+            createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_REMOVE, '➖')
+          ),
+          row2,
+        ],
+      });
+      break;
+    case CommandIds.ROLE_EDIT_REMOVE:
+      if (role && player.role.includes(role)) {
+        // If the role is specified and exists in the player's roles, remove it
+        const newRoles = player.role
+          .split('')
+          .filter(r => r !== role)
+          .join('');
+        setPlayerRole(interaction.user.id, newRoles); // Update the player's role in the database
+        roles = ', current role: ' + getPlayerRolesFormatted(newRoles);
+      }
+      interaction.update({
+        content: 'Remove Mode' + roles,
+        components: [
+          new ActionRowBuilder<ButtonBuilder>().addComponents(
+            createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_ADD, '➕'),
+            createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_REPLACE, '🔄'),
+            createEditRoleButtonEnabled(interaction, CommandIds.ROLE_EDIT_REMOVE, '➖')
+          ),
+          row2,
+        ],
+      });
+      break;
+    case CommandIds.ROLE_EDIT_REPLACE:
+      if (role) {
+        setPlayerRole(interaction.user.id, role);
+        roles = ', current role: ' + getPlayerRolesFormatted(role);
+      }
+      interaction.update({
+        content: 'Replace Mode' + roles,
+        components: [
+          new ActionRowBuilder<ButtonBuilder>().addComponents(
+            createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_ADD, '➕'),
+            createEditRoleButtonEnabled(interaction, CommandIds.ROLE_EDIT_REPLACE, '🔄'),
+            createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_REMOVE, '➖')
+          ),
+          row2,
+        ],
+      });
+      break;
+  }
+}
+
 /**
  * gets the roles of the player as a pretty string
  * @param player The player object to get the roles from.

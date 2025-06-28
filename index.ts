@@ -37,6 +37,9 @@ import {
   handleAdminShowRoleButtons,
   handleAdminShowNameModal,
   handleMoveCommand,
+  handleEditRoleCommand,
+  handleEditRoleButtonCommand,
+  handleDeleteMessageCommand,
 } from './commands';
 import { slashCommands } from './commands/definitions';
 
@@ -186,6 +189,10 @@ client.on('interactionCreate', async interaction => {
       // Handle role command
       handleRoleCommand(interaction);
       break;
+    case CommandIds.EDIT_ROLES:
+      // Handle edit roles command
+      handleEditRoleCommand(interaction); // Pass true to edit roles
+      break;
     case CommandIds.TWITCH:
       // Handle twitch command
       handleTwitchCommand(interaction);
@@ -247,7 +254,7 @@ function handleDefaultCommand(
   // if the interaction is not a button, reply with an error
   if (!commandName?.includes('_') || interaction.isChatInputCommand()) {
     interaction.reply({
-      content: 'Unknown command. Please use a valid command.',
+      content: 'Unknown command. Please use a valid command.' + (commandName ?? ''),
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -275,8 +282,28 @@ function handleDefaultCommand(
   }
   if (parts.length === 3 && parts[0] === CommandIds.ROLE_ADMIN) {
     handleAdminSetRoleCommand(interaction, parts[1], parts[2]);
-    // return;
+    return;
   }
+  if (
+    parts.length === 2 &&
+    [CommandIds.ROLE_EDIT_ADD, CommandIds.ROLE_EDIT_REPLACE, CommandIds.ROLE_EDIT_REMOVE].includes(parts[0])
+  ) {
+    handleEditRoleButtonCommand(interaction, parts[1], parts[0]);
+    return;
+  }
+  if (
+    parts.length === 3 &&
+    [CommandIds.ROLE_EDIT_ADD, CommandIds.ROLE_EDIT_REPLACE, CommandIds.ROLE_EDIT_REMOVE].includes(parts[0])
+  ) {
+    // Handle role edit button commands with user ID
+    handleEditRoleButtonCommand(interaction, parts[1], parts[0], parts[2]);
+    return;
+  }
+  interaction.reply({
+    content: `Unknown command: ${commandName}. Please use a valid command.`,
+    flags: MessageFlags.Ephemeral,
+  });
+  // console.log('invalid command:', parts);
   // return; // Ignore unknown commands
 }
 

@@ -62,6 +62,10 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     ],
   },
   {
+    name: CommandIds.EDIT_ROLES,
+    description: 'Add/replace/remove your roles',
+  },
+  {
     name: CommandIds.DELETE_MESSAGE,
     description: 'Delete a message by ID',
     defaultMemberPermissions: PermissionsBitField.Flags.MentionEveryone,
