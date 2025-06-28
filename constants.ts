@@ -91,11 +91,6 @@ export const rolesRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
     return new ButtonBuilder().setCustomId(key).setLabel(label).setStyle(ButtonStyle.Primary);
   })
 );
-export const rolesActiveRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-  ...Object.entries(roleMap).map(([key, label]) => {
-    return new ButtonBuilder().setCustomId(`${key}_active`).setLabel(label).setStyle(ButtonStyle.Primary);
-  })
-);
 export const imPlayingBtn = new ButtonBuilder()
   .setCustomId(CommandIds.REJOIN)
   .setLabel("I'm Playing")

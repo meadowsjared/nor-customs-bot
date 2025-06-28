@@ -290,6 +290,14 @@ function handleDefaultCommand(
     handleEditRoleButtonCommand(interaction, parts[1], parts[0], parts[2]);
     return;
   }
+  if (
+    parts.length === 4 &&
+    [CommandIds.ROLE_EDIT_ADD, CommandIds.ROLE_EDIT_REPLACE, CommandIds.ROLE_EDIT_REMOVE].includes(parts[0])
+  ) {
+    // Handle role edit button commands with user ID and active state
+    handleEditRoleButtonCommand(interaction, parts[1], parts[0], parts[2], parts[3] === 'active');
+    return;
+  }
   interaction.reply({
     content: `Unknown command: ${commandName}. Please use a valid command.`,
     flags: MessageFlags.Ephemeral,
