@@ -17,6 +17,7 @@ import {
 import {
   adminUserIds,
   botChannelName,
+  chatOrButtonOrModal,
   CommandIds,
   imPlayingBtn,
   joinBtn,
@@ -463,11 +464,6 @@ async function showJoinModal(
   await showRoleButtons(modalInteraction, false, true); // Show role buttons to select a role
 }
 
-type chatOrButtonOrModal =
-  | ChatInputCommandInteraction<CacheType>
-  | ButtonInteraction<CacheType>
-  | ModalSubmitInteraction<CacheType>;
-
 /**
  * asks the user for their role, and saves it to the database
  * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
@@ -727,7 +723,7 @@ export async function handleAdminShowNameModal(
 }
 
 function createEditRoleButtonDisabled(
-  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+  interaction: chatOrButtonOrModal,
   commandId: string,
   emoji: string
 ): ButtonBuilder {
@@ -738,7 +734,7 @@ function createEditRoleButtonDisabled(
 }
 
 function createEditRoleButtonEnabled(
-  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+  interaction: chatOrButtonOrModal,
   commandId: string,
   emoji: string
 ): ButtonBuilder {
@@ -748,10 +744,7 @@ function createEditRoleButtonEnabled(
     .setStyle(ButtonStyle.Primary);
 }
 
-function getEditRoleRow(
-  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
-  action: string
-): ActionRowBuilder<ButtonBuilder> {
+function getEditRoleRow(interaction: chatOrButtonOrModal, action: string): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     ...Object.entries(roleMap).map(([key, label]) => {
       return new ButtonBuilder()
@@ -767,9 +760,7 @@ function getEditRoleRow(
  * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
  * @returns {Promise<void>}
  */
-export async function handleEditRoleCommand(
-  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
-) {
+export async function handleEditRoleCommand(interaction: chatOrButtonOrModal, setActive: boolean = false) {
   const player = getPlayerByDiscordId(interaction.user.id); // Get player by Discord ID
   if (!player) {
     await interaction.reply({
@@ -1257,9 +1248,7 @@ export async function handleAdminSetActiveCommand(
  * @param interaction The ChatInputCommandInteraction object from Discord
  * @returns boolean indicating if the user is an admin
  */
-function userIsAdmin(
-  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType> | ModalSubmitInteraction<CacheType>
-): boolean {
+function userIsAdmin(interaction: chatOrButtonOrModal): boolean {
   const isAdmin = adminUserIds.includes(interaction.user.id);
   if (isAdmin) {
     return true;

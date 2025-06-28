@@ -1,4 +1,12 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonInteraction,
+  ButtonStyle,
+  CacheType,
+  ChatInputCommandInteraction,
+  ModalSubmitInteraction,
+} from 'discord.js';
 
 export const botChannelName = '🫠-nor-customs';
 
@@ -92,3 +100,8 @@ export const imPlayingBtn = new ButtonBuilder()
   .setCustomId(CommandIds.REJOIN)
   .setLabel("I'm Playing")
   .setStyle(ButtonStyle.Primary);
+
+export type chatOrButtonOrModal =
+  | ChatInputCommandInteraction<CacheType>
+  | ButtonInteraction<CacheType>
+  | ModalSubmitInteraction<CacheType>;
