@@ -342,10 +342,10 @@ export async function handlePlayersCommand(
       .map(({ discordId, usernames, role }) => {
         if (pingLobby) {
           // if pingLobby is true, mention the user
-          return `<@${discordId}>: (${usernames.hots}) \`${roleMap[role]}\``;
+          return `<@${discordId}>: (${usernames.hots}) \`${getPlayerRolesFormatted(role)}\``;
         }
         const user = interaction.guild?.members.cache.get(discordId)?.displayName;
-        return `@${user}: (${usernames.hots}) \`${roleMap[role]}\``;
+        return `@${user}: (${usernames.hots}) \`${getPlayerRolesFormatted(role)}\``;
       })
       .join('\n') || 'No players in the lobby';
   const rawPlayerList = Array.from(players.entries())
@@ -416,15 +416,15 @@ export async function handleRejoinCommand(
         interaction,
         `<@${interaction.user.id}> (${result.player.usernames.hots}) has ${
           newUser ? 'joined' : 'rejoined'
-        } the lobby as \`${roleMap[result.player.role]}\``
+        } the lobby as \`${getPlayerRolesFormatted(result.player.role)}\``
       );
     }
     const joinVerb = newUser ? 'joined' : 'rejoined';
     const content =
       (result.alreadyActive === true ? `You are already in` : `You have ${joinVerb}`) +
-      ` the lobby as: ${result.player.usernames.hots}, \`${
-        roleMap[result.player.role]
-      }\`\nUse /leave to leave the lobby, or use the buttons below.`;
+      ` the lobby as: ${result.player.usernames.hots}, \`${getPlayerRolesFormatted(
+        result.player.role
+      )}\`\nUse /leave to leave the lobby, or use the buttons below.`;
     await interaction.reply({
       content,
       flags: MessageFlags.Ephemeral,
@@ -546,7 +546,10 @@ export async function handleJoinCommand(
  * @param skipReply (optional) Whether to skip the reply and just follow up with the components.
  */
 async function handleUserJoined(interaction: chatOrButtonOrModal, username: string, role: string, skipReply = false) {
-  await announce(interaction, `<@${interaction.user.id}> (${username}) has joined the lobby as \`${roleMap[role]}\``);
+  await announce(
+    interaction,
+    `<@${interaction.user.id}> (${username}) has joined the lobby as \`${getPlayerRolesFormatted(role)}\``
+  );
   const components = [new ActionRowBuilder<ButtonBuilder>().addComponents(leaveBtn, nameBtn, roleBtn)];
   if (skipReply) {
     await interaction.followUp({
@@ -763,9 +766,21 @@ export async function handleRoleCommand(
     return;
   }
   await interaction.reply({
-    content: `Your role has been set to: ${roleMap[role]}`,
+    content: `Your role has been set to: ${getPlayerRolesFormatted(role)}`,
     flags: MessageFlags.Ephemeral,
   });
+}
+
+/**
+ * gets the roles of the player as a pretty string
+ * @param player The player object to get the roles from.
+ * @returns A string of the player's roles, formatted as a list.
+ */
+function getPlayerRolesFormatted(role: string): string {
+  return role
+    .split('')
+    .map(r => roleMap[r])
+    .join(', ');
 }
 
 /**
@@ -805,7 +820,7 @@ export async function handleAssignRoleCommand(
     return;
   }
   await interaction.reply({
-    content: `Your role has been set to: ${roleMap[role]}`,
+    content: `Your role has been set to: ${getPlayerRolesFormatted(role)}`,
     flags: MessageFlags.Ephemeral,
   });
   if (setActive) {
@@ -870,10 +885,10 @@ export async function handleLookupCommand(
 
   const player = getPlayerByDiscordId(id);
   const message = player
-    ? `${hotsName || 'Player'} found in the lobby with role: \`${roleMap[player.role]}\``
-    : `${hotsName || 'Player'} not found in the lobby, adding them with default role \`${
-        roleMap[CommandIds.ROLE_FLEX]
-      }\`.`;
+    ? `${hotsName || 'Player'} found in the lobby with role: \`${getPlayerRolesFormatted(player.role)}\``
+    : `${hotsName || 'Player'} not found in the lobby, adding them with default role \`${getPlayerRolesFormatted(
+        CommandIds.ROLE_FLEX
+      )}\`.`;
   await interaction.reply({
     content: `Discord ID: \`${id}\`\ndiscordName: \`${discordData.discordName}\`\ndiscordGlobalName: \`${discordData.discordGlobalName}\`\nDisplay Name: \`${discordData.discordDisplayName}\`\n${message}`,
     flags: MessageFlags.Ephemeral,
@@ -1082,7 +1097,7 @@ export function handleAdminSetRoleCommand(
     });
   }
   interaction.reply({
-    content: `Set ${member.user.displayName}'s role to \`${roleMap[role]}\``,
+    content: `Set ${member.user.displayName}'s role to \`${getPlayerRolesFormatted(role)}\``,
     flags: MessageFlags.Ephemeral,
   });
   // return;
@@ -1166,7 +1181,7 @@ export async function handleAdminSetActiveCommand(
     if (isActive) {
       await announce(
         interaction,
-        `<@${id}> (${player.usernames.hots}) has joined the lobby as \`${roleMap[player.role]}\``
+        `<@${id}> (${player.usernames.hots}) has joined the lobby as \`${getPlayerRolesFormatted(player.role)}\``
       );
     } else {
       await announce(interaction, `<@${id}> (${player.usernames.hots}) has left the lobby`);
