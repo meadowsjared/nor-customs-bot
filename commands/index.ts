@@ -793,6 +793,20 @@ function createEditRoleButtonEnabled(
     .setStyle(ButtonStyle.Primary);
 }
 
+function getEditRoleRow(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+  action: string
+): ActionRowBuilder<ButtonBuilder> {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    ...Object.entries(roleMap).map(([key, label]) => {
+      return new ButtonBuilder()
+        .setCustomId(`${action}_${interaction.user.id}_${key}`) // Use the action
+        .setLabel(label)
+        .setStyle(ButtonStyle.Primary);
+    })
+  );
+}
+
 /**
  * Handles the edit role command interaction, shows buttons to edit the user's role
  * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
@@ -812,6 +826,7 @@ export async function handleEditRoleCommand(
   }
   let roles = ', current role: ' + getPlayerRolesFormatted(player.role);
   // create a button that will set this interaction to add mode
+  const row2 = getEditRoleRow(interaction, CommandIds.ROLE_EDIT_REPLACE);
   await interaction.reply({
     content: 'Replace Mode' + roles,
     flags: MessageFlags.Ephemeral,
@@ -821,6 +836,7 @@ export async function handleEditRoleCommand(
         createEditRoleButtonEnabled(interaction, CommandIds.ROLE_EDIT_REPLACE, '🔄'),
         createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_REMOVE, '➖')
       ),
+      row2,
     ],
   });
 }
@@ -850,14 +866,7 @@ export async function handleEditRoleButtonCommand(
   }
   let roles = ', current role: ' + getPlayerRolesFormatted(player.role); // Get the formatted roles of the player
 
-  const row2 = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    ...Object.entries(roleMap).map(([key, label]) => {
-      return new ButtonBuilder()
-        .setCustomId(`${action}_${interaction.user.id}_${key}`) // Use the action
-        .setLabel(label)
-        .setStyle(ButtonStyle.Primary);
-    })
-  );
+  const row2 = getEditRoleRow(interaction, action);
   // Handle the role editing logic based on the action
   switch (action) {
     case CommandIds.ROLE_EDIT_ADD:
