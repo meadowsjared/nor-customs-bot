@@ -455,7 +455,7 @@ async function showJoinModal(
   savePlayer(modalInteraction.user.id, {
     discordId: modalInteraction.user.id,
     usernames: { hots: username, ...discordData },
-    role: 'F', // Default role is Flex
+    role: CommandIds.ROLE_FLEX, // Default role is Flex
     active: false,
     team: undefined,
   });
@@ -585,7 +585,7 @@ export async function handleNameCommand(
     savePlayer(interaction.user.id, {
       discordId: interaction.user.id,
       usernames: { hots: username, ...discordData },
-      role: 'F', // Default role is Flex
+      role: CommandIds.ROLE_FLEX, // Default role is Flex
       active: false,
       team: undefined,
     });
@@ -951,7 +951,7 @@ export async function handleLookupCommand(
         ...discordData,
         hots: hotsName,
       },
-      role: 'F', // Default role is Flex
+      role: CommandIds.ROLE_FLEX, // Default role is Flex
       active: false,
       team: undefined,
     });
@@ -1137,7 +1137,9 @@ export function handleAdminSetRoleCommand(
     });
     return;
   }
-  const role = interaction.isChatInputCommand() ? interaction.options.getString(CommandIds.ROLE, true) : pRole ?? 'F';
+  const role = interaction.isChatInputCommand()
+    ? interaction.options.getString(CommandIds.ROLE, true)
+    : pRole ?? CommandIds.ROLE_FLEX;
   const id = member.user.id;
   const player = setPlayerRole(id, role);
   if (!player) {
@@ -1158,7 +1160,7 @@ function getActiveFromInteraction(
   pActive?: boolean
 ): boolean {
   if (interaction.isChatInputCommand()) {
-    return interaction.options.getBoolean('active', true);
+    return interaction.options.getBoolean(CommandIds.ACTIVE, true);
   }
   // If it's a button interaction, we assume the active status is true
   return pActive ?? true; // Default to true if not provided
@@ -1218,7 +1220,9 @@ export async function handleAdminSetActiveCommand(
       .setLabel('Admin Role')
       .setStyle(ButtonStyle.Secondary);
     interaction.reply({
-      content: `Set ${member.user.displayName}'s active status to \`${isActive ? 'active' : 'inactive'}\``,
+      content: `Set ${member.user.displayName}'s active status to \`${
+        isActive ? CommandIds.ACTIVE : CommandIds.INACTIVE
+      }\``,
       flags: MessageFlags.Ephemeral,
       components: [
         new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -1238,7 +1242,7 @@ export async function handleAdminSetActiveCommand(
     }
   } else {
     interaction.reply({
-      content: `${player.usernames.hots} is already ${isActive ? 'active' : 'inactive'}.`,
+      content: `${player.usernames.hots} is already ${isActive ? CommandIds.ACTIVE : CommandIds.INACTIVE}.`,
       flags: MessageFlags.Ephemeral,
     });
   }

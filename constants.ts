@@ -36,6 +36,7 @@ export const CommandIds = {
   ROLE_EDIT_REPLACE: 'role-edit-replace',
   ROLE_ADMIN: 'role-admin',
   ACTIVE: 'active',
+  INACTIVE: 'inactive',
   LEAVE: 'leave',
   CLEAR: 'clear',
   PLAYERS: 'players',

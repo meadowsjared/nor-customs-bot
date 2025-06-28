@@ -149,7 +149,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     description: 'Show the guide for how to play',
   },
   {
-    name: 'rejoin',
+    name: CommandIds.REJOIN,
     description: 'Rejoin the lobby with your previous username and role',
   },
   {
