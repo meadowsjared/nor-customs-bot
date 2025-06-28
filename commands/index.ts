@@ -620,7 +620,7 @@ async function handleUserNameModalSubmit(
     .setStyle(TextInputStyle.Short)
     .setRequired(true)
     .setPlaceholder('Your Heroes of the Storm username')
-    .setValue(previousPlayer?.usernames.hots ?? '');
+    .setValue(previousPlayer?.usernames.hots ?? interaction.user.displayName ?? ''); // Use previous username if available
 
   // Add the input to an action row
   const actionRow = new ActionRowBuilder<TextInputBuilder>().addComponents(usernameInput);
