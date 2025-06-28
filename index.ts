@@ -220,7 +220,7 @@ client.on('interactionCreate', async interaction => {
       handleAdminSubCommand(interaction);
       break;
     default:
-      handleDefaultCommand(interaction);
+      handleDefaultCommand(interaction, commandName);
       break;
   }
 });
