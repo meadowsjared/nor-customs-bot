@@ -29,10 +29,10 @@ mark all players as inactive:
 UPDATE players SET active = 0, team = NULL WHERE active = 1 OR team IS NOT NULL;
 
 get all active players:
-SELECT * FROM players ORDER BY active, team;
+SELECT * FROM players WHERE active = 1 ORDER BY active, team;
 
 get the teams:
-SELECT * FROM players ORDER BY team ASC;
+SELECT * FROM players WHERE active = 1 ORDER BY team ASC;
 
 set all these players to active:
 UPDATE players SET active = 1 WHERE hotsName IN ('Nommynoms', 'saika', 'Aviater', 'TravisParty', 'Icon', 'Rev', 'TheCure', 'Aieee', 'Bandayd', 'ducky', 'FeintToAccel', 'selym', 'LadyGeneveve');
