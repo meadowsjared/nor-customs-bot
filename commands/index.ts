@@ -166,7 +166,7 @@ export async function handleMoveToLobbyCommand(
   const players = getActivePlayers();
   players.forEach(player => {
     const member = interaction.guild?.members.cache.get(player.discordId);
-    if (member?.voice.channel) {
+    if (member?.voice) {
       member.voice.setChannel(lobbyChannel).catch(err => {
         console.error(`Failed to move ${member.displayName} to lobby:`, err);
       });
@@ -223,7 +223,7 @@ export async function handleMoveToTeamsCommand(
 function moveTeamMembersToChannel(interaction: Interaction, team: Player[], channel: VoiceChannel) {
   team.forEach(player => {
     const member = interaction.guild?.members.cache.get(player.discordId);
-    if (member?.voice.channel) {
+    if (member?.voice) {
       member.voice.setChannel(channel).catch(err => {
         console.error(`Failed to move ${member.displayName} to team channel:`, err);
       });
