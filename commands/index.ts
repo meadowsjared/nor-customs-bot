@@ -728,7 +728,7 @@ function getEditRoleRow(
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     ...Object.entries(roleMap).map(([key, label]) => {
       return new ButtonBuilder()
-        .setCustomId(`${action}_${interaction.user.id}_${key}${setActive ? '_active' : ''}`) // Use the action
+        .setCustomId(`${action}_${interaction.user.id}_${key}`) // Use the action
         .setLabel(label)
         .setStyle(ButtonStyle.Primary);
     })
@@ -760,16 +760,18 @@ export async function handleEditRoleCommand(interaction: chatOrButtonOrModal, fo
   }
   let roles = ', current role: ' + getPlayerRolesFormatted(player.role);
   // create a button that will set this interaction to add mode
-  const row2 = getEditRoleRow(interaction, CommandIds.ROLE_EDIT_REPLACE, setActive);
+  const activeSuffix = setActive ? '_' + CommandIds.ACTIVE : '';
+  const row2 = getEditRoleRow(interaction, CommandIds.ROLE_EDIT_REPLACE + activeSuffix, setActive);
+  const content = (setActive ? 'You must click a role to join the lobby\n' : '') + 'Replace Mode' + roles; // Default content for the reply
   if (followUp) {
     await interaction.followUp({
-      content: 'Replace Mode' + roles,
+      content,
       flags: MessageFlags.Ephemeral,
       components: [
         new ActionRowBuilder<ButtonBuilder>().addComponents(
-          createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_ADD, '➕'),
-          createEditRoleButtonEnabled(interaction, CommandIds.ROLE_EDIT_REPLACE, '🔄'),
-          createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_REMOVE, '➖')
+          createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_ADD + activeSuffix, '➕'),
+          createEditRoleButtonEnabled(interaction, CommandIds.ROLE_EDIT_REPLACE + activeSuffix, '🔄'),
+          createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_REMOVE + activeSuffix, '➖')
         ),
         row2,
       ],
@@ -777,13 +779,13 @@ export async function handleEditRoleCommand(interaction: chatOrButtonOrModal, fo
     return;
   }
   await interaction.reply({
-    content: 'Replace Mode' + roles,
+    content,
     flags: MessageFlags.Ephemeral,
     components: [
       new ActionRowBuilder<ButtonBuilder>().addComponents(
-        createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_ADD, '➕'),
-        createEditRoleButtonEnabled(interaction, CommandIds.ROLE_EDIT_REPLACE, '🔄'),
-        createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_REMOVE, '➖')
+        createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_ADD + activeSuffix, '➕'),
+        createEditRoleButtonEnabled(interaction, CommandIds.ROLE_EDIT_REPLACE + activeSuffix, '🔄'),
+        createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_REMOVE + activeSuffix, '➖')
       ),
       row2,
     ],
@@ -818,6 +820,14 @@ export async function handleEditRoleButtonCommand(
 
   const row2 = getEditRoleRow(interaction, action, setActive);
   // Handle the role editing logic based on the action
+  let setActiveNext = setActive;
+  if (setActive === true && player.active === false && role !== undefined) {
+    // If the action is set to active, we need to handle it differently
+    setPlayerActive(interaction.user.id, true); // Set the player as active
+    setActiveNext = false; // Reset the active state for the next interaction
+  }
+  const activeSuffix = setActiveNext ? '_' + CommandIds.ACTIVE : '';
+  const activePrefix = setActive ? 'You must click a role to join the lobby\n' : ''; // Default content for the reply
   switch (action) {
     case CommandIds.ROLE_EDIT_ADD:
       if (role && !player.role.includes(role)) {
@@ -827,12 +837,12 @@ export async function handleEditRoleButtonCommand(
         roles = ', current role: ' + getPlayerRolesFormatted(newRoles);
       }
       interaction.update({
-        content: 'Add Mode' + roles,
+        content: activePrefix + 'Add Mode' + roles,
         components: [
           new ActionRowBuilder<ButtonBuilder>().addComponents(
-            createEditRoleButtonEnabled(interaction, CommandIds.ROLE_EDIT_ADD, '➕'),
-            createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_REPLACE, '🔄'),
-            createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_REMOVE, '➖')
+            createEditRoleButtonEnabled(interaction, CommandIds.ROLE_EDIT_ADD + activeSuffix, '➕'),
+            createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_REPLACE + activeSuffix, '🔄'),
+            createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_REMOVE + activeSuffix, '➖')
           ),
           row2,
         ],
@@ -849,12 +859,12 @@ export async function handleEditRoleButtonCommand(
         roles = ', current role: ' + getPlayerRolesFormatted(newRoles);
       }
       interaction.update({
-        content: 'Remove Mode' + roles,
+        content: activePrefix + 'Remove Mode' + roles,
         components: [
           new ActionRowBuilder<ButtonBuilder>().addComponents(
-            createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_ADD, '➕'),
-            createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_REPLACE, '🔄'),
-            createEditRoleButtonEnabled(interaction, CommandIds.ROLE_EDIT_REMOVE, '➖')
+            createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_ADD + activeSuffix, '➕'),
+            createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_REPLACE + activeSuffix, '🔄'),
+            createEditRoleButtonEnabled(interaction, CommandIds.ROLE_EDIT_REMOVE + activeSuffix, '➖')
           ),
           row2,
         ],
@@ -866,17 +876,26 @@ export async function handleEditRoleButtonCommand(
         roles = ', current role: ' + getPlayerRolesFormatted(role);
       }
       interaction.update({
-        content: 'Replace Mode' + roles,
+        content: activePrefix + 'Replace Mode' + roles,
         components: [
           new ActionRowBuilder<ButtonBuilder>().addComponents(
-            createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_ADD, '➕'),
-            createEditRoleButtonEnabled(interaction, CommandIds.ROLE_EDIT_REPLACE, '🔄'),
-            createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_REMOVE, '➖')
+            createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_ADD + activeSuffix, '➕'),
+            createEditRoleButtonEnabled(interaction, CommandIds.ROLE_EDIT_REPLACE + activeSuffix, '🔄'),
+            createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_REMOVE + activeSuffix, '➖')
           ),
           row2,
         ],
       });
       break;
+  }
+  if (setActive === true && player.active === false && role !== undefined) {
+    // If setActive is true, we need to set the player as active
+    announce(
+      interaction,
+      `<@${interaction.user.id}> (${player.usernames.hots}) has joined the lobby as \`${getPlayerRolesFormatted(
+        player.role
+      )}\``
+    );
   }
 }
 

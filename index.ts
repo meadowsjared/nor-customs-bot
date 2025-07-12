@@ -12,7 +12,7 @@ import {
   ButtonInteraction,
   MessageFlags,
 } from 'discord.js';
-import { botChannelName, CommandIds } from './constants';
+import { botChannelName, CommandIds, roleMap } from './constants';
 import {
   handleJoinCommand,
   handleLeaveCommand,
@@ -279,6 +279,7 @@ function handleDefaultCommand(
     parts.length === 2 &&
     [CommandIds.ROLE_EDIT_ADD, CommandIds.ROLE_EDIT_REPLACE, CommandIds.ROLE_EDIT_REMOVE].includes(parts[0])
   ) {
+    // console.log('Handling role edit button command with parts 2:', parts);
     handleEditRoleButtonCommand(interaction, parts[1], parts[0]);
     return;
   }
@@ -286,8 +287,14 @@ function handleDefaultCommand(
     parts.length === 3 &&
     [CommandIds.ROLE_EDIT_ADD, CommandIds.ROLE_EDIT_REPLACE, CommandIds.ROLE_EDIT_REMOVE].includes(parts[0])
   ) {
-    // Handle role edit button commands with user ID
-    handleEditRoleButtonCommand(interaction, parts[1], parts[0], parts[2]);
+    if (parts[1] === CommandIds.ACTIVE) {
+      // Handle role edit button commands with active state
+      handleEditRoleButtonCommand(interaction, parts[2], parts[0], undefined, true);
+    } else if (parts[2] in roleMap) {
+      // Handle role edit button commands with user ID
+      console.log('Handling role edit button command with parts 3:', parts);
+      handleEditRoleButtonCommand(interaction, parts[1], parts[0], parts[2]);
+    }
     return;
   }
   if (
@@ -295,7 +302,8 @@ function handleDefaultCommand(
     [CommandIds.ROLE_EDIT_ADD, CommandIds.ROLE_EDIT_REPLACE, CommandIds.ROLE_EDIT_REMOVE].includes(parts[0])
   ) {
     // Handle role edit button commands with user ID and active state
-    handleEditRoleButtonCommand(interaction, parts[1], parts[0], parts[2], parts[3] === 'active');
+    console.log('Handling role edit button command with parts 4:', parts);
+    handleEditRoleButtonCommand(interaction, parts[2], parts[0], parts[3], parts[1] === CommandIds.ACTIVE);
     return;
   }
   interaction.reply({
