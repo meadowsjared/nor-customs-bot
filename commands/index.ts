@@ -876,62 +876,13 @@ export async function handleEditRoleButtonCommand(
   const activePrefix = setActive ? 'You must click a role to join the lobby\n' : ''; // Default content for the reply
   switch (action) {
     case CommandIds.ROLE_EDIT_ADD:
-      if (role && !player.role.includes(role)) {
-        // If the role is specified and does not exist in the player's roles, add it
-        const newRoles = player.role + role; // Append the new role
-        setPlayerRole(interaction.user.id, newRoles); // Update the player's role in the database
-        roles = ', current role: ' + getPlayerRolesFormatted(newRoles);
-      }
-      interaction.update({
-        content: activePrefix + 'Add Mode' + roles,
-        components: [
-          new ActionRowBuilder<ButtonBuilder>().addComponents(
-            createEditRoleButtonEnabled(interaction, CommandIds.ROLE_EDIT_ADD + activeSuffix, '➕'),
-            createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_REPLACE + activeSuffix, '🔄'),
-            createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_REMOVE + activeSuffix, '➖')
-          ),
-          row2,
-        ],
-      });
+      showAddButtons(interaction, player, role, roles, activePrefix, row2, activeSuffix);
       break;
     case CommandIds.ROLE_EDIT_REMOVE:
-      if (role && player.role.includes(role)) {
-        // If the role is specified and exists in the player's roles, remove it
-        const newRoles = player.role
-          .split('')
-          .filter(r => r !== role)
-          .join('');
-        setPlayerRole(interaction.user.id, newRoles); // Update the player's role in the database
-        roles = ', current role: ' + getPlayerRolesFormatted(newRoles);
-      }
-      interaction.update({
-        content: activePrefix + 'Remove Mode' + roles,
-        components: [
-          new ActionRowBuilder<ButtonBuilder>().addComponents(
-            createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_ADD + activeSuffix, '➕'),
-            createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_REPLACE + activeSuffix, '🔄'),
-            createEditRoleButtonEnabled(interaction, CommandIds.ROLE_EDIT_REMOVE + activeSuffix, '➖')
-          ),
-          row2,
-        ],
-      });
+      showRemoveButtons(interaction, player, role, roles, activePrefix, row2, activeSuffix);
       break;
     case CommandIds.ROLE_EDIT_REPLACE:
-      if (role) {
-        setPlayerRole(interaction.user.id, role);
-        roles = ', current role: ' + getPlayerRolesFormatted(role);
-      }
-      interaction.update({
-        content: activePrefix + 'Replace Mode' + roles,
-        components: [
-          new ActionRowBuilder<ButtonBuilder>().addComponents(
-            createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_ADD + activeSuffix, '➕'),
-            createEditRoleButtonEnabled(interaction, CommandIds.ROLE_EDIT_REPLACE + activeSuffix, '🔄'),
-            createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_REMOVE + activeSuffix, '➖')
-          ),
-          row2,
-        ],
-      });
+      showReplaceButtons(interaction, player, role, roles, activePrefix, row2, activeSuffix);
       break;
   }
   if (setActive === true && player.active === false && role !== undefined) {
@@ -943,6 +894,91 @@ export async function handleEditRoleButtonCommand(
       )}\``
     );
   }
+}
+
+function showAddButtons(
+  interaction: ButtonInteraction<CacheType>,
+  player: Player,
+  role: string | undefined,
+  roles: string,
+  activePrefix: string,
+  row2: ActionRowBuilder<ButtonBuilder>,
+  activeSuffix: string
+) {
+  if (role && !player.role.includes(role)) {
+    // If the role is specified and does not exist in the player's roles, add it
+    const newRoles = player.role + role; // Append the new role
+    setPlayerRole(interaction.user.id, newRoles); // Update the player's role in the database
+    roles = ', current role: ' + getPlayerRolesFormatted(newRoles);
+  }
+  interaction.update({
+    content: activePrefix + 'Add Mode' + roles,
+    components: [
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        createEditRoleButtonEnabled(interaction, CommandIds.ROLE_EDIT_ADD + activeSuffix, '➕'),
+        createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_REPLACE + activeSuffix, '🔄'),
+        createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_REMOVE + activeSuffix, '➖')
+      ),
+      row2,
+    ],
+  });
+}
+
+function showRemoveButtons(
+  interaction: ButtonInteraction<CacheType>,
+  player: Player,
+  role: string | undefined,
+  roles: string,
+  activePrefix: string,
+  row2: ActionRowBuilder<ButtonBuilder>,
+  activeSuffix: string
+) {
+  if (role && player.role.includes(role)) {
+    // If the role is specified and exists in the player's roles, remove it
+    const newRoles = player.role
+      .split('')
+      .filter(r => r !== role)
+      .join('');
+    setPlayerRole(interaction.user.id, newRoles); // Update the player's role in the database
+    roles = ', current role: ' + getPlayerRolesFormatted(newRoles);
+  }
+  interaction.update({
+    content: activePrefix + 'Remove Mode' + roles,
+    components: [
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_ADD + activeSuffix, '➕'),
+        createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_REPLACE + activeSuffix, '🔄'),
+        createEditRoleButtonEnabled(interaction, CommandIds.ROLE_EDIT_REMOVE + activeSuffix, '➖')
+      ),
+      row2,
+    ],
+  });
+}
+
+function showReplaceButtons(
+  interaction: ButtonInteraction<CacheType>,
+  player: Player,
+  role: string | undefined,
+  roles: string,
+  activePrefix: string,
+  row2: ActionRowBuilder<ButtonBuilder>,
+  activeSuffix: string
+) {
+  if (role) {
+    setPlayerRole(interaction.user.id, role);
+    roles = ', current role: ' + getPlayerRolesFormatted(role);
+  }
+  interaction.update({
+    content: activePrefix + 'Replace Mode' + roles,
+    components: [
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_ADD + activeSuffix, '➕'),
+        createEditRoleButtonEnabled(interaction, CommandIds.ROLE_EDIT_REPLACE + activeSuffix, '🔄'),
+        createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_REMOVE + activeSuffix, '➖')
+      ),
+      row2,
+    ],
+  });
 }
 
 /**
