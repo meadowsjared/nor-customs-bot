@@ -179,44 +179,46 @@ export async function handleMoveToLobbyCommand(
 
   // Initial update after deferring, showing progress
   await interaction.editReply({
-    content: `Moving ${totalPlayers} players to the lobby channel: \`${lobby.channelName}\`... (0/${totalPlayers} moved)`,
+    content: `Moving ${totalPlayers} players to the lobby channel: <@${lobby.channelId}>... (0/${totalPlayers} moved)`,
   });
 
+  /** Array to store players that failed to move */
+  const failedToMove: Player[] = [];
   const movePromises = players.map(async player => {
     const member = interaction.guild?.members.cache.get(player.discordId);
     if (member?.voice) {
       try {
         await member.voice.setChannel(lobbyChannel);
         numberMoved++;
-        await interaction.editReply({
-          content: `Moving ${totalPlayers} players to the lobby channel: \`${lobby.channelName}\`... (${numberMoved}/${totalPlayers} moved)`,
-        });
       } catch (err) {
-        await interaction.editReply({
-          content: `Moving ${totalPlayers} players to the lobby channel: \`${lobby.channelName}\`... (${numberMoved}/${totalPlayers} moved)`,
-        });
+        failedToMove.push(player);
         if (err instanceof Error) {
           console.error(`Failed to move ${member?.displayName || player.discordId} to lobby:`, err.message);
         } else {
           console.error(`Failed to move ${member?.displayName || player.discordId} to lobby:`, err);
         }
-        await interaction.followUp({
-          content: `Failed to move ${member?.displayName || player.discordId} to lobby: \`${lobby.channelName}\``,
+      } finally {
+        await interaction.editReply({
+          content: `Moving ${totalPlayers} players to the lobby channel: <#${lobby.channelId}>... (${numberMoved}/${totalPlayers} moved)`,
         });
       }
+    } else {
+      failedToMove.push(player);
     }
   });
 
   await Promise.all(movePromises); // Wait for all moves (and their associated edits) to complete
   // Final update
   await interaction.editReply({
-    content: `Successfully moved ${numberMoved} of ${totalPlayers} players to the lobby channel: \`${lobby.channelName}\``,
+    content: `Successfully moved ${numberMoved} of ${totalPlayers} players to the lobby channel: <#${lobby.channelId}>`,
   });
 
   // If some failed, you might want to send a followUp or log
   if (numberMoved < totalPlayers) {
     await interaction.followUp({
-      content: `Note: Failed to move ${totalPlayers - numberMoved} players. Check console for details.`,
+      content: `Note: Failed to move ${totalPlayers - numberMoved} players:\n${failedToMove
+        .map(player => `<@${player.discordId}>: ${player.usernames.hots}`)
+        .join('\n')}`,
       ephemeral: true,
     });
   }
@@ -241,16 +243,15 @@ export async function handleMoveToTeamsCommand(
     });
     return;
   }
-  interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const teams = getTeams();
   let numberMoved = 0;
-  // array for storing the ids of all the players that it failed to move:
-  const failedToMove: string[] = [];
+  /** array for storing the ids of all the players that it failed to move: */
+  const failedToMove: Player[] = [];
   for (const [index, channel] of result.entries()) {
     // result.forEach((channel, index) => {
     const teamChannel = interaction.guild?.channels.cache.get(channel.channelId);
     if (!teamChannel || !(teamChannel instanceof VoiceChannel)) {
-      interaction.editReply({
+      interaction.reply({
         content: `Team channel \`${channel.channelName}\` is not a valid voice channel.`,
       });
       return;
@@ -259,9 +260,12 @@ export async function handleMoveToTeamsCommand(
     numberMoved += await moveTeamMembersToChannel(interaction, team, teamChannel, failedToMove);
     // });
   }
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   if (failedToMove.length !== 0) {
     await interaction.editReply({
-      content: `Successfully moved ${numberMoved} players to their respective team channels\nWARNING: **${
+      content: `Moved ${numberMoved} players to their respective team channels: ${result
+        .map(c => `<#${c.channelId}>`)
+        .join(', ')}\nWARNING: **${
         teams.team1.length + teams.team2.length - numberMoved
       } players could not be moved.**`,
     });
@@ -275,7 +279,7 @@ export async function handleMoveToTeamsCommand(
   if (failedToMove.length > 0) {
     await interaction.followUp({
       content: `Failed to move the following players to their team channels:\n${failedToMove
-        .map(id => `<@${id}>`)
+        .map(player => `<@${player.discordId}>: ${player.usernames.hots}`)
         .join('\n')}`,
       flags: MessageFlags.Ephemeral,
     });
@@ -286,7 +290,7 @@ async function moveTeamMembersToChannel(
   interaction: Interaction,
   team: Player[],
   channel: VoiceChannel,
-  failedToMove: string[]
+  failedToMove: Player[]
 ) {
   let numberMoved = 0;
   const movePromises = team.map(async player => {
@@ -297,12 +301,12 @@ async function moveTeamMembersToChannel(
         .then(() => {
           numberMoved++;
         })
-        .catch(err => {
-          failedToMove.push(player.discordId);
+        .catch(_err => {
+          failedToMove.push(player);
           console.error(`\nMember ${player.discordId}, ${player.usernames.discordDisplayName}, is not on discord:`);
         });
     } else {
-      failedToMove.push(player.discordId);
+      failedToMove.push(player);
       console.warn(
         `Member ${player.discordId}, ${player.usernames.discordDisplayName} is not in a voice channel or does not exist.`
       );
@@ -330,7 +334,7 @@ export async function handleSetChannelTeamIdCommand(
   }
   saveChannel(teamId, channel);
   await interaction.reply({
-    content: `${teamId} channel set to \`${channel.name}\`.`,
+    content: `\`${teamId}\` channel set to <#${channel.id}>.`,
     flags: MessageFlags.Ephemeral,
   });
 }
@@ -354,7 +358,7 @@ export async function handleSetLobbyChannelCommand(
   saveChannel('lobby', channel);
   // This command is not implemented yet
   await interaction.reply({
-    content: `lobby channel set to \`${channel.name}\``,
+    content: `\`lobby\` channel set to <#${channel.id}>`,
     flags: MessageFlags.Ephemeral,
   });
 }
@@ -1132,7 +1136,7 @@ export async function handleMoveCommand(interaction: ChatInputCommandInteraction
       console.error('Error moving member:', error);
       console.log('resuming...');
       interaction.reply({
-        content: `Failed to move ${member.user.username} to ${channel.name}.`,
+        content: `Failed to move <@${member.user.id}> to <@${channel.id}>`,
         flags: MessageFlags.Ephemeral,
       });
       return;
