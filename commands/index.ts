@@ -164,25 +164,62 @@ export async function handleMoveToLobbyCommand(
     return;
   }
   const players = getActivePlayers();
+  if (players.length === 0) {
+    await interaction.reply({
+      content: 'No active players to move.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  // 1. Immediately defer the reply
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   let numberMoved = 0;
+  const totalPlayers = players.length;
+
+  // Initial update after deferring, showing progress
+  await interaction.editReply({
+    content: `Moving ${totalPlayers} players to the lobby channel: \`${lobby.channelName}\`... (0/${totalPlayers} moved)`,
+  });
+
   const movePromises = players.map(async player => {
     const member = interaction.guild?.members.cache.get(player.discordId);
     if (member?.voice) {
-      await member.voice
-        .setChannel(lobbyChannel)
-        .then(() => {
-          numberMoved++;
-        })
-        .catch(err => {
-          console.error(`Failed to move ${member.displayName} to lobby:`, err);
+      try {
+        await member.voice.setChannel(lobbyChannel);
+        numberMoved++;
+        await interaction.editReply({
+          content: `Moving ${totalPlayers} players to the lobby channel: \`${lobby.channelName}\`... (${numberMoved}/${totalPlayers} moved)`,
         });
+      } catch (err) {
+        await interaction.editReply({
+          content: `Moving ${totalPlayers} players to the lobby channel: \`${lobby.channelName}\`... (${numberMoved}/${totalPlayers} moved)`,
+        });
+        if (err instanceof Error) {
+          console.error(`Failed to move ${member?.displayName || player.discordId} to lobby:`, err.message);
+        } else {
+          console.error(`Failed to move ${member?.displayName || player.discordId} to lobby:`, err);
+        }
+        await interaction.followUp({
+          content: `Failed to move ${member?.displayName || player.discordId} to lobby: \`${lobby.channelName}\``,
+        });
+      }
     }
   });
-  await Promise.all(movePromises);
-  await interaction.reply({
-    content: `Moved all ${numberMoved} players to the lobby channel: \`${lobby.channelName}\``,
-    flags: MessageFlags.Ephemeral,
+
+  await Promise.all(movePromises); // Wait for all moves (and their associated edits) to complete
+  // Final update
+  await interaction.editReply({
+    content: `Successfully moved ${numberMoved} of ${totalPlayers} players to the lobby channel: \`${lobby.channelName}\``,
   });
+
+  // If some failed, you might want to send a followUp or log
+  if (numberMoved < totalPlayers) {
+    await interaction.followUp({
+      content: `Note: Failed to move ${totalPlayers - numberMoved} players. Check console for details.`,
+      ephemeral: true,
+    });
+  }
 }
 
 export async function handleMoveToTeamsCommand(
@@ -204,6 +241,7 @@ export async function handleMoveToTeamsCommand(
     });
     return;
   }
+  interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const teams = getTeams();
   let numberMoved = 0;
   // array for storing the ids of all the players that it failed to move:
@@ -212,9 +250,8 @@ export async function handleMoveToTeamsCommand(
     // result.forEach((channel, index) => {
     const teamChannel = interaction.guild?.channels.cache.get(channel.channelId);
     if (!teamChannel || !(teamChannel instanceof VoiceChannel)) {
-      interaction.reply({
+      interaction.editReply({
         content: `Team channel \`${channel.channelName}\` is not a valid voice channel.`,
-        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -223,18 +260,16 @@ export async function handleMoveToTeamsCommand(
     // });
   }
   if (failedToMove.length !== 0) {
-    await interaction.reply({
-      content: `Moved ${numberMoved} players to their respective team channels\nWARNING: **${
+    await interaction.editReply({
+      content: `Successfully moved ${numberMoved} players to their respective team channels\nWARNING: **${
         teams.team1.length + teams.team2.length - numberMoved
       } players could not be moved.**`,
-      flags: MessageFlags.Ephemeral,
     });
   } else {
-    await interaction.reply({
-      content: `Moved all ${numberMoved} players to their respective team channels: \`${result
+    await interaction.editReply({
+      content: `Successfully moved all ${numberMoved} players to their respective team channels: \`${result
         .map(c => c.channelName)
         .join('`, `')}\``,
-      flags: MessageFlags.Ephemeral,
     });
   }
   if (failedToMove.length > 0) {
