@@ -164,16 +164,23 @@ export async function handleMoveToLobbyCommand(
     return;
   }
   const players = getActivePlayers();
-  players.forEach(player => {
+  let numberMoved = 0;
+  const movePromises = players.map(async player => {
     const member = interaction.guild?.members.cache.get(player.discordId);
     if (member?.voice) {
-      member.voice.setChannel(lobbyChannel).catch(err => {
-        console.error(`Failed to move ${member.displayName} to lobby:`, err);
-      });
+      await member.voice
+        .setChannel(lobbyChannel)
+        .then(() => {
+          numberMoved++;
+        })
+        .catch(err => {
+          console.error(`Failed to move ${member.displayName} to lobby:`, err);
+        });
     }
   });
+  await Promise.all(movePromises);
   await interaction.reply({
-    content: `Moved all ${players.length} players to the lobby channel: \`${lobby.channelName}\``,
+    content: `Moved all ${numberMoved} players to the lobby channel: \`${lobby.channelName}\``,
     flags: MessageFlags.Ephemeral,
   });
 }
@@ -198,6 +205,9 @@ export async function handleMoveToTeamsCommand(
     return;
   }
   const teams = getTeams();
+  let numberMoved = 0;
+  // array for storing the ids of all the players that it failed to move:
+  const failedToMove: string[] = [];
   for (const [index, channel] of result.entries()) {
     // result.forEach((channel, index) => {
     const teamChannel = interaction.guild?.channels.cache.get(channel.channelId);
@@ -209,26 +219,62 @@ export async function handleMoveToTeamsCommand(
       return;
     }
     const team = index === 0 ? teams.team1 : teams.team2; // team1 for index 0, team2 for index 1
-    moveTeamMembersToChannel(interaction, team, teamChannel);
+    numberMoved += await moveTeamMembersToChannel(interaction, team, teamChannel, failedToMove);
     // });
   }
-  await interaction.reply({
-    content: `Moved all ${teams.team1.length + teams.team2.length} players to their respective team channels: \`${result
-      .map(c => c.channelName)
-      .join('`, `')}\``,
-    flags: MessageFlags.Ephemeral,
-  });
+  if (failedToMove.length !== 0) {
+    await interaction.reply({
+      content: `Moved ${numberMoved} players to their respective team channels\nWARNING: **${
+        teams.team1.length + teams.team2.length - numberMoved
+      } players could not be moved.**`,
+      flags: MessageFlags.Ephemeral,
+    });
+  } else {
+    await interaction.reply({
+      content: `Moved all ${numberMoved} players to their respective team channels: \`${result
+        .map(c => c.channelName)
+        .join('`, `')}\``,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+  if (failedToMove.length > 0) {
+    await interaction.followUp({
+      content: `Failed to move the following players to their team channels:\n${failedToMove
+        .map(id => `<@${id}>`)
+        .join('\n')}`,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
 }
 
-function moveTeamMembersToChannel(interaction: Interaction, team: Player[], channel: VoiceChannel) {
-  team.forEach(player => {
+async function moveTeamMembersToChannel(
+  interaction: Interaction,
+  team: Player[],
+  channel: VoiceChannel,
+  failedToMove: string[]
+) {
+  let numberMoved = 0;
+  const movePromises = team.map(async player => {
     const member = interaction.guild?.members.cache.get(player.discordId);
     if (member?.voice) {
-      member.voice.setChannel(channel).catch(err => {
-        console.error(`Failed to move ${member.displayName} to team channel:`, err);
-      });
+      await member.voice
+        .setChannel(channel)
+        .then(() => {
+          numberMoved++;
+        })
+        .catch(err => {
+          failedToMove.push(player.discordId);
+          console.error(`\nMember ${player.discordId}, ${player.usernames.discordDisplayName}, is not on discord:`);
+        });
+    } else {
+      failedToMove.push(player.discordId);
+      console.warn(
+        `Member ${player.discordId}, ${player.usernames.discordDisplayName} is not in a voice channel or does not exist.`
+      );
     }
   });
+  await Promise.all(movePromises);
+  return numberMoved;
 }
 
 export async function handleSetChannelTeamIdCommand(
