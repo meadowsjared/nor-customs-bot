@@ -905,11 +905,13 @@ export async function handleEditRoleButtonCommand(
 
   const row2 = getEditRoleRow(interaction, action, setActive);
   // Handle the role editing logic based on the action
-  let setActiveNext = setActive;
+  let setActiveNext: boolean;
   if (setActive === true && player.active === false && role !== undefined) {
     // If the action is set to active, we need to handle it differently
     setPlayerActive(interaction.user.id, true); // Set the player as active
     setActiveNext = false; // Reset the active state for the next interaction
+  } else {
+    setActiveNext = setActive; // Keep the active state as is
   }
   const activeSuffix = setActiveNext ? '_' + CommandIds.ACTIVE : '';
   const activePrefix = setActive ? 'You must click a role to join the lobby\n' : ''; // Default content for the reply
