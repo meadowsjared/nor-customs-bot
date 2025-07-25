@@ -67,6 +67,9 @@ export async function handleNewGameCommand(
   if (observers) playerListWithLabels.push(`**Observers**:\n${observers}`);
   if (team1) playerListWithLabels.push(`**Team 1**:\n${team1}`);
   if (team2) playerListWithLabels.push(`**💩 Filthy Team 2**:\n${team2}`);
+  if (playerListWithLabels.length === 0) {
+    playerListWithLabels.push(`**No Players**`);
+  }
   const playerListWithLabelsString = playerListWithLabels.join('\n');
 
   markAllPlayersInactive();
