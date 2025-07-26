@@ -279,7 +279,6 @@ function handleDefaultCommand(
     parts.length === 2 &&
     [CommandIds.ROLE_EDIT_ADD, CommandIds.ROLE_EDIT_REPLACE, CommandIds.ROLE_EDIT_REMOVE].includes(parts[0])
   ) {
-    // console.log('Handling role edit button command with parts 2:', parts);
     handleEditRoleButtonCommand(interaction, parts[1], parts[0]);
     return;
   }
@@ -306,12 +305,21 @@ function handleDefaultCommand(
     handleEditRoleButtonCommand(interaction, parts[2], parts[0], parts[3], parts[1] === CommandIds.ACTIVE);
     return;
   }
+  handleUnknownCommand(interaction, commandName);
+}
+
+function handleUnknownCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+  commandName: string
+) {
   interaction.reply({
     content: `Unknown command: ${commandName}. Please use a valid command.`,
     flags: MessageFlags.Ephemeral,
   });
-  // console.log('invalid command:', parts);
-  // return; // Ignore unknown commands
+  // if debugging is enabled, log the invalid command
+  if (process.env.DEBUG === 'true') {
+    console.log('invalid command:', commandName);
+  }
 }
 
 client.login(process.env.DISCORD_TOKEN);
