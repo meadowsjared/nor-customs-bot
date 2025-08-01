@@ -483,19 +483,18 @@ export async function handlePlayersCommand(
         return `@${user}: (${usernames.hots}) \`${getPlayerRolesFormatted(role)}\``;
       })
       .join('\n') || 'No players in the lobby';
-  const rawPlayerList = Array.from(players.entries())
-    .filter(([_, player]) => player.active)
-    .map(([_, { usernames, role }]) => `${usernames.hots} ${role}`);
+  const rawPlayerList = Array.from(players.entries()).filter(([_, player]) => player.active);
+  const lobbyPlayerList = rawPlayerList.map(([_, { usernames, role }]) => `${usernames.hots} ${role}`);
   await interaction.reply({
-    content: `Players in the lobby: **${rawPlayerList.length}**\n${playerList}`,
+    content: `Players in the lobby: **${lobbyPlayerList.length}**\n${playerList}`,
     flags: onlyRaw ? MessageFlags.Ephemeral : undefined,
   });
-  if (rawPlayerList.length > 0) {
+  if (lobbyPlayerList.length > 0) {
     // show a public message in the channel, if there are players in the lobby
     const channel = interaction.guild?.channels.cache.find(ch => ch.name === botChannelName);
     if (channel?.isTextBased()) {
       interaction.followUp({
-        content: `\`${rawPlayerList.join(',') || 'No players in the lobby'}\``,
+        content: `\`${lobbyPlayerList.join(',') || 'No players in the lobby'}\``,
         flags: MessageFlags.Ephemeral,
       });
     }
