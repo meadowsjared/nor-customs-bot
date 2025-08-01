@@ -55,14 +55,14 @@ function generateLobbyStatusMessage(pPreviousPlayersList?: string): string {
   const activePlayers = getActivePlayers();
   const lobbyPlayers = activePlayers
     .filter(p => p?.team === undefined)
-    .map((p, index) => `${index + 1}: <@${p.discordId}>`)
-    .join('\n');
+    .map((p, index) => `${index + 1}: <@${p.discordId}>`);
+  const lobbyMessage = lobbyPlayers.join('\n');
 
   // combine the lobbyPlayers and previousPlayersList, into one string, labeling each section, but skip a section if there are no players in that section
   const playerListWithLabels = [];
   if (previousPlayersList) playerListWithLabels.push(`**Previous Players**:\n${previousPlayersList}`);
   playerListWithLabels.push(
-    `**Players in the lobby**: (${lobbyPlayers.length})\n${lobbyPlayers || 'The lobby is empty.'}`
+    `**Players in the lobby**: (${lobbyPlayers.length})\n${lobbyMessage || 'The lobby is empty.'}`
   );
   if (playerListWithLabels.length === 0) {
     playerListWithLabels.push(`**No Active Players**`);
