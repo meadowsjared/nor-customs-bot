@@ -4,7 +4,7 @@ import Database from 'better-sqlite3';
 
 const db = new Database('./store/nor_customs.db');
 
-// Ensure the players table exists
+// Ensure the channels table exists
 db.exec(`
   CREATE TABLE IF NOT EXISTS channels (
     channelType TEXT PRIMARY KEY,
@@ -12,6 +12,18 @@ db.exec(`
     channelName TEXT NOT NULL
   )
 `);
+
+// Ensure the lobby_messages table exists for storing lobby announcement message IDs
+// and reset the previous messages
+db.exec(`
+  CREATE TABLE IF NOT EXISTS lobby_messages (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    messageId TEXT DEFAULT '',
+    channelId TEXT DEFAULT '',
+    previousPlayersList TEXT DEFAULT ''
+  );
+`);
+//DELETE FROM lobby_messages WHERE id = 1;
 
 /**
  * Saves a Discord VoiceChannel to the local store.
@@ -50,6 +62,36 @@ export function getChannels(channelTypes: channelTypes[]): ChannelLocal[] | unde
     channelId: row.channelId,
     channelName: row.channelName,
   }));
+}
+
+/**
+ * Saves the lobby announcement message ID and channel ID
+ * @param messageId The Discord message ID of the lobby announcement
+ * @param channelId The Discord channel ID where the announcement was sent
+ */
+export function saveLobbyMessage(messageId: string, channelId: string, previousPlayersList: string): void {
+  const stmt = db.prepare(`
+    INSERT INTO lobby_messages (id, messageId, channelId, previousPlayersList)
+    VALUES (1, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      messageId=excluded.messageId,
+      channelId=excluded.channelId,
+      previousPlayersList=excluded.previousPlayersList
+    WHERE id = 1
+  `);
+  stmt.run(messageId, channelId, previousPlayersList);
+}
+
+/**
+ * Retrieves the current lobby announcement message ID and channel ID
+ * @returns The message and channel IDs, or undefined if no announcement exists
+ */
+export function getLobbyMessage(): { messageId: string; channelId: string; previousPlayersList: string } | undefined {
+  const stmt = db.prepare<[], { messageId: string; channelId: string; previousPlayersList: string }>(`
+    SELECT messageId, channelId, previousPlayersList FROM lobby_messages WHERE id = 1
+  `);
+  const row = stmt.get();
+  return row || undefined;
 }
 
 /**

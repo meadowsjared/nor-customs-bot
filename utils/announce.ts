@@ -16,6 +16,8 @@ type InteractionReplyOptionsFlags = MessageCreateOptions['flags'];
  * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
  * @param message The message to announce in the bot channel.
  * @param flags Optional flags for the message, such as `EPHEMERAL` to make it visible only to the user.
+ * @param components Optional components (buttons) to include with the message.
+ * @returns The sent message object, or undefined if channel not found
  */
 export async function announce(
   interaction:
@@ -28,10 +30,11 @@ export async function announce(
 ) {
   const channel = interaction.guild?.channels.cache.find(ch => ch.name === botChannelName);
   if (channel?.isTextBased()) {
-    await channel.send({
+    return await channel.send({
       content: message,
       flags,
       components,
     });
   }
+  return undefined;
 }

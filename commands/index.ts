@@ -43,43 +43,91 @@ import {
   setPlayerRole,
   setTeams,
 } from '../store/player';
-import { saveChannel, getChannels } from '../store/channels';
+import { saveChannel, getChannels, saveLobbyMessage, getLobbyMessage } from '../store/channels';
 import { DiscordUserNames, Player } from '../types/player';
+
+/**
+ * Generates the current lobby status message with active players
+ * @returns The formatted lobby status message
+ */
+function generateLobbyStatusMessage(pPreviousPlayersList?: string): string {
+  const previousPlayersList = pPreviousPlayersList ?? getLobbyMessage()?.previousPlayersList ?? '';
+  const activePlayers = getActivePlayers();
+  const lobbyPlayers = activePlayers
+    .filter(p => p?.team === undefined)
+    .map((p, index) => `${index + 1}: <@${p.discordId}>`)
+    .join('\n');
+
+  // combine the lobbyPlayers and previousPlayersList, into one string, labeling each section, but skip a section if there are no players in that section
+  const playerListWithLabels = [];
+  if (previousPlayersList) playerListWithLabels.push(`**Previous Players**:\n${previousPlayersList}`);
+  playerListWithLabels.push(
+    `**Players in the lobby**: (${lobbyPlayers.length})\n${lobbyPlayers || 'The lobby is empty.'}`
+  );
+  if (playerListWithLabels.length === 0) {
+    playerListWithLabels.push(`**No Active Players**`);
+  }
+  const playerListWithLabelsString = playerListWithLabels.join('\n');
+
+  return `${playerListWithLabelsString}\nA new game has started! All players have been marked as inactive.\nPlease click below if you are going to play.`;
+}
+
+/** generates the list of previous players */
+function generatePreviousPlayersList(): string {
+  const previousPlayers = getActivePlayers().map(p => `<@${p.discordId}>`);
+  if (previousPlayers.length === 0) {
+    return '**No Previous Players**';
+  }
+  return `${previousPlayers.join(' ')}`;
+}
+
+/**
+ * Updates the lobby announcement message with current player status
+ * @param interaction The interaction object for guild access
+ */
+async function updateLobbyMessage(interaction: chatOrButtonOrModal) {
+  const lobbyMessage = getLobbyMessage();
+  if (!lobbyMessage) {
+    return; // No lobby message to update
+  }
+
+  try {
+    const channel = interaction.guild?.channels.cache.get(lobbyMessage.channelId);
+    if (channel?.isTextBased()) {
+      const message = await channel.messages.fetch(lobbyMessage.messageId);
+      const updatedContent = generateLobbyStatusMessage();
+      await message.edit({
+        content: updatedContent,
+        components: [new ActionRowBuilder<ButtonBuilder>().addComponents(imPlayingBtn)],
+      });
+    }
+  } catch (error) {
+    console.error('Failed to update lobby message:', error);
+    // If the message doesn't exist anymore, clear the stored reference
+  }
+}
 
 export async function handleNewGameCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
 ) {
-  const activePlayers = getActivePlayers();
-  const observers = activePlayers
-    .filter(p => p?.team === undefined)
-    .map(p => `<@${p.discordId}>`)
-    .join('');
-  const team1 = activePlayers
-    .filter(p => p.team === 1)
-    .map(p => `<@${p.discordId}>`)
-    .join('');
-  const team2 = activePlayers
-    .filter(p => p.team === 2)
-    .map(p => `<@${p.discordId}>`)
-    .join('');
   // combine the observers, team1, and team2, into one string, labeling each section, but skip a section if there are no players in that section
-  const playerListWithLabels = [];
-  if (observers) playerListWithLabels.push(`**Observers**:\n${observers}`);
-  if (team1) playerListWithLabels.push(`**Team 1**:\n${team1}`);
-  if (team2) playerListWithLabels.push(`**💩 Filthy Team 2**:\n${team2}`);
-  if (playerListWithLabels.length === 0) {
-    playerListWithLabels.push(`**No Players**`);
-  }
-  const playerListWithLabelsString = playerListWithLabels.join('\n');
 
+  const previousPlayersList = generatePreviousPlayersList();
   markAllPlayersInactive();
+
+  // Generate the initial lobby status message
+  const lobbyStatusMessage = generateLobbyStatusMessage(previousPlayersList);
+
   // announce in the channel that a new game has started and all players have been marked as inactive, so they need to hit the button if they are going to play
-  await announce(
-    interaction,
-    `${playerListWithLabelsString}\nA new game has started! All players have been marked as inactive.\nPlease click below if you are going to play.`,
-    undefined,
-    [new ActionRowBuilder<ButtonBuilder>().addComponents(imPlayingBtn)]
-  );
+  const sentMessage = await announce(interaction, lobbyStatusMessage, undefined, [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(imPlayingBtn),
+  ]);
+
+  // Store the message ID so we can update it later
+  if (sentMessage) {
+    saveLobbyMessage(sentMessage.id, sentMessage.channelId, previousPlayersList);
+  }
+
   interaction.reply({
     content: 'Game announced!', // empty content to avoid sending a message in the channel, since we already announced it'
     flags: MessageFlags.Ephemeral,
@@ -464,8 +512,8 @@ export async function handleLeaveCommand(
 ) {
   const player = markPlayerInactive(interaction.user.id); // Mark player as inactive in the database
   if (player) {
-    // announce in the channel who has left
-    await announce(interaction, `<@${interaction.user.id}> (${player.usernames.hots}) has left the lobby`);
+    // Update the lobby message instead of announcing
+    await updateLobbyMessage(interaction);
     await interaction.reply({
       content: `You left the lobby`,
       flags: MessageFlags.Ephemeral,
@@ -480,6 +528,7 @@ export async function handleClearCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
 ) {
   markAllPlayersInactive(); // Mark all players as inactive in the database
+  await updateLobbyMessage(interaction); // Update the lobby message to show no players
   await interaction.reply({
     content: 'All players have been removed from the lobby.',
     flags: MessageFlags.Ephemeral,
@@ -498,13 +547,8 @@ export async function handleRejoinCommand(
   const result = markPlayerActive(interaction.user.id); // Mark player as active in the database
   if (result.player) {
     if (result.alreadyActive === false) {
-      // announce in the channel who has rejoined
-      await announce(
-        interaction,
-        `<@${interaction.user.id}> (${result.player.usernames.hots}) has ${
-          newUser ? 'joined' : 'rejoined'
-        } the lobby as \`${getPlayerRolesFormatted(result.player.role)}\``
-      );
+      // Update the lobby message instead of announcing
+      await updateLobbyMessage(interaction);
     }
     const joinVerb = newUser ? 'joined' : 'rejoined';
     const content =
@@ -606,10 +650,9 @@ export async function handleJoinCommand(
  * @param skipReply (optional) Whether to skip the reply and just follow up with the components.
  */
 async function handleUserJoined(interaction: chatOrButtonOrModal, username: string, role: string, skipReply = false) {
-  await announce(
-    interaction,
-    `<@${interaction.user.id}> (${username}) has joined the lobby as \`${getPlayerRolesFormatted(role)}\``
-  );
+  // Update the lobby message instead of announcing
+  await updateLobbyMessage(interaction);
+
   const components = [new ActionRowBuilder<ButtonBuilder>().addComponents(leaveBtn, nameBtn, roleBtn)];
   if (skipReply) {
     await interaction.followUp({
@@ -1377,14 +1420,7 @@ export async function handleAdminSetActiveCommand(
         ),
       ],
     });
-    if (isActive) {
-      await announce(
-        interaction,
-        `<@${id}> (${player.usernames.hots}) has joined the lobby as \`${getPlayerRolesFormatted(player.role)}\``
-      );
-    } else {
-      await announce(interaction, `<@${id}> (${player.usernames.hots}) has left the lobby`);
-    }
+    await updateLobbyMessage(interaction);
   } else {
     interaction.reply({
       content: `${player.usernames.hots} is already ${isActive ? CommandIds.ACTIVE : CommandIds.INACTIVE}.`,
