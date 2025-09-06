@@ -282,19 +282,18 @@ export async function handleMoveToLobbyCommand(
 export async function handleMoveToTeamsCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
 ) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const result = getChannels(['team1', 'team2']);
   if (!result || result.length === 0) {
-    await interaction.reply({
+    await interaction.editReply({
       content: 'No team channels set. Please set team channels first using `/set_channel_team_id`.',
-      flags: MessageFlags.Ephemeral,
     });
     return;
   }
   if (result.length < 2) {
     // tell them which channel they need to set
-    await interaction.reply({
+    await interaction.editReply({
       content: `You need to set both team channels using \`/set_channel_team_id\`.\nCurrently, only one team channel is set: \`${result[0].channelName}\`.`,
-      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -306,7 +305,7 @@ export async function handleMoveToTeamsCommand(
     // result.forEach((channel, index) => {
     const teamChannel = interaction.guild?.channels.cache.get(channel.channelId);
     if (!teamChannel || !(teamChannel instanceof VoiceChannel)) {
-      interaction.reply({
+      interaction.editReply({
         content: `Team channel \`${channel.channelName}\` is not a valid voice channel.`,
       });
       return;
@@ -315,7 +314,6 @@ export async function handleMoveToTeamsCommand(
     numberMoved += await moveTeamMembersToChannel(interaction, team, teamChannel, failedToMove);
     // });
   }
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   if (failedToMove.length !== 0) {
     await interaction.editReply({
       content: `Moved ${numberMoved} players to their respective team channels: ${result
