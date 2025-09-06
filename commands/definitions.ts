@@ -6,6 +6,7 @@ import {
 } from 'discord.js';
 import { CommandIds, roleMap } from '../constants';
 
+const minimumAdminPermissions: bigint = PermissionsBitField.Flags.MoveMembers;
 export const slashCommands: ApplicationCommandDataResolvable[] = [
   {
     name: CommandIds.JOIN,
@@ -68,7 +69,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
   {
     name: CommandIds.DELETE_MESSAGE,
     description: 'Delete a message by ID',
-    defaultMemberPermissions: PermissionsBitField.Flags.MentionEveryone,
+    defaultMemberPermissions: minimumAdminPermissions,
     options: [
       {
         name: 'message_id',
@@ -81,12 +82,12 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
   {
     name: CommandIds.NEW_GAME,
     description: 'Start a new game',
-    defaultMemberPermissions: PermissionsBitField.Flags.MentionEveryone,
+    defaultMemberPermissions: minimumAdminPermissions,
   },
   {
     name: CommandIds.SET_TEAMS,
     description: 'Load teams data',
-    defaultMemberPermissions: PermissionsBitField.Flags.MentionEveryone,
+    defaultMemberPermissions: minimumAdminPermissions,
     options: [
       {
         name: 'teams_data',
@@ -99,7 +100,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
   {
     name: CommandIds.SET_CHANNEL_TEAM_ID,
     description: 'Set the channel team ID',
-    defaultMemberPermissions: PermissionsBitField.Flags.MentionEveryone,
+    defaultMemberPermissions: minimumAdminPermissions,
     options: [
       {
         name: 'team_number',
@@ -123,7 +124,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
   {
     name: CommandIds.SET_LOBBY_CHANNEL,
     description: 'Set the lobby channel',
-    defaultMemberPermissions: PermissionsBitField.Flags.MentionEveryone,
+    defaultMemberPermissions: minimumAdminPermissions,
     options: [
       {
         name: 'channel_id',
@@ -137,12 +138,12 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
   {
     name: CommandIds.MOVE_TO_TEAMS,
     description: 'Move players to teams',
-    defaultMemberPermissions: PermissionsBitField.Flags.MentionEveryone,
+    defaultMemberPermissions: minimumAdminPermissions,
   },
   {
     name: CommandIds.MOVE_TO_LOBBY,
     description: 'Gather players to the lobby',
-    defaultMemberPermissions: PermissionsBitField.Flags.MentionEveryone,
+    defaultMemberPermissions: minimumAdminPermissions,
   },
   {
     name: CommandIds.GUIDE,
@@ -155,7 +156,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
   {
     name: CommandIds.CLEAR,
     description: 'Clear the lobby and remove all players',
-    defaultMemberPermissions: PermissionsBitField.Flags.MentionEveryone,
+    defaultMemberPermissions: minimumAdminPermissions,
   },
   {
     name: CommandIds.PLAYERS,
@@ -164,7 +165,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
   {
     name: CommandIds.PLAYERS_RAW,
     description: 'List all players in the lobby with raw data',
-    defaultMemberPermissions: PermissionsBitField.Flags.MentionEveryone,
+    defaultMemberPermissions: minimumAdminPermissions,
   },
   {
     name: CommandIds.TWITCH,
@@ -191,7 +192,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
   {
     name: CommandIds.ADMIN,
     description: 'Admin commands to manage players.',
-    defaultMemberPermissions: PermissionsBitField.Flags.MentionEveryone,
+    defaultMemberPermissions: minimumAdminPermissions,
     options: [
       {
         name: CommandIds.NAME,
@@ -259,7 +260,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
   {
     name: CommandIds.MOVE,
     description: 'Move player',
-    defaultMemberPermissions: PermissionsBitField.Flags.MentionEveryone,
+    defaultMemberPermissions: minimumAdminPermissions,
     options: [
       {
         name: 'discord_member',
