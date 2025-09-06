@@ -58,22 +58,21 @@ function generateLobbyStatusMessage(pPreviousPlayersList?: string): string {
     .map(
       (p, index) =>
         `${index + 1}: @${p.usernames.discordDisplayName}: (${p.usernames.hots}) \`${getPlayerRolesFormatted(p.role)}\``
-    );
-  const lobbyMessage = lobbyPlayers.join('\n');
+    )
+    .join('\n');
 
   // combine the lobbyPlayers and previousPlayersList, into one string, labeling each section, but skip a section if there are no players in that section
   const playerListWithLabels = [];
-  playerListWithLabels.push(`A new game has started! All players have been marked as inactive.`);
   if (previousPlayersList) playerListWithLabels.push(`**Previous Players**:\n${previousPlayersList}`);
   playerListWithLabels.push(
-    `**Players in the lobby**: (${lobbyPlayers.length})\n${lobbyMessage || 'The lobby is empty.'}`
+    `**Players in the lobby**: (${lobbyPlayers.length})\n${lobbyPlayers || 'The lobby is empty.'}`
   );
   if (playerListWithLabels.length === 0) {
     playerListWithLabels.push(`**No Active Players**`);
   }
   const playerListWithLabelsString = playerListWithLabels.join('\n');
 
-  return `${playerListWithLabelsString}\n\nPlease click below if you are going to play.`;
+  return `${playerListWithLabelsString}\nA new game has started! All players have been marked as inactive.\nPlease click below if you are going to play.`;
 }
 
 /** generates the list of previous players */
