@@ -193,42 +193,38 @@ export async function handleLoadTeamsCommand(
 export async function handleMoveToLobbyCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
 ) {
+  // 1. Immediately defer the reply
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const result = getChannels(['lobby']);
   if (!result || result.length === 0) {
-    await interaction.reply({
+    await interaction.editReply({
       content: 'No lobby channel set. Please set a lobby channel first using `/set_lobby_channel`.',
-      flags: MessageFlags.Ephemeral,
     });
     return;
   }
   const lobby = getChannels(['lobby'])?.[0];
   if (!lobby) {
-    await interaction.reply({
+    await interaction.editReply({
       content: 'No lobby channel set. Please set a lobby channel first using `/set_lobby_channel`.',
-      flags: MessageFlags.Ephemeral,
     });
     return;
   }
   // move everybody to the lobby channel
   const lobbyChannel = interaction.guild?.channels.cache.get(lobby.channelId);
   if (!lobbyChannel || !(lobbyChannel instanceof VoiceChannel)) {
-    await interaction.reply({
+    await interaction.editReply({
       content: 'Lobby channel is not a valid voice channel.',
-      flags: MessageFlags.Ephemeral,
     });
     return;
   }
   const players = getActivePlayers();
   if (players.length === 0) {
-    await interaction.reply({
+    await interaction.editReply({
       content: 'No active players to move.',
-      flags: MessageFlags.Ephemeral,
     });
     return;
   }
 
-  // 1. Immediately defer the reply
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   let numberMoved = 0;
   const totalPlayers = players.length;
 
