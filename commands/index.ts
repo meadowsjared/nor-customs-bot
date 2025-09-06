@@ -71,7 +71,7 @@ function generateLobbyStatusMessage(pPreviousPlayersList?: string): string {
   }
   const playerListWithLabelsString = playerListWithLabels.join('\n');
 
-  return `A new game has started! All players have been marked as inactive.\n${playerListWithLabelsString}\n\nPlease click below if you are going to play.`;
+  return `A new game has started! All players have been marked as inactive.\n\n${playerListWithLabelsString}\n\nPlease click below if you are going to play.`;
 }
 
 /** generates the list of previous players */
