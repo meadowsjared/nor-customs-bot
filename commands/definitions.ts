@@ -7,6 +7,10 @@ import {
 import { CommandIds, roleMap } from '../constants';
 
 const minimumAdminPermissions: bigint = PermissionsBitField.Flags.MoveMembers;
+/**
+ * define the commands for the bot
+ * these will be registered as slash commands
+ */
 export const slashCommands: ApplicationCommandDataResolvable[] = [
   {
     name: CommandIds.JOIN,
@@ -14,13 +18,13 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     options: [
       {
         name: 'username',
-        type: 3, // STRING type
+        type: ApplicationCommandOptionType.String,
         description: 'Your hots username',
         required: true,
       },
       {
         name: CommandIds.ROLE,
-        type: 3, // STRING type
+        type: ApplicationCommandOptionType.String,
         description: 'Your role in the game',
         required: true,
         choices: Object.entries(roleMap).map(([key, label]) => ({
@@ -40,7 +44,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     options: [
       {
         name: 'username',
-        type: 3, // STRING type
+        type: ApplicationCommandOptionType.String,
         description: 'Your hots username',
         required: true,
       },
@@ -52,7 +56,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     options: [
       {
         name: CommandIds.ROLE,
-        type: 3, // STRING type
+        type: ApplicationCommandOptionType.String,
         description: 'Your role in the game',
         required: true,
         choices: Object.entries(roleMap).map(([key, label]) => ({
@@ -73,7 +77,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     options: [
       {
         name: 'message_id',
-        type: ApplicationCommandOptionType.String, // STRING type
+        type: ApplicationCommandOptionType.String,
         description: 'The ID of the message to delete',
         required: true,
       },
@@ -91,7 +95,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     options: [
       {
         name: 'teams_data',
-        type: 3, // STRING type
+        type: ApplicationCommandOptionType.String,
         description: 'The team data from the spreadsheet',
         required: true,
       },
@@ -104,7 +108,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     options: [
       {
         name: 'team_number',
-        type: 3, // STRING type
+        type: ApplicationCommandOptionType.String,
         description: 'The team number to set the channel for',
         required: true,
         choices: [
@@ -114,7 +118,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
       },
       {
         name: 'channel_id',
-        type: 7, // CHANNEL type
+        type: ApplicationCommandOptionType.Channel,
         description: 'The channel ID to set as the lobby channel',
         required: true,
         channelTypes: [ChannelType.GuildVoice],
@@ -128,7 +132,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     options: [
       {
         name: 'channel_id',
-        type: 7, // CHANNEL type
+        type: ApplicationCommandOptionType.Channel,
         description: 'The channel ID to set as the lobby channel',
         required: true,
         channelTypes: [ChannelType.GuildVoice],
@@ -177,13 +181,13 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     options: [
       {
         name: 'discord_member',
-        type: ApplicationCommandOptionType.User, // USER type
+        type: ApplicationCommandOptionType.User,
         description: 'The Discord ID of the player to lookup',
         required: true,
       },
       {
         name: 'hots_name',
-        type: ApplicationCommandOptionType.String, // STRING type
+        type: ApplicationCommandOptionType.String,
         description: 'The Heroes of the Storm username of the player',
         required: false,
       },
