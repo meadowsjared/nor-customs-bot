@@ -275,17 +275,11 @@ function handleDefaultCommand(
     handleAdminSetRoleCommand(interaction, parts[1], parts[2]);
     return;
   }
-  if (
-    parts.length === 2 &&
-    [CommandIds.ROLE_EDIT_ADD, CommandIds.ROLE_EDIT_REPLACE, CommandIds.ROLE_EDIT_REMOVE].includes(parts[0])
-  ) {
+  if (parts.length === 2 && isRoleCommandId(parts[0])) {
     handleEditRoleButtonCommand(interaction, parts[1], parts[0]);
     return;
   }
-  if (
-    parts.length === 3 &&
-    [CommandIds.ROLE_EDIT_ADD, CommandIds.ROLE_EDIT_REPLACE, CommandIds.ROLE_EDIT_REMOVE].includes(parts[0])
-  ) {
+  if (parts.length === 3 && isRoleCommandId(parts[0])) {
     if (parts[1] === CommandIds.ACTIVE) {
       // Handle role edit button commands with active state
       handleEditRoleButtonCommand(interaction, parts[2], parts[0], undefined, true);
@@ -296,16 +290,22 @@ function handleDefaultCommand(
     }
     return;
   }
-  if (
-    parts.length === 4 &&
-    [CommandIds.ROLE_EDIT_ADD, CommandIds.ROLE_EDIT_REPLACE, CommandIds.ROLE_EDIT_REMOVE].includes(parts[0])
-  ) {
+  if (parts.length === 4 && isRoleCommandId(parts[0])) {
     // Handle role edit button commands with user ID and active state
     console.log('Handling role edit button command with parts 4:', parts);
     handleEditRoleButtonCommand(interaction, parts[2], parts[0], parts[3], parts[1] === CommandIds.ACTIVE);
     return;
   }
   handleUnknownCommand(interaction, commandName);
+}
+
+function isRoleCommandId(commandName: string): commandName is CommandIds {
+  const commandAr = Object.values<string>([
+    CommandIds.ROLE_EDIT_ADD,
+    CommandIds.ROLE_EDIT_REPLACE,
+    CommandIds.ROLE_EDIT_REMOVE,
+  ]);
+  return commandAr.includes(commandName);
 }
 
 function handleUnknownCommand(
