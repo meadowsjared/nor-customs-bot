@@ -73,7 +73,7 @@ client.on('guildCreate', async guild => {
   console.log(`Joined new guild: ${guild.name} (ID: ${guild.id})`);
 });
 
-client.once('ready', async () => {
+client.once('clientReady', async () => {
   // Register command globally (or use guilds.cache.first().commands for per-guild)
   await client.application?.commands.set(slashCommands);
   console.log('Slash command /join registered!');
