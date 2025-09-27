@@ -560,8 +560,8 @@ export function clearTeams(): void {
 export function setTeams(team1Ids: string[], team2Ids: string[]): void {
   const transaction = db.transaction(() => {
     const clearStmt = db.prepare('UPDATE players SET team = NULL');
-    const stmts1 = db.prepare(`UPDATE players SET team = ? WHERE discordId IN ('${team1Ids.join("', '")}')`);
-    const stmts2 = db.prepare(`UPDATE players SET team = ? WHERE discordId IN ('${team2Ids.join("', '")}')`);
+    const stmts1 = db.prepare(`UPDATE players SET team = ? WHERE discord_id IN ('${team1Ids.join("', '")}')`);
+    const stmts2 = db.prepare(`UPDATE players SET team = ? WHERE discord_id IN ('${team2Ids.join("', '")}')`);
     clearStmt.run();
     stmts1.run(1);
     stmts2.run(2);

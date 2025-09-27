@@ -58,6 +58,7 @@ ALTER TABLE players RENAME COLUMN discordName TO discord_name;
 ALTER TABLE players RENAME COLUMN discordGlobalName TO discord_global_name;
 ALTER TABLE players RENAME COLUMN discordDisplayName TO discord_display_name;
 
+# Update the primary account for each user
 UPDATE hots_accounts SET is_primary = 1 WHERE discord_id IN (SELECT discord_id FROM hots_accounts GROUP BY discord_id HAVING COUNT(*) = 1);
 
 delete me from the database (for testing):
