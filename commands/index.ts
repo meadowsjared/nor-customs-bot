@@ -821,13 +821,18 @@ export async function handleAddHotsAccountCommand(interaction: ChatInputCommandI
   await handleAddHotsAccount(interaction, discordId, hotsBattleTag);
 }
 
-export async function handleAdminAddHotsAccountCommand(
-  interaction: ChatInputCommandInteraction<CacheType>,
-  discordId: string,
-  hotsBattleTag: string
-) {
+export async function handleAdminAddHotsAccountCommand(interaction: ChatInputCommandInteraction<CacheType>) {
+  const member = interaction.options.getMember(CommandIds.DISCORD_ID);
+  if (!member || 'user' in member === false) {
+    await safeReply(interaction, {
+      content: 'Please provide a valid Discord member to look up.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  const hotsBattleTag = interaction.options.getString(CommandIds.BATTLE_TAG, true);
   // check if the battleTag is valid, it should be in the format of Name#1234
-  await handleAddHotsAccount(interaction, discordId, hotsBattleTag);
+  await handleAddHotsAccount(interaction, member.user.id, hotsBattleTag);
 }
 
 /**
@@ -1212,7 +1217,7 @@ export async function handleLookupCommand(
     console.error('Interaction is not a command or button interaction');
     return;
   }
-  const member = interaction.options.getMember('discord_member');
+  const member = interaction.options.getMember(CommandIds.DISCORD_ID);
   if (!member || 'user' in member === false) {
     await safeReply(interaction, {
       content: 'Please provide a valid Discord member to look up.',
@@ -1266,7 +1271,7 @@ export async function handleLookupCommand(
  * @returns <void>
  */
 export async function handleMoveCommand(interaction: ChatInputCommandInteraction<CacheType>) {
-  const member = interaction.options.getMember('discord_member');
+  const member = interaction.options.getMember(CommandIds.DISCORD_ID);
   if (!member || 'user' in member === false) {
     await safeReply(interaction, {
       content: 'Please provide a valid Discord member to move.',
@@ -1367,7 +1372,7 @@ function getMemberFromInteraction(
   pId?: string
 ) {
   if (interaction.isChatInputCommand()) {
-    return interaction.options.getMember('discord_member');
+    return interaction.options.getMember(CommandIds.DISCORD_ID);
   }
   if (pId) {
     return interaction.guild?.members.cache.get(pId) ?? null;

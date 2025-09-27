@@ -244,7 +244,6 @@ client.on('interactionCreate', async interaction => {
 
 function handleAdminSubCommand(interaction: ChatInputCommandInteraction<CacheType>, commandName: string | null = null) {
   const subCommand = interaction.options.getSubcommand(true);
-  const parts = commandName?.split('_') || [];
   switch (subCommand) {
     case CommandIds.BATTLE_TAG:
       handleAdminSetBattleTagCommand(interaction);
@@ -256,7 +255,7 @@ function handleAdminSubCommand(interaction: ChatInputCommandInteraction<CacheTyp
       handleAdminSetActiveCommand(interaction);
       break;
     case CommandIds.ADD_ACCOUNT:
-      handleAdminAddHotsAccountCommand(interaction, parts[1], parts[2]);
+      handleAdminAddHotsAccountCommand(interaction);
       break;
   }
 }
