@@ -7,7 +7,9 @@ import {
   ChatInputCommandInteraction,
   EmbedBuilder,
   Interaction,
+  InteractionReplyOptions,
   MessageFlags,
+  MessagePayload,
   ModalBuilder,
   ModalSubmitInteraction,
   TextInputBuilder,
@@ -22,7 +24,7 @@ import {
   imPlayingBtn,
   joinBtn,
   leaveBtn,
-  nameBtn,
+  battleTagBtn,
   norDiscordId,
   rejoinBtn,
   roleBtn,
@@ -33,6 +35,7 @@ import {
   getActivePlayers,
   getPlayerByDiscordId,
   getTeams,
+  handleAddHotsAccount,
   markAllPlayersInactive,
   markPlayerActive,
   markPlayerInactive,
@@ -57,7 +60,9 @@ function generateLobbyStatusMessage(pPreviousPlayersList?: string): string {
     .filter(p => p?.team === undefined)
     .map(
       (p, index) =>
-        `${index + 1}: @${p.usernames.discordDisplayName}: (${p.usernames.hots}) \`${getPlayerRolesFormatted(p.role)}\``
+        `${index + 1}: @${p.usernames.discordDisplayName}: (${p.usernames.accounts
+          ?.find(a => a.isPrimary)
+          ?.hotsBattleTag.replace(/#.*$/, '')}) \`${getPlayerRolesFormatted(p.role)}\``
     );
 
   // combine the lobbyPlayers and previousPlayersList, into one string, labeling each section, but skip a section if there are no players in that section
@@ -130,10 +135,27 @@ export async function handleNewGameCommand(
     saveLobbyMessage(sentMessage.id, sentMessage.channelId, previousPlayersList);
   }
 
-  interaction.reply({
+  safeReply(interaction, {
     content: 'Game announced!', // empty content to avoid sending a message in the channel, since we already announced it'
     flags: MessageFlags.Ephemeral,
   });
+}
+
+/**
+ * Safely replies to an interaction, using followUp if already replied
+ * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
+ * @param replyOptions The options for the reply message
+ * @returns Promise<void>
+ */
+export async function safeReply(
+  interaction: chatOrButtonOrModal,
+  options: string | MessagePayload | InteractionReplyOptions
+) {
+  if (interaction.replied) {
+    await interaction.followUp(options);
+  } else {
+    await interaction.reply(options);
+  }
 }
 
 /**
@@ -158,18 +180,44 @@ export async function handleLoadTeamsCommand(
   const teamsData: Teams = JSON.parse(interaction.options.getString('teams_data', true));
   const activePlayers = getActivePlayers();
   const team1 = teamsData.team1
-    .map(name => activePlayers.find(player => player.usernames.hots.toLowerCase() === name.toLowerCase()))
+    .map(name =>
+      activePlayers.find(player =>
+        player.usernames.accounts?.some(
+          account => account.hotsBattleTag.replace(/#.*$/, '').toLowerCase() === name.toLowerCase()
+        )
+      )
+    )
     .filter(p => p !== undefined);
   const team2 = teamsData.team2
-    .map(name => activePlayers.find(player => player.usernames.hots.toLowerCase() === name.toLowerCase()))
+    .map(name =>
+      activePlayers.find(player =>
+        player.usernames.accounts?.some(
+          account => account.hotsBattleTag.replace(/#.*$/, '').toLowerCase() === name.toLowerCase()
+        )
+      )
+    )
     .filter(p => p !== undefined);
   setTeams(
     team1.map(p => p.discordId),
     team2.map(p => p.discordId)
   ); // Save the teams to the database
 
-  const team1Message = team1.map(p => `* ${p.usernames.discordDisplayName} (${p.usernames.hots})`).join('\n');
-  const team2Message = team2.map(p => `* ${p.usernames.discordDisplayName} (${p.usernames.hots})`).join('\n');
+  const team1Message = team1
+    .map(
+      p =>
+        `* ${p.usernames.discordDisplayName} (${p.usernames.accounts
+          ?.find(account => account.isPrimary)
+          ?.hotsBattleTag.replace(/#.*$/, '')})`
+    )
+    .join('\n');
+  const team2Message = team2
+    .map(
+      p =>
+        `* ${p.usernames.discordDisplayName} (${p.usernames.accounts
+          ?.find(account => account.isPrimary)
+          ?.hotsBattleTag.replace(/#.*$/, '')})`
+    )
+    .join('\n');
 
   const team1lengthMessage = team1.length === 5 ? '' : ` (${team1.length} players)`;
   const team2lengthMessage = team2.length === 5 ? '' : ` (${team2.length} players)`;
@@ -181,7 +229,7 @@ export async function handleLoadTeamsCommand(
     .setTitle(`💩 Filthy Team 2${team2lengthMessage}`)
     .setDescription(team2Message || '* No players in this team')
     .setColor('#8B4513');
-  await interaction.reply({
+  await safeReply(interaction, {
     content: `<@${norDiscordId}>`,
     embeds: [team1embed, team2embed],
     // flags: MessageFlags.Ephemeral,
@@ -266,7 +314,12 @@ export async function handleMoveToLobbyCommand(
   if (numberMoved < totalPlayers) {
     await interaction.followUp({
       content: `Note: Failed to move ${totalPlayers - numberMoved} players:\n${failedToMove
-        .map(player => `<@${player.discordId}>: ${player.usernames.hots}`)
+        .map(
+          player =>
+            `<@${player.discordId}>: ${player.usernames.accounts
+              ?.find(a => a.isPrimary)
+              ?.hotsBattleTag.replace(/#.*$/, '')}`
+        )
         .join('\n')}`,
       ephemeral: true,
     });
@@ -326,7 +379,12 @@ export async function handleMoveToTeamsCommand(
   if (failedToMove.length > 0) {
     await interaction.followUp({
       content: `Failed to move the following players to their team channels:\n${failedToMove
-        .map(player => `<@${player.discordId}>: ${player.usernames.hots}`)
+        .map(
+          player =>
+            `<@${player.discordId}>: ${player.usernames.accounts
+              ?.find(a => a.isPrimary)
+              ?.hotsBattleTag.replace(/#.*$/, '')}`
+        )
         .join('\n')}`,
       flags: MessageFlags.Ephemeral,
     });
@@ -373,14 +431,14 @@ export async function handleSetChannelTeamIdCommand(
   const channel = interaction.options.getChannel('channel_id', true);
   const teamId = interaction.options.getString('team_number', true);
   if (!(channel instanceof VoiceChannel)) {
-    await interaction.reply({
+    await safeReply(interaction, {
       content: 'Please select a valid voice channel.',
       flags: MessageFlags.Ephemeral,
     });
     return;
   }
   saveChannel(teamId, channel);
-  await interaction.reply({
+  await safeReply(interaction, {
     content: `\`${teamId}\` channel set to <#${channel.id}>.`,
     flags: MessageFlags.Ephemeral,
   });
@@ -396,7 +454,7 @@ export async function handleSetLobbyChannelCommand(
   const channel = interaction.options.getChannel('channel_id', true);
   // if channel isn't guild voice, return
   if (!(channel instanceof VoiceChannel)) {
-    await interaction.reply({
+    await safeReply(interaction, {
       content: 'Please select a valid voice channel.',
       flags: MessageFlags.Ephemeral,
     });
@@ -404,7 +462,7 @@ export async function handleSetLobbyChannelCommand(
   }
   saveChannel('lobby', channel);
   // This command is not implemented yet
-  await interaction.reply({
+  await safeReply(interaction, {
     content: `\`lobby\` channel set to <#${channel.id}>`,
     flags: MessageFlags.Ephemeral,
   });
@@ -427,26 +485,26 @@ export async function handleGuideCommand(
     .setDescription(
       [
         'Commands:',
-        '```🟢 /join   — Join the lobby with your username and role',
+        '```🟢 /join   — Join the lobby with your battle tag and role',
         '🔴 /leave  — Leave the lobby',
         '🔄 /rejoin — Rejoin the lobby',
-        '✏️ /name   — Change your username',
+        '✏️ /battle-tag   — Change your hots battle tag',
         '🎭 /role   — Change your role```',
       ].join('\n')
     )
     .addFields({ name: 'Roles', value: '🛡️ Tank, ⚔️ Assassin, 💪 Bruiser, 💉 Healer, 🔄 Flex' })
     // .addFields(
-    //   { name: '`/join`', value: 'Join the lobby with your Heroes of the Storm username and role.' },
+    //   { name: '`/join`', value: 'Join the lobby with your Heroes of the Storm battle tag and role.' },
     //   { name: '`/leave`', value: 'Leave the lobby.' },
-    //   { name: '`/rejoin`', value: 'Rejoin the lobby with your previous username and role.' },
-    //   { name: '`/name`', value: 'Change your Heroes of the Storm username.' },
+    //   { name: '`/rejoin`', value: 'Rejoin the lobby with your previous battle tag and role.' },
+    //   { name: '`/battle-tag`', value: 'Change your Heroes of the Storm battle tag.' },
     //   { name: '`/role`', value: 'Change your role in the lobby.' }
     // )
     .setFooter({ text: 'Enjoy playing!' })
     .setImage(
       'https://static-cdn.jtvnw.net/jtv_user_pictures/f9bdb9b4-911b-4f2d-8e04-f0bde098a4d9-profile_image-70x70.png'
     );
-  await interaction.reply({ embeds: [exampleEmbed] });
+  await safeReply(interaction, { embeds: [exampleEmbed] });
 }
 
 /**
@@ -473,16 +531,23 @@ export async function handlePlayersCommand(
       .map(({ discordId, usernames, role }) => {
         if (pingLobby) {
           // if pingLobby is true, mention the user
-          return `<@${discordId}>: (${usernames.hots}) \`${getPlayerRolesFormatted(role)}\``;
+          return `<@${discordId}>: (${usernames.accounts
+            ?.find(a => a.isPrimary)
+            ?.hotsBattleTag.replace(/#.*$/, '')}) \`${getPlayerRolesFormatted(role)}\``;
         }
         const user = interaction.guild?.members.cache.get(discordId)?.displayName;
-        return `@${user}: (${usernames.hots}) \`${getPlayerRolesFormatted(role)}\``;
+        return `@${user}: (${usernames.accounts
+          ?.find(a => a.isPrimary)
+          ?.hotsBattleTag.replace(/#.*$/, '')}) \`${getPlayerRolesFormatted(role)}\``;
       })
       .join('\n') || 'No players in the lobby';
   const rawPlayerList = Array.from(players.entries())
     .filter(([_, player]) => player.active)
-    .map(([_, { usernames, role }]) => `${usernames.hots} ${role}`);
-  await interaction.reply({
+    .map(
+      ([_, { usernames, role }]) =>
+        `${usernames.accounts?.find(a => a.isPrimary)?.hotsBattleTag.replace(/#.*$/, '')} ${role}`
+    );
+  await safeReply(interaction, {
     content: `Players in the lobby: **${rawPlayerList.length}**\n${playerList}`,
     flags: onlyRaw ? MessageFlags.Ephemeral : undefined,
   });
@@ -510,13 +575,13 @@ export async function handleLeaveCommand(
   if (player) {
     // Update the lobby message instead of announcing
     await updateLobbyMessage(interaction);
-    await interaction.reply({
+    await safeReply(interaction, {
       content: `You left the lobby`,
       flags: MessageFlags.Ephemeral,
       components: [new ActionRowBuilder<ButtonBuilder>().addComponents(rejoinBtn)],
     });
   } else {
-    await interaction.reply({ content: 'You are not in the lobby', flags: MessageFlags.Ephemeral });
+    await safeReply(interaction, { content: 'You are not in the lobby', flags: MessageFlags.Ephemeral });
   }
 }
 
@@ -525,14 +590,14 @@ export async function handleClearCommand(
 ) {
   markAllPlayersInactive(); // Mark all players as inactive in the database
   await updateLobbyMessage(interaction); // Update the lobby message to show no players
-  await interaction.reply({
+  await safeReply(interaction, {
     content: 'All players have been removed from the lobby.',
     flags: MessageFlags.Ephemeral,
   });
 }
 
 /**
- *  Handles the rejoin command interaction, allows a user to rejoin the lobby with their previous username and role
+ *  Handles the rejoin command interaction, allows a user to rejoin the lobby with their previous battle tag and role
  * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
  * @returns
  */
@@ -540,6 +605,13 @@ export async function handleRejoinCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
   newUser = false
 ) {
+  // first check it the user has a hotsBattleTag in the database
+  const existingPlayer = getPlayerByDiscordId(interaction.user.id);
+  if (!existingPlayer?.usernames.accounts?.find(a => a.isPrimary)) {
+    // if they don't have a hotsBattleTag, show the modal to collect it
+    await showJoinModal(interaction);
+    return;
+  }
   const result = markPlayerActive(interaction.user.id); // Mark player as active in the database
   if (result.player) {
     if (result.alreadyActive === false) {
@@ -549,45 +621,52 @@ export async function handleRejoinCommand(
     const joinVerb = newUser ? 'joined' : 'rejoined';
     const content =
       (result.alreadyActive === true ? `You are already in` : `You have ${joinVerb}`) +
-      ` the lobby as: ${result.player.usernames.hots}, \`${getPlayerRolesFormatted(
+      ` the lobby as: \`${result.player.usernames.accounts
+        ?.find(a => a.isPrimary)
+        ?.hotsBattleTag.replace(/#.*$/, '')}\`, \`${getPlayerRolesFormatted(
         result.player.role
       )}\`\nUse /leave to leave the lobby, or use the buttons below.`;
-    await interaction.reply({
+    await safeReply(interaction, {
       content,
       flags: MessageFlags.Ephemeral,
-      components: [new ActionRowBuilder<ButtonBuilder>().addComponents(leaveBtn, nameBtn, roleBtn)],
+      components: [new ActionRowBuilder<ButtonBuilder>().addComponents(leaveBtn, battleTagBtn, roleBtn)],
     });
     return;
   }
   if (result.player === undefined) {
-    // show a dialog to collect the username and role
+    // show a dialog to collect the battle tag and role
     await showJoinModal(interaction);
   }
 }
 
 /**
- * Shows a modal to the user to collect their username and role, then returns the data to the handleJoinCommand function
+ * Shows a modal to the user to collect their battle tag and role, then returns the data to the handleJoinCommand function
  * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
- * @returns { username: string, role: string } The username and role of the player.
+ * @returns { Promise<void> }
  */
 async function showJoinModal(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
 ): Promise<void> {
-  const { username, modalInteraction } = await handleUserNameModalSubmit(interaction);
-  if (!modalInteraction || !username) {
+  const { hotsBattleTag, modalInteraction } = await handleUserNameModalSubmit(interaction);
+  if (!modalInteraction || !hotsBattleTag) {
     // If modal interaction is undefined, it means the user did not respond in time
     console.log('error: User did not respond to the modal in time');
     return;
   }
   const discordData = fetchDiscordNames(modalInteraction);
-  savePlayer(modalInteraction.user.id, {
-    discordId: modalInteraction.user.id,
-    usernames: { hots: username, ...discordData },
-    role: CommandIds.ROLE_FLEX, // Default role is Flex
-    active: false,
-    team: undefined,
-  });
-  await handleEditRoleCommand(modalInteraction, false, true); // Show the edit role buttons
+  savePlayer(
+    interaction,
+    modalInteraction.user.id,
+    {
+      discordId: modalInteraction.user.id,
+      usernames: { ...discordData },
+      role: CommandIds.ROLE_FLEX, // Default role is Flex
+      active: false,
+      team: undefined,
+    },
+    hotsBattleTag
+  ); // Save player data to the database with default role Flex
+  await handleEditRoleCommand(modalInteraction, true); // Show the edit role buttons
 }
 
 /**
@@ -605,7 +684,7 @@ export async function handleAdminShowRoleButtons(interaction: ButtonInteraction<
   );
 
   const components = [rolesRow];
-  await interaction.reply({
+  await safeReply(interaction, {
     content: 'Please select their new role using the buttons below.',
     components,
     flags: MessageFlags.Ephemeral,
@@ -613,7 +692,7 @@ export async function handleAdminShowRoleButtons(interaction: ButtonInteraction<
 }
 
 /**
- * Handles the join command interaction, adds the user to the lobby with their username and role
+ * Handles the join command interaction, adds the user to the lobby with their battle tag and role
  * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
  */
 export async function handleJoinCommand(
@@ -623,33 +702,38 @@ export async function handleJoinCommand(
     await handleRejoinCommand(interaction, true);
     return; // If it's a button interaction, we handle rejoin directly
   }
-  const username = interaction.options.getString('username', true);
   const role = interaction.options.getString(CommandIds.ROLE, true);
   const discordData = fetchDiscordNames(interaction);
+  const hotsBattleTag = interaction.options.getString(CommandIds.BATTLE_TAG, true);
   const newPlayer: Player = {
     discordId: interaction.user.id,
-    usernames: { hots: username, ...discordData },
+    usernames: { ...discordData },
     role,
     active: true,
     team: undefined,
   };
-  savePlayer(interaction.user.id, newPlayer); // Save player data to the database
+  await savePlayer(interaction, interaction.user.id, newPlayer, hotsBattleTag); // Save player data to the database
   // announce in the channel who has joined
-  await handleUserJoined(interaction, username, role);
+  await handleUserJoined(interaction, hotsBattleTag, role);
 }
 
 /**
  * Handles the user joining the lobby, announces their presence and provides buttons for further actions
  * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
- * @param username The hots username of the user who joined.
+ * @param hotsBattleTag The hots battleTag of the user who joined.
  * @param role The role of the user who joined, based on the roleMap keys.
  * @param skipReply (optional) Whether to skip the reply and just follow up with the components.
  */
-async function handleUserJoined(interaction: chatOrButtonOrModal, username: string, role: string, skipReply = false) {
+async function handleUserJoined(
+  interaction: chatOrButtonOrModal,
+  hotsBattleTag: string,
+  role: string,
+  skipReply = false
+) {
   // Update the lobby message instead of announcing
   await updateLobbyMessage(interaction);
 
-  const components = [new ActionRowBuilder<ButtonBuilder>().addComponents(leaveBtn, nameBtn, roleBtn)];
+  const components = [new ActionRowBuilder<ButtonBuilder>().addComponents(leaveBtn, battleTagBtn, roleBtn)];
   if (skipReply) {
     await interaction.followUp({
       components,
@@ -657,172 +741,195 @@ async function handleUserJoined(interaction: chatOrButtonOrModal, username: stri
     });
     return;
   }
-  await interaction.reply({
+  await safeReply(interaction, {
     components,
     flags: MessageFlags.Ephemeral,
   });
 }
 
 /**
- * Handles the name command interaction, changes the users username in the lobby
+ * Handles the battle tag command interaction, changes the users battle tag in the lobby
  * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
  * @returns
  */
-export async function handleNameCommand(
+export async function handleBattleTagCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
 ) {
   if (interaction.isButton()) {
     const playerExists = getPlayerByDiscordId(interaction.user.id); // Get player by Discord ID
     if (!playerExists) {
-      // If player does not exist, show a modal to collect the username and role
+      // If player does not exist, show a modal to collect the battle tag and role
       await showJoinModal(interaction);
       return;
     }
-    const { username, modalInteraction } = await handleUserNameModalSubmit(interaction);
-    if (!modalInteraction || !username) {
+    const { hotsBattleTag, modalInteraction } = await handleUserNameModalSubmit(interaction);
+    if (!modalInteraction || !hotsBattleTag) {
       // If modal interaction is undefined, it means the user did not respond in time
       return;
     }
 
     const player = getPlayerByDiscordId(modalInteraction.user.id);
     if (player) {
-      setPlayerName(modalInteraction.user.id, username); // Update the player's username in the database
-      await modalInteraction.reply({
-        content: `Your username has been set to: ${username}`,
+      setPlayerName(interaction, modalInteraction.user.id, hotsBattleTag); // Update the player's battle tag in the database
+      await safeReply(modalInteraction, {
+        content: `Your battle tag has been set to: \`${hotsBattleTag}\``,
         flags: MessageFlags.Ephemeral,
       });
     }
     return;
   }
-  const username = interaction.options.getString('username', false);
+  const battleTag = interaction.options.getString(CommandIds.BATTLE_TAG, false);
   const player = getPlayerByDiscordId(interaction.user.id); // Get player by Discord ID
-  if (player && username) {
-    // If player exists and username is provided
-    const newPlayer = {
+  if (player && battleTag) {
+    // If player exists and battleTag is provided
+    const newPlayer: Player = {
       ...player,
-      usernames: { ...player.usernames, hots: username }, // Update the hots username
+      usernames: { ...player.usernames }, // Update the hots battle tag
     };
-    savePlayer(interaction.user.id, newPlayer); // Save player data to the database
-    await interaction.reply({
-      content: `Your username has been set to: ${username}`,
+    await savePlayer(interaction, interaction.user.id, newPlayer, battleTag); // Save player data to the database
+    await safeReply(interaction, {
+      content: `Your battle tag has been set to: \`${battleTag}\``,
       flags: MessageFlags.Ephemeral,
     });
-  } else if (username) {
+  } else if (battleTag) {
     const discordData = fetchDiscordNames(interaction);
-    savePlayer(interaction.user.id, {
+    await savePlayer(interaction, interaction.user.id, {
       discordId: interaction.user.id,
-      usernames: { hots: username, ...discordData },
+      usernames: { ...discordData },
       role: CommandIds.ROLE_FLEX, // Default role is Flex
       active: false,
       team: undefined,
     });
-    await interaction.reply({
-      content: `Your username has been set to: ${username}`,
+    await safeReply(interaction, {
+      content: `Your battle tag has been set to: \`${battleTag}\``,
       flags: MessageFlags.Ephemeral,
     });
     // If player does not exist, we know their name, but not their role
-    await handleEditRoleCommand(interaction, true); // Show the edit role buttons
+    await handleEditRoleCommand(interaction); // Show the edit role buttons
     return;
   } else {
-    // If player does not exist, show a modal to collect the username and role
+    // If player does not exist, show a modal to collect the battle tag and role
     await showJoinModal(interaction);
     return;
   }
 }
 
-/**
- * Handles the user name modal submission.
- * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
- * @returns An object containing the username and the modal interaction.
- */
-async function handleUserNameModalSubmit(
-  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
-): Promise<{ username: string | undefined; modalInteraction: ModalSubmitInteraction<CacheType> | undefined }> {
-  const previousPlayer = getPlayerByDiscordId(interaction.user.id);
+export async function handleAddHotsAccountCommand(interaction: ChatInputCommandInteraction<CacheType>) {
+  const discordId = interaction.user.id;
+  const hotsBattleTag = interaction.options.getString(CommandIds.BATTLE_TAG, true);
+  // check if the battleTag is valid, it should be in the format of Name#1234
+  await handleAddHotsAccount(interaction, discordId, hotsBattleTag);
+}
 
-  // create a modal with a text field to collect the username
-  const usernameInput = new TextInputBuilder()
-    .setCustomId('usernameInput')
-    .setLabel('Enter your Heroes of the Storm username')
-    .setStyle(TextInputStyle.Short)
-    .setRequired(true)
-    .setPlaceholder('Your Heroes of the Storm username')
-    .setValue(previousPlayer?.usernames.hots ?? interaction.user.displayName ?? ''); // Use previous username if available
-
-  // Add the input to an action row
-  const actionRow = new ActionRowBuilder<TextInputBuilder>().addComponents(usernameInput);
-
-  // Create the modal
-  const modal = new ModalBuilder().setCustomId('nameModal').setTitle('Set Your Username').addComponents(actionRow);
-  // get the username from the TextInputBuilder
-  await interaction.showModal(modal);
-  let modalInteraction: ModalSubmitInteraction<CacheType>;
-  try {
-    modalInteraction = await interaction.awaitModalSubmit({
-      filter: i => i.customId === 'nameModal',
-      time: 5 * 60 * 1000,
-    }); // 5 minutes timeout
-  } catch (error) {
-    if (error && typeof error === 'object' && 'code' in error && error.code === 'InteractionCollectorError') {
-      return { username: undefined, modalInteraction: undefined }; // Return undefined if the modal interaction is not received
-    }
-    console.error('Error awaiting modal submit:', error);
-    return { username: undefined, modalInteraction: undefined }; // Return undefined if the modal interaction is not received
-  }
-  const username = modalInteraction.fields.getTextInputValue('usernameInput');
-  return { username, modalInteraction };
+export async function handleAdminAddHotsAccountCommand(
+  interaction: ChatInputCommandInteraction<CacheType>,
+  discordId: string,
+  hotsBattleTag: string
+) {
+  // check if the battleTag is valid, it should be in the format of Name#1234
+  await handleAddHotsAccount(interaction, discordId, hotsBattleTag);
 }
 
 /**
- * Handles the admin show name modal interaction, shows a modal to set the player's Heroes of the Storm username
- * @param interaction The interaction object from Discord, either a ButtonInteraction.
- * @param pId The Discord ID of the player whose name is being set.
+ * Handles the user name modal submission.
+ * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
+ * @returns An object containing the battle tag and the modal interaction.
  */
-export async function handleAdminShowNameModal(
-  interaction: ButtonInteraction<CacheType>,
-  pId: string
-): Promise<{ username?: string; modalInteraction?: ModalSubmitInteraction<CacheType> }> {
-  const previousPlayer = getPlayerByDiscordId(pId);
-  // create a modal with a text field to collect the username
-  const adminUsernameInput = new TextInputBuilder()
-    .setCustomId('adminUsernameInput')
-    .setLabel('Enter their Heroes of the Storm username')
+async function handleUserNameModalSubmit(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+): Promise<{
+  hotsBattleTag: string | undefined;
+  modalInteraction: ModalSubmitInteraction<CacheType> | undefined;
+}> {
+  const previousPlayer = getPlayerByDiscordId(interaction.user.id);
+
+  // create a modal with a text field to collect the battle tag
+  const battleTagInput = new TextInputBuilder()
+    .setCustomId(CommandIds.BATTLE_TAG)
+    .setLabel('Battle Tag (e.g. Name#1234)')
     .setStyle(TextInputStyle.Short)
     .setRequired(true)
-    .setPlaceholder('Their Heroes of the Storm username')
-    .setValue(previousPlayer?.usernames.hots ?? '');
-
+    .setPlaceholder('Your Heroes of the Storm battle tag')
+    .setValue(
+      previousPlayer?.usernames.accounts?.find(a => a.isPrimary)?.hotsBattleTag ??
+        previousPlayer?.usernames.accounts?.[0]?.hotsBattleTag ??
+        interaction.user.displayName ??
+        ''
+    ); // Use previous battle tag if available
   // Add the input to an action row
-  const actionRow = new ActionRowBuilder<TextInputBuilder>().addComponents(adminUsernameInput);
+  const actionRow = new ActionRowBuilder<TextInputBuilder>().addComponents(battleTagInput);
 
   // Create the modal
-  const modal = new ModalBuilder().setCustomId('nameModal').setTitle('Set Their Username').addComponents(actionRow);
-  // get the username from the TextInputBuilder
+  const modal = new ModalBuilder().setCustomId('battleTag').setTitle('Set Your battle tag').addComponents(actionRow);
+  // get the battle tag from the TextInputBuilder
+  await interaction.showModal(modal);
+  let modalInteraction: ModalSubmitInteraction<CacheType>;
+  try {
+    modalInteraction = await interaction.awaitModalSubmit({
+      filter: i => i.customId === 'battleTag',
+      time: 5 * 60 * 1000,
+    }); // 5 minutes timeout
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'InteractionCollectorError') {
+      return { hotsBattleTag: undefined, modalInteraction: undefined }; // Return undefined if the modal interaction is not received
+    }
+    console.error('Error awaiting modal submit:', error);
+    return { hotsBattleTag: undefined, modalInteraction: undefined }; // Return undefined if the modal interaction is not received
+  }
+  const hotsBattleTag = modalInteraction.fields.getTextInputValue(CommandIds.BATTLE_TAG);
+  return { hotsBattleTag, modalInteraction };
+}
+
+/**
+ * Handles the admin show battle tag modal interaction, shows a modal to set the player's Heroes of the Storm battle tag
+ * @param interaction The interaction object from Discord, either a ButtonInteraction.
+ * @param pId The Discord ID of the player whose battle tag is being set.
+ */
+export async function handleAdminShowBattleTagModal(
+  interaction: ButtonInteraction<CacheType>,
+  pId: string
+): Promise<{ battleTag?: string; modalInteraction?: ModalSubmitInteraction<CacheType> }> {
+  const previousPlayer = getPlayerByDiscordId(pId);
+  // create a modal with a text field to collect the battle tag
+  const adminBattleTagInput = new TextInputBuilder()
+    .setCustomId('adminBattleTagInput')
+    .setLabel('Enter their Heroes of the Storm battle tag (e.g. Name#1234)')
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setPlaceholder('Their Heroes of the Storm battle tag')
+    .setValue(previousPlayer?.usernames.accounts?.find(a => a.isPrimary)?.hotsBattleTag ?? '');
+
+  // Add the input to an action row
+  const actionRow = new ActionRowBuilder<TextInputBuilder>().addComponents(adminBattleTagInput);
+
+  // Create the modal
+  const modal = new ModalBuilder().setCustomId('battleTag').setTitle('Set Their battle tag').addComponents(actionRow);
+  // get the battle tag from the TextInputBuilder
   await interaction.showModal(modal);
 
   let modalInteraction: ModalSubmitInteraction<CacheType>;
   try {
     modalInteraction = await interaction.awaitModalSubmit({
-      filter: i => i.customId === 'nameModal',
+      filter: i => i.customId === 'battleTag',
       time: 5 * 60 * 1000,
     }); // 5 minutes timeout
   } catch (error) {
     if (error && typeof error === 'object' && 'code' in error && error.code === 'InteractionCollectorError') {
-      return { username: undefined, modalInteraction: undefined }; // Return undefined if the modal interaction is not received
+      return { battleTag: undefined, modalInteraction: undefined }; // Return undefined if the modal interaction is not received
     }
     console.error('Error awaiting modal submit:', error);
-    return { username: undefined, modalInteraction: undefined }; // Return undefined if the modal interaction is not received
+    return { battleTag: undefined, modalInteraction: undefined }; // Return undefined if the modal interaction is not received
   }
-  const username = modalInteraction.fields.getTextInputValue('adminUsernameInput');
-  if (!username) {
-    await modalInteraction.reply({
-      content: 'You must provide a username.',
+  const battleTag = modalInteraction.fields.getTextInputValue('adminBattleTagInput');
+  if (!battleTag) {
+    await safeReply(modalInteraction, {
+      content: 'You must provide a battle tag.',
       flags: MessageFlags.Ephemeral,
     });
-    return { username: undefined, modalInteraction: undefined };
+    return { battleTag: undefined, modalInteraction: undefined };
   }
-  handleAdminSetNameCommand(modalInteraction, pId, username);
-  return { username, modalInteraction };
+  handleAdminSetBattleTagCommand(modalInteraction, pId, battleTag);
+  return { battleTag, modalInteraction };
 }
 
 function createEditRoleButtonDisabled(
@@ -867,10 +974,10 @@ function getEditRoleRow(
  * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
  * @returns {Promise<void>}
  */
-export async function handleEditRoleCommand(interaction: chatOrButtonOrModal, followUp = false, setActive = false) {
+export async function handleEditRoleCommand(interaction: chatOrButtonOrModal, setActive = false): Promise<void> {
   const player = getPlayerByDiscordId(interaction.user.id); // Get player by Discord ID
   if (!player) {
-    if (followUp) {
+    if (interaction.replied) {
       await interaction.followUp({
         content: 'You are not in the lobby. Click the button below to join.',
         flags: MessageFlags.Ephemeral,
@@ -878,7 +985,7 @@ export async function handleEditRoleCommand(interaction: chatOrButtonOrModal, fo
       });
       return;
     }
-    await interaction.reply({
+    await safeReply(interaction, {
       content: 'You are not in the lobby. Click the button below to join.',
       flags: MessageFlags.Ephemeral,
       components: [new ActionRowBuilder<ButtonBuilder>().addComponents(joinBtn)],
@@ -890,7 +997,7 @@ export async function handleEditRoleCommand(interaction: chatOrButtonOrModal, fo
   const activeSuffix = setActive ? '_' + CommandIds.ACTIVE : '';
   const row2 = getEditRoleRow(interaction, CommandIds.ROLE_EDIT_REPLACE + activeSuffix, setActive);
   const content = (setActive ? 'You must click a role to join the lobby\n' : '') + 'Replace Mode' + roles; // Default content for the reply
-  if (followUp) {
+  if (interaction.replied) {
     await interaction.followUp({
       content,
       flags: MessageFlags.Ephemeral,
@@ -905,7 +1012,7 @@ export async function handleEditRoleCommand(interaction: chatOrButtonOrModal, fo
     });
     return;
   }
-  await interaction.reply({
+  await safeReply(interaction, {
     content,
     flags: MessageFlags.Ephemeral,
     components: [
@@ -927,7 +1034,7 @@ export async function handleEditRoleButtonCommand(
   setActive = false
 ) {
   if (!interaction.isButton()) {
-    interaction.reply({
+    safeReply(interaction, {
       content: 'This command can only be used with buttons.',
       flags: MessageFlags.Ephemeral,
     });
@@ -936,7 +1043,7 @@ export async function handleEditRoleButtonCommand(
 
   const player = getPlayerByDiscordId(discordId);
   if (!player) {
-    await interaction.reply({
+    await safeReply(interaction, {
       content: 'You are not in the lobby. Click the button below to join.',
       flags: MessageFlags.Ephemeral,
       components: [new ActionRowBuilder<ButtonBuilder>().addComponents(joinBtn)],
@@ -972,9 +1079,9 @@ export async function handleEditRoleButtonCommand(
     // If setActive is true, we need to set the player as active
     announce(
       interaction,
-      `<@${interaction.user.id}> (${player.usernames.hots}) has joined the lobby as \`${getPlayerRolesFormatted(
-        player.role
-      )}\``
+      `<@${interaction.user.id}> (${player.usernames.accounts
+        ?.find(a => a.isPrimary)
+        ?.hotsBattleTag.replace(/#.*$/, '')}) has joined the lobby as \`${getPlayerRolesFormatted(player.role)}\``
     );
   }
 }
@@ -1095,7 +1202,7 @@ export async function handleTwitchCommand(
       'https://static-cdn.jtvnw.net/jtv_user_pictures/f9bdb9b4-911b-4f2d-8e04-f0bde098a4d9-profile_image-70x70.png'
     );
 
-  interaction.reply({ embeds: [exampleEmbed] });
+  await safeReply(interaction, { embeds: [exampleEmbed] });
 }
 
 export async function handleLookupCommand(
@@ -1107,44 +1214,48 @@ export async function handleLookupCommand(
   }
   const member = interaction.options.getMember('discord_member');
   if (!member || 'user' in member === false) {
-    await interaction.reply({
+    await safeReply(interaction, {
       content: 'Please provide a valid Discord member to look up.',
       flags: MessageFlags.Ephemeral,
     });
     return;
   }
-  const id = member.user.id;
-  const discordData = fetchDiscordNames(interaction, id);
-  const hotsName = interaction.options.getString('hots_name', false) ?? '';
+  const discordId = member.user.id;
+  const discordData = fetchDiscordNames(interaction, discordId);
+  const hotsBattleTag = interaction.options.getString(CommandIds.BATTLE_TAG, false) ?? '';
 
-  const player = getPlayerByDiscordId(id);
+  const player = getPlayerByDiscordId(discordId);
   const message = player
-    ? `${hotsName || 'Player'} found in the lobby with role: \`${getPlayerRolesFormatted(player.role)}\``
-    : `${hotsName || 'Player'} not found in the lobby, adding them with default role \`${getPlayerRolesFormatted(
+    ? `${hotsBattleTag || 'Player'} found in the lobby with role: \`${getPlayerRolesFormatted(player.role)}\``
+    : `${hotsBattleTag || 'Player'} not found in the lobby, adding them with default role \`${getPlayerRolesFormatted(
         CommandIds.ROLE_FLEX
       )}\`.`;
-  await interaction.reply({
-    content: `Discord ID: \`${id}\`\ndiscordName: \`${discordData.discordName}\`\ndiscordGlobalName: \`${discordData.discordGlobalName}\`\nDisplay Name: \`${discordData.discordDisplayName}\`\n${message}`,
+  await safeReply(interaction, {
+    content: `Discord ID: \`${discordId}\`\ndiscordName: \`${discordData.discordName}\`\ndiscordGlobalName: \`${discordData.discordGlobalName}\`\nDisplay Name: \`${discordData.discordDisplayName}\`\n${message}`,
     flags: MessageFlags.Ephemeral,
   });
   // save the player to the database if they are not already there
   if (!player) {
-    savePlayer(id, {
-      discordId: id,
-      usernames: {
-        ...discordData,
-        hots: hotsName,
+    await savePlayer(
+      interaction,
+      discordId,
+      {
+        discordId,
+        usernames: {
+          ...discordData,
+        },
+        role: CommandIds.ROLE_FLEX, // Default role is Flex
+        active: false,
+        team: undefined,
       },
-      role: CommandIds.ROLE_FLEX, // Default role is Flex
-      active: false,
-      team: undefined,
-    });
+      hotsBattleTag
+    );
     return;
   }
   // update the player's Discord data in the database
-  setPlayerDiscordNames(id, discordData);
-  if (hotsName && hotsName !== player.usernames.hots) {
-    setPlayerName(id, hotsName); // Update the player's Heroes of the Storm name in the database
+  setPlayerDiscordNames(discordId, discordData);
+  if (hotsBattleTag && !player.usernames.accounts?.some(a => a.hotsBattleTag !== hotsBattleTag)) {
+    setPlayerName(interaction, discordId, hotsBattleTag); // Update the player's Heroes of the Storm name in the database
   }
   // return;
 }
@@ -1157,7 +1268,7 @@ export async function handleLookupCommand(
 export async function handleMoveCommand(interaction: ChatInputCommandInteraction<CacheType>) {
   const member = interaction.options.getMember('discord_member');
   if (!member || 'user' in member === false) {
-    interaction.reply({
+    await safeReply(interaction, {
       content: 'Please provide a valid Discord member to move.',
       flags: MessageFlags.Ephemeral,
     });
@@ -1165,7 +1276,7 @@ export async function handleMoveCommand(interaction: ChatInputCommandInteraction
   }
   const channel = interaction.options.getChannel('channel', true);
   if (!(channel instanceof VoiceChannel)) {
-    interaction.reply({
+    await safeReply(interaction, {
       content: 'Please provide a valid voice channel to move the member to.',
       flags: MessageFlags.Ephemeral,
     });
@@ -1179,14 +1290,14 @@ export async function handleMoveCommand(interaction: ChatInputCommandInteraction
     } catch (error) {
       console.error('Error moving member:', error);
       console.log('resuming...');
-      interaction.reply({
+      await safeReply(interaction, {
         content: `Failed to move <@${member.user.id}> to <@${channel.id}>`,
         flags: MessageFlags.Ephemeral,
       });
       return;
     }
   }
-  interaction.reply({
+  await safeReply(interaction, {
     content: `Moved ${member.user.username} to ${channel.name}.`,
     flags: MessageFlags.Ephemeral,
   });
@@ -1196,14 +1307,14 @@ export async function handleDeleteMessageCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
 ) {
   if (!interaction.isChatInputCommand()) {
-    interaction.reply({
+    await safeReply(interaction, {
       content: 'This command can only be used as a slash command.',
       flags: MessageFlags.Ephemeral,
     });
     return;
   }
-  if (userIsAdmin(interaction) === false) {
-    interaction.reply({
+  if ((await userIsAdmin(interaction)) === false) {
+    await safeReply(interaction, {
       content: 'You do not have permission to use this command.',
       flags: MessageFlags.Ephemeral,
     });
@@ -1213,7 +1324,7 @@ export async function handleDeleteMessageCommand(
   const channel = interaction.channel;
 
   if (!channel) {
-    interaction.reply({
+    await safeReply(interaction, {
       content: 'Channel not found.',
       flags: MessageFlags.Ephemeral,
     });
@@ -1223,13 +1334,13 @@ export async function handleDeleteMessageCommand(
   try {
     const message = await channel.messages.fetch(messageId);
     await message.delete();
-    interaction.reply({
+    await safeReply(interaction, {
       content: `Deleted message: ${message.content}`,
       flags: MessageFlags.Ephemeral,
     });
   } catch (error) {
     console.error('Error deleting message:', error);
-    interaction.reply({
+    await safeReply(interaction, {
       content: 'Failed to delete message. Please make sure the message ID is correct.',
       flags: MessageFlags.Ephemeral,
     });
@@ -1264,36 +1375,36 @@ function getMemberFromInteraction(
   return null;
 }
 
-export function handleAdminSetNameCommand(
+export function handleAdminSetBattleTagCommand(
   interaction: ModalSubmitInteraction<CacheType>,
   pId: string,
   hotsName: string
 ): void;
-export function handleAdminSetNameCommand(interaction: ChatInputCommandInteraction<CacheType>): void;
-export function handleAdminSetNameCommand(
+export function handleAdminSetBattleTagCommand(interaction: ChatInputCommandInteraction<CacheType>): void;
+export async function handleAdminSetBattleTagCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ModalSubmitInteraction<CacheType>,
   pId?: string,
   hotsName?: string
-): void {
+): Promise<void> {
   if (!userIsAdmin(interaction)) {
     return;
   }
 
   const member = getMemberFromInteraction(interaction, pId);
   if (!member || 'user' in member === false) {
-    interaction.reply({
+    await safeReply(interaction, {
       content: 'Please provide a valid Discord member to set their name.',
       flags: MessageFlags.Ephemeral,
     });
     return;
   }
-  const newName = interaction.isChatInputCommand()
-    ? interaction.options.getString(CommandIds.NAME, true)
+  const newBattleTag = interaction.isChatInputCommand()
+    ? interaction.options.getString(CommandIds.BATTLE_TAG, true)
     : hotsName ?? '';
   const id = member.user.id;
-  setPlayerName(id, newName);
-  interaction.reply({
-    content: `Set ${member.user.displayName}'s Heroes of the Storm name to \`${newName}\``,
+  setPlayerName(interaction, id, newBattleTag);
+  await safeReply(interaction, {
+    content: `Set ${member.user.displayName}'s Heroes of the Storm battle tag to \`${newBattleTag}\``,
     flags: MessageFlags.Ephemeral,
   });
   // return;
@@ -1305,7 +1416,7 @@ export function handleAdminSetRoleCommand(
   pId: string,
   pRole: keyof typeof roleMap
 ): void;
-export function handleAdminSetRoleCommand(
+export async function handleAdminSetRoleCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
   pId?: string,
   pRole?: keyof typeof roleMap
@@ -1315,7 +1426,7 @@ export function handleAdminSetRoleCommand(
   }
   const member = getMemberFromInteraction(interaction, pId);
   if (!member || 'user' in member === false) {
-    interaction.reply({
+    await safeReply(interaction, {
       content: 'Please provide a valid Discord member to set their name.',
       flags: MessageFlags.Ephemeral,
     });
@@ -1327,12 +1438,12 @@ export function handleAdminSetRoleCommand(
   const id = member.user.id;
   const player = setPlayerRole(id, role);
   if (!player) {
-    interaction.reply({
+    await safeReply(interaction, {
       content: 'Player not found in the lobby. Please make sure they have joined first.',
       flags: MessageFlags.Ephemeral,
     });
   }
-  interaction.reply({
+  await safeReply(interaction, {
     content: `Set ${member.user.displayName}'s role to \`${getPlayerRolesFormatted(role)}\``,
     flags: MessageFlags.Ephemeral,
   });
@@ -1362,7 +1473,7 @@ export async function handleAdminSetActiveCommand(
   pActive?: boolean
 ): Promise<void> {
   if (!userIsAdmin(interaction)) {
-    interaction.reply({
+    await safeReply(interaction, {
       content: 'You do not have permission to use this command.',
       flags: MessageFlags.Ephemeral,
     });
@@ -1370,7 +1481,7 @@ export async function handleAdminSetActiveCommand(
   }
   const member = getMemberFromInteraction(interaction, pId);
   if (!member || 'user' in member === false) {
-    interaction.reply({
+    await safeReply(interaction, {
       content: 'Please provide a valid Discord member to set their active status.',
       flags: MessageFlags.Ephemeral,
     });
@@ -1380,7 +1491,7 @@ export async function handleAdminSetActiveCommand(
   const id = pId ?? member.user.id;
   const { player, updated } = setPlayerActive(id, isActive); // Set player as active in the database
   if (!player) {
-    interaction.reply({
+    await safeReply(interaction, {
       content: 'Player not found in the lobby. Please make sure they have joined first.',
       flags: MessageFlags.Ephemeral,
     });
@@ -1395,15 +1506,15 @@ export async function handleAdminSetActiveCommand(
       .setCustomId(`${CommandIds.LEAVE}_${id}`)
       .setLabel('Admin Leave')
       .setStyle(ButtonStyle.Danger);
-    const adminNameBtn = new ButtonBuilder()
-      .setCustomId(`${CommandIds.NAME}_${id}`)
-      .setLabel('Admin Name')
+    const adminBattleTagBtn = new ButtonBuilder()
+      .setCustomId(`${CommandIds.BATTLE_TAG}_${id}`)
+      .setLabel('Admin Battle Tag')
       .setStyle(ButtonStyle.Secondary);
     const adminRoleBtn = new ButtonBuilder()
       .setCustomId(`${CommandIds.ROLE}_${id}`)
       .setLabel('Admin Role')
       .setStyle(ButtonStyle.Secondary);
-    interaction.reply({
+    await safeReply(interaction, {
       content: `Set ${member.user.displayName}'s active status to \`${
         isActive ? CommandIds.ACTIVE : CommandIds.INACTIVE
       }\``,
@@ -1411,15 +1522,17 @@ export async function handleAdminSetActiveCommand(
       components: [
         new ActionRowBuilder<ButtonBuilder>().addComponents(
           isActive ? adminLeaveBtn : adminJoinBtn,
-          adminNameBtn,
+          adminBattleTagBtn,
           adminRoleBtn
         ),
       ],
     });
     await updateLobbyMessage(interaction);
   } else {
-    interaction.reply({
-      content: `${player.usernames.hots} is already ${isActive ? CommandIds.ACTIVE : CommandIds.INACTIVE}.`,
+    await safeReply(interaction, {
+      content: `${player.usernames.accounts?.find(a => a.isPrimary)?.hotsBattleTag.replace(/#.*$/, '')} is already ${
+        isActive ? CommandIds.ACTIVE : CommandIds.INACTIVE
+      }.`,
       flags: MessageFlags.Ephemeral,
     });
   }
@@ -1433,12 +1546,12 @@ export async function handleAdminSetActiveCommand(
  * @param interaction The ChatInputCommandInteraction object from Discord
  * @returns boolean indicating if the user is an admin
  */
-function userIsAdmin(interaction: chatOrButtonOrModal): boolean {
+async function userIsAdmin(interaction: chatOrButtonOrModal): Promise<boolean> {
   const isAdmin = adminUserIds.includes(interaction.user.id);
   if (isAdmin) {
     return true;
   }
-  interaction.reply({
+  await safeReply(interaction, {
     content: 'You do not have permission to use this command.',
     flags: MessageFlags.Ephemeral,
   });

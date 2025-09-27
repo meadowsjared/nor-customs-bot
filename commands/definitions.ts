@@ -14,12 +14,12 @@ const minimumAdminPermissions: bigint = PermissionsBitField.Flags.MoveMembers;
 export const slashCommands: ApplicationCommandDataResolvable[] = [
   {
     name: CommandIds.JOIN,
-    description: 'Join with your hots username',
+    description: 'Join with your hots battle tag and role',
     options: [
       {
-        name: 'username',
+        name: CommandIds.BATTLE_TAG,
         type: ApplicationCommandOptionType.String,
-        description: 'Your hots username',
+        description: 'Your hots battle tag (e.g. Name#1234)',
         required: true,
       },
       {
@@ -39,13 +39,25 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     description: 'Leave the lobby',
   },
   {
-    name: CommandIds.NAME,
-    description: 'Set your username',
+    name: CommandIds.BATTLE_TAG,
+    description: 'Set your hots battle tag',
     options: [
       {
-        name: 'username',
+        name: CommandIds.BATTLE_TAG,
         type: ApplicationCommandOptionType.String,
-        description: 'Your hots username',
+        description: 'Your hots battle tag (e.g. Name#1234)',
+        required: true,
+      },
+    ],
+  },
+  {
+    name: CommandIds.ADD_ACCOUNT,
+    description: 'Add a Heroes of the Storm account to your profile',
+    options: [
+      {
+        name: CommandIds.BATTLE_TAG,
+        type: ApplicationCommandOptionType.String,
+        description: 'The Heroes of the Storm battle tag to add',
         required: true,
       },
     ],
@@ -155,7 +167,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
   },
   {
     name: CommandIds.REJOIN,
-    description: 'Rejoin the lobby with your previous username and role',
+    description: 'Rejoin the lobby with your previous battle tag and role',
   },
   {
     name: CommandIds.CLEAR,
@@ -186,9 +198,9 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
         required: true,
       },
       {
-        name: 'hots_name',
+        name: 'hots_battle_tag',
         type: ApplicationCommandOptionType.String,
-        description: 'The Heroes of the Storm username of the player',
+        description: 'The Heroes of the Storm battle tag of the player (including the # and number)',
         required: false,
       },
     ],
@@ -199,8 +211,8 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     defaultMemberPermissions: minimumAdminPermissions,
     options: [
       {
-        name: CommandIds.NAME,
-        description: "Change a player's hots name.",
+        name: CommandIds.BATTLE_TAG,
+        description: "Change a player's hots battle tag.",
         type: ApplicationCommandOptionType.Subcommand,
         options: [
           {
@@ -210,8 +222,8 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
             required: true,
           },
           {
-            name: CommandIds.NAME,
-            description: "The player's new hots name.",
+            name: CommandIds.BATTLE_TAG,
+            description: "The player's new hots battle tag.",
             type: ApplicationCommandOptionType.String,
             required: true,
           },
@@ -255,6 +267,25 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
             name: CommandIds.ACTIVE,
             description: 'Set the player as active (true) or inactive (false).',
             type: ApplicationCommandOptionType.Boolean,
+            required: true,
+          },
+        ],
+      },
+      {
+        name: CommandIds.ADD_ACCOUNT,
+        description: "Add a Heroes of the Storm account to a player's profile.",
+        type: ApplicationCommandOptionType.Subcommand,
+        options: [
+          {
+            name: 'discord_member',
+            description: 'The user to modify.',
+            type: ApplicationCommandOptionType.User,
+            required: true,
+          },
+          {
+            name: 'hots_battle_tag',
+            description: 'The Heroes of the Storm battle tag to add (including the # and number)',
+            type: ApplicationCommandOptionType.String,
             required: true,
           },
         ],

@@ -28,7 +28,8 @@ export const enum CommandIds {
   GUIDE = 'guide',
   JOIN = 'join',
   REJOIN = 'rejoin',
-  NAME = 'name',
+  BATTLE_TAG = 'battle-tag',
+  ADD_ACCOUNT = 'add-account',
   ROLE = 'role',
   EDIT_ROLES = 'edit-roles',
   ROLE_EDIT_ADD = 'role-edit-add',
@@ -80,9 +81,9 @@ export const rejoinBtn = new ButtonBuilder()
   .setLabel('Rejoin')
   .setStyle(ButtonStyle.Primary);
 export const joinBtn = new ButtonBuilder().setCustomId(CommandIds.JOIN).setLabel('Join').setStyle(ButtonStyle.Primary);
-export const nameBtn = new ButtonBuilder()
-  .setCustomId(CommandIds.NAME)
-  .setLabel('Change Name')
+export const battleTagBtn = new ButtonBuilder()
+  .setCustomId(CommandIds.BATTLE_TAG)
+  .setLabel('Change Battle Tag')
   .setStyle(ButtonStyle.Primary);
 export const roleBtn = new ButtonBuilder()
   .setCustomId(CommandIds.ROLE)
@@ -95,7 +96,7 @@ export const rolesRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
 );
 export const imPlayingBtn = new ButtonBuilder()
   .setCustomId(CommandIds.REJOIN)
-  .setLabel("I'm Playing")
+  .setLabel("I'm playing this game")
   .setStyle(ButtonStyle.Primary);
 
 export type chatOrButtonOrModal =

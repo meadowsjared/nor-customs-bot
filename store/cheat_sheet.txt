@@ -15,15 +15,15 @@ get all players:
 SELECT * FROM players;
 
 get player by name:
-SELECT * FROM players WHERE hotsName = 'player_name';
+SELECT * FROM players WHERE hots_battle_tag = 'player_name';
 
 set player by name to active:
-UPDATE players SET active = 1 WHERE hotsName = 'player_name';
+UPDATE players SET active = 1 WHERE hots_battle_tag = 'player_name';
 
 reload the teams for testing:
-UPDATE players SET active = 1 WHERE discordID IN ('192116769870184448','243668219712372736','174577718975791105','770559401689743410','370587314474319873','353362612723122197','168240037924831232','85523383193698304','226434789387927552','235235346864930816','845713006796734495');
-UPDATE players SET team = 1 WHERE discordID IN ('243668219712372736','174577718975791105','770559401689743410','370587314474319873','353362612723122197');
-UPDATE players SET team = 2 WHERE discordID IN ('168240037924831232','85523383193698304','226434789387927552','235235346864930816','845713006796734495');
+UPDATE players SET active = 1 WHERE discord_id IN ('192116769870184448','243668219712372736','174577718975791105','770559401689743410','370587314474319873','353362612723122197','168240037924831232','85523383193698304','226434789387927552','235235346864930816','845713006796734495');
+UPDATE players SET team = 1 WHERE discord_id IN ('243668219712372736','174577718975791105','770559401689743410','370587314474319873','353362612723122197');
+UPDATE players SET team = 2 WHERE discord_id IN ('168240037924831232','85523383193698304','226434789387927552','235235346864930816','845713006796734495');
 
 mark all players as inactive:
 UPDATE players SET active = 0, team = NULL WHERE active = 1 OR team IS NOT NULL;
@@ -35,14 +35,37 @@ get the teams:
 SELECT * FROM players WHERE active = 1 ORDER BY team ASC;
 
 set all these players to active:
-UPDATE players SET active = 1 WHERE hotsName IN ('Nommynoms', 'saika', 'Aviater', 'TravisParty', 'Icon', 'Rev', 'TheCure', 'Aieee', 'Bandayd', 'ducky', 'FeintToAccel', 'selym', 'LadyGeneveve');
-UPDATE players SET active = 1 WHERE hotsName IN ('Finalstand','W4lterplinge','PiNkBlAcKoUt','Ducky','Bandayd','Urid','Feint','Rift','hunterlust','Okiryu');
+UPDATE players SET active = 1 WHERE hots_battle_tag IN ('Nommynoms', 'saika', 'Aviater', 'TravisParty', 'Icon', 'Rev', 'TheCure', 'Aieee', 'Bandayd', 'ducky', 'FeintToAccel', 'selym', 'LadyGeneveve');
+UPDATE players SET active = 1 WHERE hots_battle_tag IN ('Finalstand','W4lterplinge','PiNkBlAcKoUt','Ducky','Bandayd','Urid','Feint','Rift','hunterlust','Okiryu');
 
 find player by part of name:
-select * from players where hotsName LIKE '%Band%';
+select * from players where hots_battle_tag LIKE '%Band%';
 
 show schema for channels:
 .schema channels
 
 get all channels:
 SELECT * FROM channels;
+
+get all hots accounts:
+SELECT id,discord_id,is_primary,updated_at,hots_battle_tag FROM hots_accounts;
+
+Bandayd#1631
+/add-account hots_battle_tag:Bandayd#1631
+
+ALTER TABLE players RENAME COLUMN discordId TO discord_id;
+ALTER TABLE players RENAME COLUMN discordName TO discord_name;
+ALTER TABLE players RENAME COLUMN discordGlobalName TO discord_global_name;
+ALTER TABLE players RENAME COLUMN discordDisplayName TO discord_display_name;
+
+UPDATE hots_accounts SET is_primary = 1 WHERE discord_id IN (SELECT discord_id FROM hots_accounts GROUP BY discord_id HAVING COUNT(*) = 1);
+
+delete me from the database (for testing):
+DELETE FROM hots_accounts WHERE hots_battle_tag='Bandayd#1631';
+DELETE FROM players WHERE discord_name='bandayd.';
+
+DELETE FROM hots_accounts WHERE discord_id='243668219712372736';
+DELETE FROM players WHERE discord_id='243668219712372736';
+
+SELECT id,discord_id,is_primary,updated_at,hots_battle_tag FROM hots_accounts;
+SELECT * FROM players;

@@ -1,8 +1,44 @@
 interface Usernames extends DiscordUserNames {
   /**
-   * The Heroes of the Storm username of the player
+   * The Heroes of the Storm accounts of the player
    */
-  hots: string;
+  accounts?: HotsAccount[];
+}
+
+export interface HotsAccount {
+  /**
+   * The Heroes of the Storm battle tag of the player
+   */
+  hotsBattleTag: string;
+  /**
+   * Whether this is the player's primary account
+   */
+  isPrimary: boolean;
+  /**
+   * The database ID of the account
+   * Used for updating/deleting the account
+   */
+  id: number;
+}
+
+export interface HotsAccountRow {
+  /**
+   * The Heroes of the Storm battle tag of the player
+   */
+  hots_battle_tag: string;
+  /**
+   * The Discord ID of the player
+   */
+  discord_id: string;
+  /**
+   * Whether this is the player's primary account
+   */
+  is_primary: boolean;
+  /**
+   * The database ID of the account
+   * Used for updating/deleting the account
+   */
+  id: number;
 }
 
 export interface DiscordUserNames {
@@ -50,23 +86,23 @@ export interface FlatPlayer {
   /**
    * The discord ID of the player
    */
-  discordId: string;
+  discord_id: string;
   /**
-   * The Heroes of the Storm username of the player
+   * The Heroes of the Storm battle tag of the player
    */
-  hotsName: string;
+  hots_battle_tag: string;
   /**
    * The discord username of the player
    */
-  discordName: string;
+  discord_name: string;
   /**
    * The discord global name of the player
    */
-  discordGlobalName: string;
+  discord_global_name: string;
   /**
    * The discord display name of the player
    */
-  discordDisplayName: string;
+  discord_display_name: string;
   /**
    * The role of the player in the game
    * T = Tank, A = Assassin, B = Bruiser, H = Healer, F = Flex

@@ -16,7 +16,7 @@ import { botChannelName, CommandIds, roleMap } from './constants';
 import {
   handleJoinCommand,
   handleLeaveCommand,
-  handleNameCommand,
+  handleBattleTagCommand,
   handleRejoinCommand,
   handleTwitchCommand,
   handlePlayersCommand,
@@ -29,17 +29,21 @@ import {
   handleMoveToTeamsCommand,
   handleNewGameCommand,
   handleLookupCommand,
-  handleAdminSetNameCommand,
+  handleAdminSetBattleTagCommand,
   handleAdminSetRoleCommand,
   handleAdminSetActiveCommand,
   handleAdminShowRoleButtons,
-  handleAdminShowNameModal,
+  handleAdminShowBattleTagModal,
   handleMoveCommand,
   handleEditRoleCommand,
   handleEditRoleButtonCommand,
   handleDeleteMessageCommand,
+  handleAddHotsAccountCommand,
+  handleAdminAddHotsAccountCommand,
+  safeReply,
 } from './commands';
 import { slashCommands } from './commands/definitions';
+import { handleNameButtonCommand } from './store/player';
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.DirectMessages],
@@ -179,9 +183,20 @@ client.on('interactionCreate', async interaction => {
       // Handle players raw command
       handlePlayersCommand(interaction, true); // Pass true to get raw player data
       break;
-    case CommandIds.NAME:
-      // Handle name command
-      handleNameCommand(interaction);
+    case CommandIds.BATTLE_TAG:
+      // Handle battle tag command
+      handleBattleTagCommand(interaction);
+      break;
+    case CommandIds.ADD_ACCOUNT:
+      if (!interaction.isChatInputCommand()) {
+        safeReply(interaction, {
+          content: 'This command can only be used as a slash command.',
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+      // Handle add HotS account command
+      handleAddHotsAccountCommand(interaction);
       break;
     case CommandIds.ROLE:
     case CommandIds.EDIT_ROLES:
@@ -199,7 +214,7 @@ client.on('interactionCreate', async interaction => {
     case CommandIds.MOVE:
       // Handle move command
       if (!interaction.isChatInputCommand()) {
-        interaction.reply({
+        safeReply(interaction, {
           content: 'This command can only be used as a slash command.',
           flags: MessageFlags.Ephemeral,
         });
@@ -213,13 +228,13 @@ client.on('interactionCreate', async interaction => {
       break;
     case CommandIds.ADMIN:
       if (!interaction.isChatInputCommand()) {
-        interaction.reply({
+        safeReply(interaction, {
           content: 'This command can only be used as a slash command.',
           flags: MessageFlags.Ephemeral,
         });
         return;
       }
-      handleAdminSubCommand(interaction);
+      handleAdminSubCommand(interaction, commandName);
       break;
     default:
       handleDefaultCommand(interaction, commandName);
@@ -227,17 +242,21 @@ client.on('interactionCreate', async interaction => {
   }
 });
 
-function handleAdminSubCommand(interaction: ChatInputCommandInteraction<CacheType>) {
+function handleAdminSubCommand(interaction: ChatInputCommandInteraction<CacheType>, commandName: string | null = null) {
   const subCommand = interaction.options.getSubcommand(true);
+  const parts = commandName?.split('_') || [];
   switch (subCommand) {
-    case CommandIds.NAME:
-      handleAdminSetNameCommand(interaction);
+    case CommandIds.BATTLE_TAG:
+      handleAdminSetBattleTagCommand(interaction);
       break;
     case CommandIds.ROLE:
       handleAdminSetRoleCommand(interaction);
       break;
     case CommandIds.ACTIVE:
       handleAdminSetActiveCommand(interaction);
+      break;
+    case CommandIds.ADD_ACCOUNT:
+      handleAdminAddHotsAccountCommand(interaction, parts[1], parts[2]);
       break;
   }
 }
@@ -248,7 +267,7 @@ function handleDefaultCommand(
 ) {
   // if the interaction is not a button, reply with an error
   if (!commandName?.includes('_') || interaction.isChatInputCommand()) {
-    interaction.reply({
+    safeReply(interaction, {
       content: 'Unknown command. Please use a valid command. ' + (commandName ?? ''),
       flags: MessageFlags.Ephemeral,
     });
@@ -266,8 +285,8 @@ function handleDefaultCommand(
       case CommandIds.ROLE:
         handleAdminShowRoleButtons(interaction, parts[1]);
         return;
-      case CommandIds.NAME:
-        handleAdminShowNameModal(interaction, parts[1]);
+      case CommandIds.BATTLE_TAG:
+        handleAdminShowBattleTagModal(interaction, parts[1]);
         return;
     }
   }
@@ -296,6 +315,10 @@ function handleDefaultCommand(
     handleEditRoleButtonCommand(interaction, parts[2], parts[0], parts[3], parts[1] === CommandIds.ACTIVE);
     return;
   }
+  if (parts.length === 4 && parts[0] === CommandIds.RENAME_HOTS_ACCOUNT) {
+    handleNameButtonCommand(interaction, parts[1], parts[2]);
+    return;
+  }
   handleUnknownCommand(interaction, commandName);
 }
 
@@ -312,7 +335,7 @@ function handleUnknownCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
   commandName: string
 ) {
-  interaction.reply({
+  safeReply(interaction, {
     content: `Unknown command: ${commandName}. Please use a valid command.`,
     flags: MessageFlags.Ephemeral,
   });
