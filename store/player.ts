@@ -214,7 +214,6 @@ export async function savePlayer(
     `);
     hotsStmt.run(discordId, hotsBattleTag, discordId);
   } else {
-    console.log('existingAccounts', existingAccounts);
     if (!interaction) return;
     if (existingAccounts.some(account => account.hotsBattleTag === hotsBattleTag)) {
       return; // No need to rename if the name is the same as an existing account
