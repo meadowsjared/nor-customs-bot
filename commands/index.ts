@@ -816,9 +816,9 @@ export async function handleBattleTagCommand(
 
 export async function handleAddHotsAccountCommand(interaction: ChatInputCommandInteraction<CacheType>) {
   const discordId = interaction.user.id;
-  const hotsBattleTag = interaction.options.getString(CommandIds.BATTLE_TAG, true);
+  const hotsBattleTag = interaction.options.getString(CommandIds.BATTLE_TAG);
   // check if the battleTag is valid, it should be in the format of Name#1234
-  await handleAddHotsAccount(interaction, discordId, hotsBattleTag);
+  await handleAddHotsAccountCommandSub(interaction, discordId, hotsBattleTag);
 }
 
 export async function handleAdminAddHotsAccountCommand(interaction: ChatInputCommandInteraction<CacheType>) {
@@ -830,9 +830,39 @@ export async function handleAdminAddHotsAccountCommand(interaction: ChatInputCom
     });
     return;
   }
-  const hotsBattleTag = interaction.options.getString(CommandIds.BATTLE_TAG, true);
+  const hotsBattleTag = interaction.options.getString(CommandIds.BATTLE_TAG);
   // check if the battleTag is valid, it should be in the format of Name#1234
-  await handleAddHotsAccount(interaction, member.user.id, hotsBattleTag);
+  await handleAddHotsAccountCommandSub(interaction, member.user.id, hotsBattleTag);
+}
+
+async function handleAddHotsAccountCommandSub(
+  interaction: ChatInputCommandInteraction<CacheType>,
+  discordId: string,
+  hotsBattleTag: string | null
+) {
+  if (!hotsBattleTag) {
+    // if they didn't provide a battle tag, then show them all the accounts they have associated with their discord id
+    const player = getPlayerByDiscordId(discordId);
+    if (!player?.usernames.accounts || player.usernames.accounts.length === 0) {
+      await safeReply(interaction, {
+        content: 'You have no Heroes of the Storm accounts associated with your Discord ID.',
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    const accountsList = player.usernames.accounts
+      .map(account => `* \`${account.hotsBattleTag}\` ${account.isPrimary ? '(Primary)' : ''}`)
+      .join('\n');
+    await safeReply(interaction, {
+      content: `${
+        interaction.user.id === discordId ? 'Your' : `<@${discordId}>'s`
+      } associated Heroes of the Storm accounts:\n${accountsList}`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  await handleAddHotsAccount(interaction, discordId, hotsBattleTag);
 }
 
 /**
