@@ -197,7 +197,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
         required: true,
       },
       {
-        name: 'hots_battle_tag',
+        name: CommandIds.BATTLE_TAG,
         type: ApplicationCommandOptionType.String,
         description: 'The Heroes of the Storm battle tag of the player (including the # and number)',
         required: false,
