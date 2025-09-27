@@ -70,3 +70,9 @@ DELETE FROM players WHERE discord_id='243668219712372736';
 
 SELECT id,discord_id,is_primary,updated_at,hots_battle_tag FROM hots_accounts;
 SELECT * FROM players;
+
+# reset the autoincrement counter for hots_accounts table
+UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM hots_accounts) WHERE name = 'hots_accounts';
+
+# check the current value of the autoincrement counter
+SELECT seq FROM sqlite_sequence WHERE name = 'hots_accounts';

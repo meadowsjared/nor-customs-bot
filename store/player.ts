@@ -330,7 +330,7 @@ export async function handleAddHotsAccount(
   const battleTagRegex = /^.+#\d+$/;
   if (!battleTagRegex.test(hotsBattleTag)) {
     await safeReply(interaction, {
-      content: 'You must provide a valid Heroes of the Storm battle tag in the format Name#1234.',
+      content: `You must provide a valid Heroes of the Storm battle tag in the format \`Name#1234\`.\nYou provided: \`${hotsBattleTag}\``,
       flags: MessageFlags.Ephemeral,
     });
     return false;
@@ -365,12 +365,17 @@ export async function handleAddHotsAccount(
   }
 
   // check if the player already has this hots account
-  const hasAccount = player.usernames.accounts?.some(account => account.hotsBattleTag === hotsBattleTag);
+  const hasAccount = player.usernames.accounts?.some(
+    account => account.hotsBattleTag.toLowerCase() === hotsBattleTag.toLowerCase()
+  );
   if (hasAccount) {
     await safeReply(interaction, {
       content: `${
         discordId === player.discordId ? 'You' : `<@${discordId}>`
-      } already have this HotS account linked: \`${hotsBattleTag}\``,
+      } already have this HotS account linked: \`${
+        player.usernames.accounts?.find(account => account.hotsBattleTag.toLowerCase() === hotsBattleTag.toLowerCase())
+          ?.hotsBattleTag
+      }\``,
       flags: MessageFlags.Ephemeral,
     });
     return false;
