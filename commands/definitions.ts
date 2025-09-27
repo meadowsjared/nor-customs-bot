@@ -192,7 +192,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     description: "Import a player's Discord information",
     options: [
       {
-        name: 'discord_member',
+        name: CommandIds.DISCORD_ID,
         type: ApplicationCommandOptionType.User,
         description: 'The Discord ID of the player to lookup',
         required: true,
@@ -216,7 +216,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
         type: ApplicationCommandOptionType.Subcommand,
         options: [
           {
-            name: 'discord_member',
+            name: CommandIds.DISCORD_ID,
             description: 'The user to modify.',
             type: ApplicationCommandOptionType.User,
             required: true,
@@ -235,7 +235,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
         type: ApplicationCommandOptionType.Subcommand,
         options: [
           {
-            name: 'discord_member',
+            name: CommandIds.DISCORD_ID,
             description: 'The user to modify.',
             type: ApplicationCommandOptionType.User,
             required: true,
@@ -258,7 +258,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
         type: ApplicationCommandOptionType.Subcommand,
         options: [
           {
-            name: 'discord_member',
+            name: CommandIds.DISCORD_ID,
             description: 'The user to modify.',
             type: ApplicationCommandOptionType.User,
             required: true,
@@ -277,7 +277,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
         type: ApplicationCommandOptionType.Subcommand,
         options: [
           {
-            name: 'discord_member',
+            name: CommandIds.DISCORD_ID,
             description: 'The user to modify.',
             type: ApplicationCommandOptionType.User,
             required: true,
@@ -298,7 +298,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     defaultMemberPermissions: minimumAdminPermissions,
     options: [
       {
-        name: 'discord_member',
+        name: CommandIds.DISCORD_ID,
         description: 'The user to move.',
         type: ApplicationCommandOptionType.User,
         required: true,

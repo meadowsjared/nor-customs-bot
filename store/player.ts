@@ -356,7 +356,6 @@ export async function handleAddHotsAccount(
   }
 
   const player = getPlayerByDiscordId(discordId);
-  console.log('player', JSON.stringify(player, null, 2));
   if (!player) {
     await safeReply(interaction, {
       content: 'Player not found',

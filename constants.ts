@@ -30,6 +30,7 @@ export const enum CommandIds {
   REJOIN = 'rejoin',
   BATTLE_TAG = 'battle-tag',
   ADD_ACCOUNT = 'add-account',
+  DISCORD_ID = 'discord-id',
   ROLE = 'role',
   EDIT_ROLES = 'edit-roles',
   ROLE_EDIT_ADD = 'role-edit-add',
