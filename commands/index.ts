@@ -669,6 +669,61 @@ async function showJoinModal(
   await handleEditRoleCommand(modalInteraction, true); // Show the edit role buttons
 }
 
+export async function handleLookupCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+) {
+  if (interaction.isButton()) {
+    console.error('Interaction is not a command or button interaction');
+    return;
+  }
+  const member = interaction.options.getMember(CommandIds.DISCORD_ID);
+  if (!member || 'user' in member === false) {
+    await safeReply(interaction, {
+      content: 'Please provide a valid Discord member to look up.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  const discordId = member.user.id;
+  const discordData = fetchDiscordNames(interaction, discordId);
+  const hotsBattleTag = interaction.options.getString(CommandIds.BATTLE_TAG, false) ?? '';
+
+  const player = getPlayerByDiscordId(discordId);
+  const message = player
+    ? `${hotsBattleTag || 'Player'} found in the lobby with role: \`${getPlayerRolesFormatted(player.role)}\``
+    : `${hotsBattleTag || 'Player'} not found in the lobby, adding them with default role \`${getPlayerRolesFormatted(
+        CommandIds.ROLE_FLEX
+      )}\`.`;
+  await safeReply(interaction, {
+    content: `Discord ID: \`${discordId}\`\ndiscordName: \`${discordData.discordName}\`\ndiscordGlobalName: \`${discordData.discordGlobalName}\`\nDisplay Name: \`${discordData.discordDisplayName}\`\n${message}`,
+    flags: MessageFlags.Ephemeral,
+  });
+  // save the player to the database if they are not already there
+  if (!player) {
+    await savePlayer(
+      interaction,
+      discordId,
+      {
+        discordId,
+        usernames: {
+          ...discordData,
+        },
+        role: CommandIds.ROLE_FLEX, // Default role is Flex
+        active: false,
+        team: undefined,
+      },
+      hotsBattleTag
+    );
+    return;
+  }
+  // update the player's Discord data in the database
+  setPlayerDiscordNames(discordId, discordData);
+  if (hotsBattleTag && !player.usernames.accounts?.some(a => a.hotsBattleTag !== hotsBattleTag)) {
+    setPlayerName(interaction, discordId, hotsBattleTag); // Update the player's Heroes of the Storm name in the database
+  }
+  // return;
+}
+
 /**
  * Handles the admin command interaction, shows buttons to manage roles and players
  * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
@@ -1238,61 +1293,6 @@ export async function handleTwitchCommand(
     );
 
   await safeReply(interaction, { embeds: [exampleEmbed] });
-}
-
-export async function handleLookupCommand(
-  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
-) {
-  if (interaction.isButton()) {
-    console.error('Interaction is not a command or button interaction');
-    return;
-  }
-  const member = interaction.options.getMember(CommandIds.DISCORD_ID);
-  if (!member || 'user' in member === false) {
-    await safeReply(interaction, {
-      content: 'Please provide a valid Discord member to look up.',
-      flags: MessageFlags.Ephemeral,
-    });
-    return;
-  }
-  const discordId = member.user.id;
-  const discordData = fetchDiscordNames(interaction, discordId);
-  const hotsBattleTag = interaction.options.getString(CommandIds.BATTLE_TAG, false) ?? '';
-
-  const player = getPlayerByDiscordId(discordId);
-  const message = player
-    ? `${hotsBattleTag || 'Player'} found in the lobby with role: \`${getPlayerRolesFormatted(player.role)}\``
-    : `${hotsBattleTag || 'Player'} not found in the lobby, adding them with default role \`${getPlayerRolesFormatted(
-        CommandIds.ROLE_FLEX
-      )}\`.`;
-  await safeReply(interaction, {
-    content: `Discord ID: \`${discordId}\`\ndiscordName: \`${discordData.discordName}\`\ndiscordGlobalName: \`${discordData.discordGlobalName}\`\nDisplay Name: \`${discordData.discordDisplayName}\`\n${message}`,
-    flags: MessageFlags.Ephemeral,
-  });
-  // save the player to the database if they are not already there
-  if (!player) {
-    await savePlayer(
-      interaction,
-      discordId,
-      {
-        discordId,
-        usernames: {
-          ...discordData,
-        },
-        role: CommandIds.ROLE_FLEX, // Default role is Flex
-        active: false,
-        team: undefined,
-      },
-      hotsBattleTag
-    );
-    return;
-  }
-  // update the player's Discord data in the database
-  setPlayerDiscordNames(discordId, discordData);
-  if (hotsBattleTag && !player.usernames.accounts?.some(a => a.hotsBattleTag !== hotsBattleTag)) {
-    setPlayerName(interaction, discordId, hotsBattleTag); // Update the player's Heroes of the Storm name in the database
-  }
-  // return;
 }
 
 /**
