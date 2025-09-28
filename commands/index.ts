@@ -48,7 +48,7 @@ import {
 } from '../store/player';
 import { saveChannel, getChannels, saveLobbyMessage, getLobbyMessage } from '../store/channels';
 import { DiscordUserNames, Player } from '../types/player';
-
+import { client } from '../index';
 /**
  * Generates the current lobby status message with active players
  * @returns The formatted lobby status message
@@ -148,13 +148,46 @@ export async function handleNewGameCommand(
  * @returns Promise<void>
  */
 export async function safeReply(
-  interaction: chatOrButtonOrModal,
+  interaction: chatOrButtonOrModal | undefined,
   options: string | MessagePayload | InteractionReplyOptions
 ) {
+  if (!interaction) {
+    // post a new message
+    if (!process.env.NOR_DISCORD_ID) {
+      console.error('No NOR_DISCORD_ID environment variable set.');
+      return;
+    }
+    // use process.env.NOR_DISCORD_ID to get the channel
+    const guild = client.guilds.cache.get(process.env.NOR_DISCORD_ID);
+    if (!guild) {
+      console.error(`Guild with ID ${process.env.NOR_DISCORD_ID} not found.`);
+      return;
+    }
+    const channel = guild.channels.cache.find(ch => ch.name === botChannelName);
+    if (!channel?.isTextBased()) {
+      console.error(`Channel with name ${botChannelName} not found or is not text-based.`);
+      return;
+    }
+    const message = getMessageContent(options);
+    channel.send({
+      content: message,
+    });
+    return;
+  }
   if (interaction.replied) {
     await interaction.followUp(options);
   } else {
     await interaction.reply(options);
+  }
+}
+
+function getMessageContent(options: string | MessagePayload | InteractionReplyOptions): string {
+  if (typeof options === 'string') {
+    return options;
+  } else if ('content' in options && typeof options.content === 'string') {
+    return options.content;
+  } else {
+    return 'No content';
   }
 }
 
