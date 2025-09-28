@@ -194,36 +194,7 @@ export async function savePlayer(
     return;
   }
   // handle adding the hots account for this player
-  handleAddHotsAccount(interaction, discordId, hotsBattleTag);
-}
-
-export async function handleNameButtonCommand(
-  interaction: ButtonInteraction<CacheType>,
-  accountId: string,
-  hotsBattleTag: string
-): Promise<void> {
-  const hotsStmt = db.prepare(`
-    INSERT INTO hots_accounts (discord_id, hots_battle_tag)
-    VALUES (?, ?)
-    ON CONFLICT(discord_id) DO UPDATE SET
-      hots_battle_tag=excluded.hots_battle_tag,
-      updated_at=CURRENT_TIMESTAMP
-  `);
-  hotsStmt.run(accountId, hotsBattleTag);
-  // Find the account by ID
-  const account = getPlayerByDiscordId(accountId);
-  if (!account) {
-    await safeReply(interaction, {
-      content: 'Account not found.',
-      flags: MessageFlags.Ephemeral,
-    });
-    return;
-  }
-
-  await safeReply(interaction, {
-    content: `Renamed account to ${hotsBattleTag}`,
-    flags: MessageFlags.Ephemeral,
-  });
+  await handleAddHotsAccount(interaction, discordId, hotsBattleTag);
 }
 
 export async function savePlayerData(players: Map<string, Player>): Promise<void> {

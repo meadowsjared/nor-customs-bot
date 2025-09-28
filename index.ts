@@ -43,7 +43,6 @@ import {
   safeReply,
 } from './commands';
 import { slashCommands } from './commands/definitions';
-import { handleNameButtonCommand } from './store/player';
 
 export const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.DirectMessages],
@@ -312,10 +311,6 @@ async function handleDefaultCommand(
     // Handle role edit button commands with user ID and active state
     console.log('Handling role edit button command with parts 4:', parts);
     handleEditRoleButtonCommand(interaction, parts[2], parts[0], parts[3], parts[1] === CommandIds.ACTIVE);
-    return;
-  }
-  if (parts.length === 4 && parts[0] === CommandIds.RENAME_HOTS_ACCOUNT) {
-    handleNameButtonCommand(interaction, parts[1], parts[2]);
     return;
   }
   await handleUnknownCommand(interaction, commandName);
