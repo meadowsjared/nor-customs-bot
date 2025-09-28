@@ -193,51 +193,8 @@ export async function savePlayer(
   if (!hotsBattleTag) {
     return;
   }
-  // get the existing hots accounts for this player
-  const accountsStmt = db.prepare<string, HotsAccountRow>(
-    'SELECT id, hots_battle_tag, is_primary FROM hots_accounts WHERE discord_id = ?'
-  );
-  const existingAccounts = accountsStmt.all(discordId).map(account => getAccountFromAccountRow(account));
-  if (existingAccounts.length < 2) {
-    const hotsStmt = db.prepare(`
-      INSERT INTO hots_accounts (discord_id, hots_battle_tag, is_primary)
-      VALUES (?, ?,
-        CASE
-          WHEN (SELECT COUNT(*) FROM hots_accounts WHERE discord_id = ? AND is_primary = 1) = 0
-          THEN 1
-          ELSE 0
-        END
-      )
-      ON CONFLICT(hots_battle_tag) DO UPDATE SET
-        hots_battle_tag=excluded.hots_battle_tag,
-        updated_at=CURRENT_TIMESTAMP
-    `);
-    hotsStmt.run(discordId, hotsBattleTag, discordId);
-  } else {
-    if (!interaction) return;
-    if (existingAccounts.some(account => account.hotsBattleTag === hotsBattleTag)) {
-      return; // No need to rename if the name is the same as an existing account
-    }
-    const adminRoleBtn = existingAccounts.map(account =>
-      new ButtonBuilder()
-        .setCustomId(`${CommandIds.RENAME_HOTS_ACCOUNT}_${account.id}_${hotsBattleTag}`)
-        .setLabel(`$${account.hotsBattleTag}`)
-        .setStyle(ButtonStyle.Secondary)
-    );
-    if (interaction.replied) {
-      await interaction.followUp({
-        content: `Which account should I rename to \`${hotsBattleTag}\`?`,
-        flags: MessageFlags.Ephemeral,
-        components: [new ActionRowBuilder<ButtonBuilder>().addComponents(...adminRoleBtn)],
-      });
-    } else {
-      await safeReply(interaction, {
-        content: `Which account should I rename to \`${hotsBattleTag}\`?`,
-        flags: MessageFlags.Ephemeral,
-        components: [new ActionRowBuilder<ButtonBuilder>().addComponents(...adminRoleBtn)],
-      });
-    }
-  }
+  // handle adding the hots account for this player
+  handleAddHotsAccount(interaction, discordId, hotsBattleTag);
 }
 
 export async function handleNameButtonCommand(
@@ -322,7 +279,8 @@ export async function handleAddHotsAccount(
   interaction:
     | ChatInputCommandInteraction<CacheType>
     | ButtonInteraction<CacheType>
-    | ModalSubmitInteraction<CacheType>,
+    | ModalSubmitInteraction<CacheType>
+    | undefined,
   discordId: string,
   hotsBattleTag: string
 ): Promise<false | Player> {
