@@ -189,7 +189,7 @@ client.on('interactionCreate', async interaction => {
       break;
     case CommandIds.ADD_ACCOUNT:
       if (!interaction.isChatInputCommand()) {
-        safeReply(interaction, {
+        await safeReply(interaction, {
           content: 'This command can only be used as a slash command.',
           flags: MessageFlags.Ephemeral,
         });
@@ -214,7 +214,7 @@ client.on('interactionCreate', async interaction => {
     case CommandIds.MOVE:
       // Handle move command
       if (!interaction.isChatInputCommand()) {
-        safeReply(interaction, {
+        await safeReply(interaction, {
           content: 'This command can only be used as a slash command.',
           flags: MessageFlags.Ephemeral,
         });
@@ -228,7 +228,7 @@ client.on('interactionCreate', async interaction => {
       break;
     case CommandIds.ADMIN:
       if (!interaction.isChatInputCommand()) {
-        safeReply(interaction, {
+        await safeReply(interaction, {
           content: 'This command can only be used as a slash command.',
           flags: MessageFlags.Ephemeral,
         });
@@ -237,7 +237,7 @@ client.on('interactionCreate', async interaction => {
       handleAdminSubCommand(interaction, commandName);
       break;
     default:
-      handleDefaultCommand(interaction, commandName);
+      await handleDefaultCommand(interaction, commandName);
       break;
   }
 });
@@ -260,13 +260,13 @@ function handleAdminSubCommand(interaction: ChatInputCommandInteraction<CacheTyp
   }
 }
 
-function handleDefaultCommand(
+async function handleDefaultCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
   commandName: string | null = null
 ) {
   // if the interaction is not a button, reply with an error
   if (!commandName?.includes('_') || interaction.isChatInputCommand()) {
-    safeReply(interaction, {
+    await safeReply(interaction, {
       content: 'Unknown command. Please use a valid command. ' + (commandName ?? ''),
       flags: MessageFlags.Ephemeral,
     });
@@ -318,7 +318,7 @@ function handleDefaultCommand(
     handleNameButtonCommand(interaction, parts[1], parts[2]);
     return;
   }
-  handleUnknownCommand(interaction, commandName);
+  await handleUnknownCommand(interaction, commandName);
 }
 
 function isRoleCommandId(commandName: string): commandName is CommandIds {
@@ -330,11 +330,11 @@ function isRoleCommandId(commandName: string): commandName is CommandIds {
   return commandAr.includes(commandName);
 }
 
-function handleUnknownCommand(
+async function handleUnknownCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
   commandName: string
 ) {
-  safeReply(interaction, {
+  await safeReply(interaction, {
     content: `Unknown command: ${commandName}. Please use a valid command.`,
     flags: MessageFlags.Ephemeral,
   });

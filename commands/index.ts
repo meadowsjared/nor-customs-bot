@@ -135,7 +135,7 @@ export async function handleNewGameCommand(
     saveLobbyMessage(sentMessage.id, sentMessage.channelId, previousPlayersList);
   }
 
-  safeReply(interaction, {
+  await safeReply(interaction, {
     content: 'Game announced!', // empty content to avoid sending a message in the channel, since we already announced it'
     flags: MessageFlags.Ephemeral,
   });
@@ -1124,7 +1124,7 @@ export async function handleEditRoleButtonCommand(
   setActive = false
 ) {
   if (!interaction.isButton()) {
-    safeReply(interaction, {
+    await safeReply(interaction, {
       content: 'This command can only be used with buttons.',
       flags: MessageFlags.Ephemeral,
     });
