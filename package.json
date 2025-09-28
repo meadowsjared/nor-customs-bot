@@ -5,9 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "tsx index.ts",
-    "start": "sh -c 'nohup bun dev > log.latest 2>&1 & echo $! > .pid && disown'",
-    "stop": "sh -c 'if [ -f .pid ]; then kill $(cat .pid) && rm .pid; else pkill -f \"bun dev\"; fi'",
-    "status": "sh -c 'if [ -f .pid ] && ps -p $(cat .pid) > /dev/null 2>&1; then echo \"Bot is running (PID: $(cat .pid))\"; else echo \"Bot is not running\"; fi'",
+    "start": "bash -c 'nohup bun dev > log.latest 2>&1 & echo $! > .pid'",
+    "stop": "bash -c 'if [ -f .pid ]; then kill $(cat .pid) && rm .pid; else pkill -f \"bun dev\"; fi'",
+    "status": "bash -c 'if [ -f .pid ] && ps -p $(cat .pid) > /dev/null 2>&1; then echo \"Bot is running (PID: $(cat .pid))\"; else echo \"Bot is not running\"; fi'",
     "logs": "tail -f log.latest",
     "logs:all": "less +F log.latest",
     "restart": "bun stop && sleep 2 && bun start",
