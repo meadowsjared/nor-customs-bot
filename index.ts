@@ -45,7 +45,7 @@ import {
 import { slashCommands } from './commands/definitions';
 import { handleNameButtonCommand } from './store/player';
 
-const client = new Client({
+export const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.DirectMessages],
 });
 
