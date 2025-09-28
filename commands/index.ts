@@ -406,7 +406,7 @@ async function moveTeamMembersToChannel(
         .then(() => {
           numberMoved++;
         })
-        .catch(_err => {
+        .catch(() => {
           failedToMove.push(player);
           console.error(`\nMember ${player.discordId}, ${player.usernames.discordDisplayName}, is not on discord:`);
         });
@@ -541,10 +541,10 @@ export async function handlePlayersCommand(
           ?.hotsBattleTag.replace(/#.*$/, '')}) \`${getPlayerRolesFormatted(role)}\``;
       })
       .join('\n') || 'No players in the lobby';
-  const rawPlayerList = Array.from(players.entries())
-    .filter(([_, player]) => player.active)
+  const rawPlayerList = Object.values(players)
+    .filter(player => player.active)
     .map(
-      ([_, { usernames, role }]) =>
+      ({ usernames, role }) =>
         `${usernames.accounts?.find(a => a.isPrimary)?.hotsBattleTag.replace(/#.*$/, '')} ${role}`
     );
   await safeReply(interaction, {
@@ -1044,11 +1044,7 @@ function createEditRoleButtonEnabled(
     .setStyle(ButtonStyle.Primary);
 }
 
-function getEditRoleRow(
-  interaction: chatOrButtonOrModal,
-  action: string,
-  setActive = false
-): ActionRowBuilder<ButtonBuilder> {
+function getEditRoleRow(interaction: chatOrButtonOrModal, action: string): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     ...Object.entries(roleMap).map(([key, label]) => {
       return new ButtonBuilder()
@@ -1082,10 +1078,10 @@ export async function handleEditRoleCommand(interaction: chatOrButtonOrModal, se
     });
     return;
   }
-  let roles = ', current role: ' + getPlayerRolesFormatted(player.role);
+  const roles = ', current role: ' + getPlayerRolesFormatted(player.role);
   // create a button that will set this interaction to add mode
   const activeSuffix = setActive ? '_' + CommandIds.ACTIVE : '';
-  const row2 = getEditRoleRow(interaction, CommandIds.ROLE_EDIT_REPLACE + activeSuffix, setActive);
+  const row2 = getEditRoleRow(interaction, CommandIds.ROLE_EDIT_REPLACE + activeSuffix);
   const content = (setActive ? 'You must click a role to join the lobby\n' : '') + 'Replace Mode' + roles; // Default content for the reply
   if (interaction.replied) {
     await interaction.followUp({
@@ -1140,9 +1136,9 @@ export async function handleEditRoleButtonCommand(
     });
     return;
   }
-  let roles = ', current role: ' + getPlayerRolesFormatted(player.role); // Get the formatted roles of the player
+  const roles = ', current role: ' + getPlayerRolesFormatted(player.role); // Get the formatted roles of the player
 
-  const row2 = getEditRoleRow(interaction, action, setActive);
+  const row2 = getEditRoleRow(interaction, action);
   // Handle the role editing logic based on the action
   let setActiveNext: boolean;
   if (setActive === true && player.active === false && role !== undefined) {

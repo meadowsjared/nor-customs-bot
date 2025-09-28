@@ -234,7 +234,7 @@ client.on('interactionCreate', async interaction => {
         });
         return;
       }
-      handleAdminSubCommand(interaction, commandName);
+      handleAdminSubCommand(interaction);
       break;
     default:
       await handleDefaultCommand(interaction, commandName);
@@ -242,7 +242,7 @@ client.on('interactionCreate', async interaction => {
   }
 });
 
-function handleAdminSubCommand(interaction: ChatInputCommandInteraction<CacheType>, commandName: string | null = null) {
+function handleAdminSubCommand(interaction: ChatInputCommandInteraction<CacheType>) {
   const subCommand = interaction.options.getSubcommand(true);
   switch (subCommand) {
     case CommandIds.BATTLE_TAG:
