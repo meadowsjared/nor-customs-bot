@@ -295,10 +295,11 @@ export async function handleAddHotsAccount(
     account => account.hotsBattleTag.toLowerCase() === hotsBattleTag.toLowerCase()
   );
   if (hasAccount) {
+    const userIsSelf = discordId === interaction?.user.id;
     await safeReply(interaction, {
-      content: `${
-        discordId === player.discordId ? 'You' : `<@${discordId}>`
-      } already have this HotS account linked: \`${
+      content: `${userIsSelf ? 'You' : '<@' + discordId + '>'} already ${
+        userIsSelf ? 'have' : 'has'
+      } this HotS account linked: \`${
         player.usernames.accounts?.find(account => account.hotsBattleTag.toLowerCase() === hotsBattleTag.toLowerCase())
           ?.hotsBattleTag
       }\``,
