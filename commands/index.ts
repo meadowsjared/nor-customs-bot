@@ -925,7 +925,7 @@ export async function handleAdminPrimaryCommand(
       return new ButtonBuilder()
         .setCustomId(`${CommandIds.ADMIN}_${CommandIds.PRIMARY}_${discordId}_${account.hotsBattleTag}`)
         .setLabel(account.hotsBattleTag)
-        .setStyle(ButtonStyle.Primary);
+        .setStyle(account.isPrimary ? ButtonStyle.Primary : ButtonStyle.Secondary);
     });
     await safeReply(interaction, {
       content: 'Please select the account to set as primary using the buttons below.',
