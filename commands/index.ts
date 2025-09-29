@@ -518,11 +518,12 @@ export async function handleGuideCommand(
     .setDescription(
       [
         'Commands:',
-        '```🟢 /join   — Join the lobby with your battle tag and role',
-        '🔴 /leave  — Leave the lobby',
-        '🔄 /rejoin — Rejoin the lobby',
-        '✏️ /battle-tag   — Change your hots battle tag',
-        '🎭 /role   — Change your role```',
+        '```🟢 /join        — Join the lobby with your battle tag',
+        '                  and role',
+        '🔴 /leave       — Leave the lobby',
+        '🔄 /rejoin      — Rejoin the lobby',
+        '✏️ /add-account — Add a HotS account',
+        '🎭 /role        — Change your role```',
       ].join('\n')
     )
     .addFields({ name: 'Roles', value: '🛡️ Tank, ⚔️ Assassin, 💪 Bruiser, 💉 Healer, 🔄 Flex' })
@@ -530,7 +531,7 @@ export async function handleGuideCommand(
     //   { name: '`/join`', value: 'Join the lobby with your Heroes of the Storm battle tag and role.' },
     //   { name: '`/leave`', value: 'Leave the lobby.' },
     //   { name: '`/rejoin`', value: 'Rejoin the lobby with your previous battle tag and role.' },
-    //   { name: '`/battle-tag`', value: 'Change your Heroes of the Storm battle tag.' },
+    //   { name: '`/add-account`', value: 'Add a HotS account.' },
     //   { name: '`/role`', value: 'Change your role in the lobby.' }
     // )
     .setFooter({ text: 'Enjoy playing!' })
