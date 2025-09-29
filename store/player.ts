@@ -267,7 +267,9 @@ export async function handleAddHotsAccount(
   const existingAccount = existingAccountStmt.get(hotsBattleTag, discordId);
   if (existingAccount) {
     await safeReply(interaction, {
-      content: `This HotS account is already in use by another player: <@${existingAccount.discord_id}>\nare you sure this is your account...`,
+      content: `This HotS account is already in use by another player: <@${
+        existingAccount.discord_id
+      }>\nare you sure this is ${discordId === interaction?.user.id ? 'your' : '<@' + discordId + ">'s"} account...`,
       files: [
         {
           attachment: 'https://i.giphy.com/media/hPkJ9Q7dh6itMoMIMC/giphy.gif',
