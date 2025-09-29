@@ -1314,6 +1314,10 @@ export async function handleDeleteMessageCommand(
 
   try {
     const message = await channel.messages.fetch(messageId);
+    if (message.embeds.length !== 0) {
+      // delete the embed
+      await message.edit({ embeds: [], content: '*[Message Deleted]*' });
+    }
     await message.delete();
     await safeReply(interaction, {
       content: `Deleted message: ${message.content}`,
