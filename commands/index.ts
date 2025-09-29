@@ -1536,7 +1536,7 @@ export async function handleAdminSetActiveCommand(
   pId?: string,
   pActive?: boolean
 ): Promise<void> {
-  if (!userIsAdmin(interaction)) {
+  if (!(await userIsAdmin(interaction))) {
     await safeReply(interaction, {
       content: 'You do not have permission to use this command.',
       flags: MessageFlags.Ephemeral,
