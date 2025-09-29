@@ -317,7 +317,9 @@ export async function handleAddHotsAccount(
     player.usernames.accounts && player.usernames.accounts.length === 0 ? 1 : 0
   );
   await safeReply(interaction, {
-    content: `Your HotS account has been added: \`${hotsBattleTag}\``,
+    content: `${
+      discordId === interaction?.user.id ? 'Your' : '<@' + discordId + ">'s"
+    } HotS account has been added: \`${hotsBattleTag}\``,
     flags: MessageFlags.Ephemeral,
   });
   return player;
