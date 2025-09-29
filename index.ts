@@ -39,6 +39,7 @@ import {
   handleAdminAddHotsAccountCommand,
   safeReply,
   handleAdminAddHotsAccountButton,
+  handleAdminPrimaryCommand,
 } from './commands';
 import { slashCommands } from './commands/definitions';
 
@@ -240,6 +241,9 @@ function handleAdminSubCommand(interaction: ChatInputCommandInteraction<CacheTyp
     case CommandIds.ADD_ACCOUNT:
       handleAdminAddHotsAccountCommand(interaction);
       break;
+    case CommandIds.PRIMARY:
+      handleAdminPrimaryCommand(interaction);
+      break;
   }
 }
 
@@ -295,6 +299,10 @@ async function handleDefaultCommand(
     // Handle role edit button commands with user ID and active state
     console.log('Handling role edit button command with parts 4:', parts);
     handleEditRoleButtonCommand(interaction, parts[2], parts[0], parts[3], parts[1] === CommandIds.ACTIVE);
+    return;
+  }
+  if (parts.length === 4 && parts[0] === CommandIds.ADMIN && parts[1] === CommandIds.PRIMARY) {
+    handleAdminPrimaryCommand(interaction, parts[2], parts[3]);
     return;
   }
   await handleUnknownCommand(interaction, commandName);

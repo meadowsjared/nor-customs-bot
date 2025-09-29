@@ -288,6 +288,25 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
           },
         ],
       },
+      {
+        name: CommandIds.PRIMARY,
+        description: "Set a player's primary Heroes of the Storm account.",
+        type: ApplicationCommandOptionType.Subcommand,
+        options: [
+          {
+            name: CommandIds.DISCORD_ID,
+            description: 'The user to modify.',
+            type: ApplicationCommandOptionType.User,
+            required: true,
+          },
+          {
+            name: CommandIds.BATTLE_TAG,
+            description: "The player's Heroes of the Storm battle tag to set as primary (including the # and number).",
+            type: ApplicationCommandOptionType.String,
+            required: false,
+          },
+        ],
+      },
     ],
   },
   {

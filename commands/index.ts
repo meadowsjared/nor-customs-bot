@@ -44,6 +44,7 @@ import {
   setPlayerDiscordNames,
   setPlayerName,
   setPlayerRole,
+  setPrimaryAccount,
   setTeams,
 } from '../store/player';
 import { saveChannel, getChannels, saveLobbyMessage, getLobbyMessage } from '../store/channels';
@@ -888,6 +889,82 @@ export async function handleAdminAddHotsAccountCommand(interaction: ChatInputCom
   const hotsBattleTag = interaction.options.getString(CommandIds.BATTLE_TAG);
   // check if the battleTag is valid, it should be in the format of Name#1234
   await handleAddHotsAccountCommandSub(interaction, member.user.id, hotsBattleTag);
+}
+
+export async function handleAdminPrimaryCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+  discordIdParam?: string,
+  battleTagParam?: string
+) {
+  const discordId = getDiscordId(interaction, discordIdParam);
+  if (!discordId) {
+    await safeReply(interaction, {
+      content: 'Please provide a valid Discord ID or member to look up.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  const player = getPlayerByDiscordId(discordId);
+  if (!player) {
+    await safeReply(interaction, {
+      content: 'The specified user does not exist in the database.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  } else if (!player.usernames.accounts || player.usernames.accounts.length === 0) {
+    await safeReply(interaction, {
+      content: 'The specified user does not have any Heroes of the Storm accounts associated with their Discord ID.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  const battleTag = getBattleTag(interaction, battleTagParam);
+  if (!battleTag) {
+    // if they didn't provide a battle tag, then show them a list of buttons for each account the user has
+    const accountButtons = player.usernames.accounts.map(account => {
+      return new ButtonBuilder()
+        .setCustomId(`${CommandIds.ADMIN}_${CommandIds.PRIMARY}_${discordId}_${account.hotsBattleTag}`)
+        .setLabel(account.hotsBattleTag)
+        .setStyle(ButtonStyle.Primary);
+    });
+    await safeReply(interaction, {
+      content: 'Please select the account to set as primary using the buttons below.',
+      flags: MessageFlags.Ephemeral,
+      components: [new ActionRowBuilder<ButtonBuilder>().addComponents(...accountButtons)],
+    });
+    return;
+  }
+  await setPrimaryAccount(interaction, discordId, battleTag);
+}
+
+function getDiscordId(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+  discordIdParam?: string
+): string | undefined {
+  if (discordIdParam) {
+    return discordIdParam;
+  }
+  if (!interaction.isChatInputCommand()) {
+    return undefined;
+  }
+  const member = interaction.options.getMember(CommandIds.DISCORD_ID);
+  if (member && 'user' in member) {
+    return member.user.id;
+  }
+  return undefined;
+}
+
+function getBattleTag(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+  battleTagParam?: string
+) {
+  if (battleTagParam) {
+    return battleTagParam;
+  }
+  if (!interaction.isChatInputCommand()) {
+    return undefined;
+  }
+  return interaction.options.getString(CommandIds.BATTLE_TAG, false) ?? undefined;
 }
 
 async function handleAddHotsAccountCommandSub(

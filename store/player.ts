@@ -323,6 +323,46 @@ export async function handleAddHotsAccount(
   return player;
 }
 
+export async function setPrimaryAccount(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+  discordId: string,
+  hotsBattleTag: string
+) {
+  const player = getPlayerByDiscordId(discordId);
+  if (!player) {
+    await safeReply(interaction, {
+      content: 'Player not found',
+      flags: MessageFlags.Ephemeral,
+    });
+    return false; // Player not found
+  }
+  if (!player.usernames.accounts || player.usernames.accounts.length === 0) {
+    await safeReply(interaction, {
+      content: 'This player has no Heroes of the Storm accounts linked.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return false; // No accounts linked
+  }
+  const stmt = db.prepare(
+    'UPDATE hots_accounts SET is_primary = CASE WHEN hots_battle_tag = ? THEN 1 ELSE 0 END WHERE discord_id = ?'
+  );
+  const result = stmt.run(hotsBattleTag, discordId);
+  if (result.changes === 0) {
+    await safeReply(interaction, {
+      content: `The specified Heroes of the Storm account \`${hotsBattleTag}\` was not found for this player.`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return false; // No account updated
+  }
+  await safeReply(interaction, {
+    content: `${
+      discordId === interaction?.user.id ? 'Your' : '<@' + discordId + ">'s"
+    } primary HotS account has been set to \`${hotsBattleTag}\`.`,
+    flags: MessageFlags.Ephemeral,
+  });
+  return true;
+}
+
 /**
  * Marks all players as inactive in the database.
  * @returns void
