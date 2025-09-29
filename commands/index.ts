@@ -24,7 +24,7 @@ import {
   imPlayingBtn,
   joinBtn,
   leaveBtn,
-  battleTagBtn,
+  addAccountBtn,
   norDiscordId,
   rejoinBtn,
   roleBtn,
@@ -662,7 +662,7 @@ export async function handleRejoinCommand(
     await safeReply(interaction, {
       content,
       flags: MessageFlags.Ephemeral,
-      components: [new ActionRowBuilder<ButtonBuilder>().addComponents(leaveBtn, battleTagBtn, roleBtn)],
+      components: [new ActionRowBuilder<ButtonBuilder>().addComponents(leaveBtn, addAccountBtn, roleBtn)],
     });
     return;
   }
@@ -780,6 +780,25 @@ export async function handleAdminShowRoleButtons(interaction: ButtonInteraction<
 }
 
 /**
+ * Handles the admin add hots account button interaction, shows a modal to collect the battle tag and adds it to the player's account
+ * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
+ * @param discordId The Discord ID of the user to add the HotS account for.
+ * @returns Promise<void>
+ */
+export async function handleAdminAddHotsAccountButton(interaction: ButtonInteraction<CacheType>, discordId: string) {
+  const { hotsBattleTag, modalInteraction } = await handleUserNameModalSubmit(interaction, discordId);
+  if (!modalInteraction || !hotsBattleTag) {
+    // If modal interaction is undefined, it means the user did not respond in time
+    return;
+  }
+
+  const player = getPlayerByDiscordId(discordId);
+  if (player) {
+    handleAddHotsAccount(modalInteraction, discordId, hotsBattleTag); // Update the player's battle tag in the database
+  }
+}
+
+/**
  * Handles the join command interaction, adds the user to the lobby with their battle tag and role
  * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
  */
@@ -821,7 +840,7 @@ async function handleUserJoined(
   // Update the lobby message instead of announcing
   await updateLobbyMessage(interaction);
 
-  const components = [new ActionRowBuilder<ButtonBuilder>().addComponents(leaveBtn, battleTagBtn, roleBtn)];
+  const components = [new ActionRowBuilder<ButtonBuilder>().addComponents(leaveBtn, addAccountBtn, roleBtn)];
   if (skipReply) {
     await interaction.followUp({
       components,
@@ -835,74 +854,21 @@ async function handleUserJoined(
   });
 }
 
-/**
- * Handles the battle tag command interaction, changes the users battle tag in the lobby
- * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
- * @returns
- */
-export async function handleBattleTagCommand(
+export async function handleAddHotsAccountCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
 ) {
   if (interaction.isButton()) {
-    const playerExists = getPlayerByDiscordId(interaction.user.id); // Get player by Discord ID
-    if (!playerExists) {
-      // If player does not exist, show a modal to collect the battle tag and role
-      await showJoinModal(interaction);
-      return;
-    }
     const { hotsBattleTag, modalInteraction } = await handleUserNameModalSubmit(interaction);
     if (!modalInteraction || !hotsBattleTag) {
       // If modal interaction is undefined, it means the user did not respond in time
       return;
     }
-
     const player = getPlayerByDiscordId(modalInteraction.user.id);
     if (player) {
-      setPlayerName(interaction, modalInteraction.user.id, hotsBattleTag); // Update the player's battle tag in the database
-      await safeReply(modalInteraction, {
-        content: `Your battle tag has been set to: \`${hotsBattleTag}\``,
-        flags: MessageFlags.Ephemeral,
-      });
+      await handleAddHotsAccount(modalInteraction, modalInteraction.user.id, hotsBattleTag); // Update the player's battle tag in the database
     }
     return;
   }
-  const battleTag = interaction.options.getString(CommandIds.BATTLE_TAG, false);
-  const player = getPlayerByDiscordId(interaction.user.id); // Get player by Discord ID
-  if (player && battleTag) {
-    // If player exists and battleTag is provided
-    const newPlayer: Player = {
-      ...player,
-      usernames: { ...player.usernames }, // Update the hots battle tag
-    };
-    await savePlayer(interaction, interaction.user.id, newPlayer, battleTag); // Save player data to the database
-    await safeReply(interaction, {
-      content: `Your battle tag has been set to: \`${battleTag}\``,
-      flags: MessageFlags.Ephemeral,
-    });
-  } else if (battleTag) {
-    const discordData = fetchDiscordNames(interaction);
-    await savePlayer(interaction, interaction.user.id, {
-      discordId: interaction.user.id,
-      usernames: { ...discordData },
-      role: CommandIds.ROLE_FLEX, // Default role is Flex
-      active: false,
-      team: undefined,
-    });
-    await safeReply(interaction, {
-      content: `Your battle tag has been set to: \`${battleTag}\``,
-      flags: MessageFlags.Ephemeral,
-    });
-    // If player does not exist, we know their name, but not their role
-    await handleEditRoleCommand(interaction); // Show the edit role buttons
-    return;
-  } else {
-    // If player does not exist, show a modal to collect the battle tag and role
-    await showJoinModal(interaction);
-    return;
-  }
-}
-
-export async function handleAddHotsAccountCommand(interaction: ChatInputCommandInteraction<CacheType>) {
   const discordId = interaction.user.id;
   const hotsBattleTag = interaction.options.getString(CommandIds.BATTLE_TAG);
   // check if the battleTag is valid, it should be in the format of Name#1234
@@ -956,15 +922,17 @@ async function handleAddHotsAccountCommandSub(
 /**
  * Handles the user name modal submission.
  * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
+ * @param discordId (optional) The Discord ID of the user, if not provided, it will use the interaction user ID.
  * @returns An object containing the battle tag and the modal interaction.
  */
 async function handleUserNameModalSubmit(
-  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+  discordId?: string
 ): Promise<{
   hotsBattleTag: string | undefined;
   modalInteraction: ModalSubmitInteraction<CacheType> | undefined;
 }> {
-  const previousPlayer = getPlayerByDiscordId(interaction.user.id);
+  const previousPlayer = getPlayerByDiscordId(discordId ?? interaction.user.id);
 
   // create a modal with a text field to collect the battle tag
   const battleTagInput = new TextInputBuilder()
@@ -1001,58 +969,6 @@ async function handleUserNameModalSubmit(
   }
   const hotsBattleTag = modalInteraction.fields.getTextInputValue(CommandIds.BATTLE_TAG);
   return { hotsBattleTag, modalInteraction };
-}
-
-/**
- * Handles the admin show battle tag modal interaction, shows a modal to set the player's Heroes of the Storm battle tag
- * @param interaction The interaction object from Discord, either a ButtonInteraction.
- * @param pId The Discord ID of the player whose battle tag is being set.
- */
-export async function handleAdminShowBattleTagModal(
-  interaction: ButtonInteraction<CacheType>,
-  pId: string
-): Promise<{ battleTag?: string; modalInteraction?: ModalSubmitInteraction<CacheType> }> {
-  const previousPlayer = getPlayerByDiscordId(pId);
-  // create a modal with a text field to collect the battle tag
-  const adminBattleTagInput = new TextInputBuilder()
-    .setCustomId('adminBattleTagInput')
-    .setLabel('Enter their Heroes of the Storm battle tag (e.g. Name#1234)')
-    .setStyle(TextInputStyle.Short)
-    .setRequired(true)
-    .setPlaceholder('Their Heroes of the Storm battle tag')
-    .setValue(previousPlayer?.usernames.accounts?.find(a => a.isPrimary)?.hotsBattleTag ?? '');
-
-  // Add the input to an action row
-  const actionRow = new ActionRowBuilder<TextInputBuilder>().addComponents(adminBattleTagInput);
-
-  // Create the modal
-  const modal = new ModalBuilder().setCustomId('battleTag').setTitle('Set Their battle tag').addComponents(actionRow);
-  // get the battle tag from the TextInputBuilder
-  await interaction.showModal(modal);
-
-  let modalInteraction: ModalSubmitInteraction<CacheType>;
-  try {
-    modalInteraction = await interaction.awaitModalSubmit({
-      filter: i => i.customId === 'battleTag',
-      time: 5 * 60 * 1000,
-    }); // 5 minutes timeout
-  } catch (error) {
-    if (error && typeof error === 'object' && 'code' in error && error.code === 'InteractionCollectorError') {
-      return { battleTag: undefined, modalInteraction: undefined }; // Return undefined if the modal interaction is not received
-    }
-    console.error('Error awaiting modal submit:', error);
-    return { battleTag: undefined, modalInteraction: undefined }; // Return undefined if the modal interaction is not received
-  }
-  const battleTag = modalInteraction.fields.getTextInputValue('adminBattleTagInput');
-  if (!battleTag) {
-    await safeReply(modalInteraction, {
-      content: 'You must provide a battle tag.',
-      flags: MessageFlags.Ephemeral,
-    });
-    return { battleTag: undefined, modalInteraction: undefined };
-  }
-  handleAdminSetBattleTagCommand(modalInteraction, pId, battleTag);
-  return { battleTag, modalInteraction };
 }
 
 function createEditRoleButtonDisabled(
@@ -1439,41 +1355,6 @@ function getMemberFromInteraction(
   return null;
 }
 
-export function handleAdminSetBattleTagCommand(
-  interaction: ModalSubmitInteraction<CacheType>,
-  pId: string,
-  hotsName: string
-): void;
-export function handleAdminSetBattleTagCommand(interaction: ChatInputCommandInteraction<CacheType>): void;
-export async function handleAdminSetBattleTagCommand(
-  interaction: ChatInputCommandInteraction<CacheType> | ModalSubmitInteraction<CacheType>,
-  pId?: string,
-  hotsName?: string
-): Promise<void> {
-  if (!userIsAdmin(interaction)) {
-    return;
-  }
-
-  const member = getMemberFromInteraction(interaction, pId);
-  if (!member || 'user' in member === false) {
-    await safeReply(interaction, {
-      content: 'Please provide a valid Discord member to set their name.',
-      flags: MessageFlags.Ephemeral,
-    });
-    return;
-  }
-  const newBattleTag = interaction.isChatInputCommand()
-    ? interaction.options.getString(CommandIds.BATTLE_TAG, true)
-    : hotsName ?? '';
-  const id = member.user.id;
-  setPlayerName(interaction, id, newBattleTag);
-  await safeReply(interaction, {
-    content: `Set ${member.user.displayName}'s Heroes of the Storm battle tag to \`${newBattleTag}\``,
-    flags: MessageFlags.Ephemeral,
-  });
-  // return;
-}
-
 export function handleAdminSetRoleCommand(interaction: ChatInputCommandInteraction<CacheType>): void;
 export function handleAdminSetRoleCommand(
   interaction: ButtonInteraction<CacheType>,
@@ -1570,9 +1451,9 @@ export async function handleAdminSetActiveCommand(
       .setCustomId(`${CommandIds.LEAVE}_${id}`)
       .setLabel('Admin Leave')
       .setStyle(ButtonStyle.Danger);
-    const adminBattleTagBtn = new ButtonBuilder()
-      .setCustomId(`${CommandIds.BATTLE_TAG}_${id}`)
-      .setLabel('Admin Battle Tag')
+    const adminAddAccountBtn = new ButtonBuilder()
+      .setCustomId(`${CommandIds.ADD_ACCOUNT}_${id}`)
+      .setLabel('Admin Add Account')
       .setStyle(ButtonStyle.Secondary);
     const adminRoleBtn = new ButtonBuilder()
       .setCustomId(`${CommandIds.ROLE}_${id}`)
@@ -1586,7 +1467,7 @@ export async function handleAdminSetActiveCommand(
       components: [
         new ActionRowBuilder<ButtonBuilder>().addComponents(
           isActive ? adminLeaveBtn : adminJoinBtn,
-          adminBattleTagBtn,
+          adminAddAccountBtn,
           adminRoleBtn
         ),
       ],

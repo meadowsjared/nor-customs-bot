@@ -16,7 +16,6 @@ import { botChannelName, CommandIds, roleMap } from './constants';
 import {
   handleJoinCommand,
   handleLeaveCommand,
-  handleBattleTagCommand,
   handleRejoinCommand,
   handleTwitchCommand,
   handlePlayersCommand,
@@ -29,11 +28,9 @@ import {
   handleMoveToTeamsCommand,
   handleNewGameCommand,
   handleLookupCommand,
-  handleAdminSetBattleTagCommand,
   handleAdminSetRoleCommand,
   handleAdminSetActiveCommand,
   handleAdminShowRoleButtons,
-  handleAdminShowBattleTagModal,
   handleMoveCommand,
   handleEditRoleCommand,
   handleEditRoleButtonCommand,
@@ -41,6 +38,7 @@ import {
   handleAddHotsAccountCommand,
   handleAdminAddHotsAccountCommand,
   safeReply,
+  handleAdminAddHotsAccountButton,
 } from './commands';
 import { slashCommands } from './commands/definitions';
 
@@ -182,18 +180,7 @@ client.on('interactionCreate', async interaction => {
       // Handle players raw command
       handlePlayersCommand(interaction, true); // Pass true to get raw player data
       break;
-    case CommandIds.BATTLE_TAG:
-      // Handle battle tag command
-      handleBattleTagCommand(interaction);
-      break;
     case CommandIds.ADD_ACCOUNT:
-      if (!interaction.isChatInputCommand()) {
-        await safeReply(interaction, {
-          content: 'This command can only be used as a slash command.',
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
       // Handle add HotS account command
       handleAddHotsAccountCommand(interaction);
       break;
@@ -244,9 +231,6 @@ client.on('interactionCreate', async interaction => {
 function handleAdminSubCommand(interaction: ChatInputCommandInteraction<CacheType>) {
   const subCommand = interaction.options.getSubcommand(true);
   switch (subCommand) {
-    case CommandIds.BATTLE_TAG:
-      handleAdminSetBattleTagCommand(interaction);
-      break;
     case CommandIds.ROLE:
       handleAdminSetRoleCommand(interaction);
       break;
@@ -283,8 +267,8 @@ async function handleDefaultCommand(
       case CommandIds.ROLE:
         handleAdminShowRoleButtons(interaction, parts[1]);
         return;
-      case CommandIds.BATTLE_TAG:
-        handleAdminShowBattleTagModal(interaction, parts[1]);
+      case CommandIds.ADD_ACCOUNT:
+        handleAdminAddHotsAccountButton(interaction, parts[1]);
         return;
     }
   }

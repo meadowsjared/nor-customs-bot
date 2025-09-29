@@ -82,9 +82,9 @@ export const rejoinBtn = new ButtonBuilder()
   .setLabel('Rejoin')
   .setStyle(ButtonStyle.Primary);
 export const joinBtn = new ButtonBuilder().setCustomId(CommandIds.JOIN).setLabel('Join').setStyle(ButtonStyle.Primary);
-export const battleTagBtn = new ButtonBuilder()
-  .setCustomId(CommandIds.BATTLE_TAG)
-  .setLabel('Change Battle Tag')
+export const addAccountBtn = new ButtonBuilder()
+  .setCustomId(CommandIds.ADD_ACCOUNT)
+  .setLabel('Add Hots Account')
   .setStyle(ButtonStyle.Primary);
 export const roleBtn = new ButtonBuilder()
   .setCustomId(CommandIds.ROLE)
