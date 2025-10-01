@@ -925,6 +925,30 @@ export async function handleAdminPrimaryCommand(
     // if they didn't provide a battle tag, then show them a list of buttons for each account the user has
     const channelId = interaction.channelId;
     const message = await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    if (player.usernames.accounts.length === 1) {
+      // set that account as primary directly
+      await setPrimaryAccount(
+        interaction,
+        discordId,
+        player.usernames.accounts[0].hotsBattleTag,
+        message.id,
+        channelId
+      );
+      return;
+    }
+    if (!battleTagParam && battleTag) {
+      if (!player.usernames.accounts.some(account => account.hotsBattleTag === battleTag)) {
+        // set that account as primary
+        console.log('Setting primary account directly to', battleTag);
+        await safeReply(interaction, {
+          content: `The specified battle tag \`${battleTag}\` is not associated with the user <@${discordId}>.`,
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+      await setPrimaryAccount(interaction, discordId, battleTag, message.id, channelId);
+      return;
+    }
     const accountButtons = player.usernames.accounts.map(account => {
       return new ButtonBuilder()
         .setCustomId(
