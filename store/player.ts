@@ -420,24 +420,7 @@ async function updateButtonInterface(
   try {
     const prevInteraction = getStoredInteraction(messageId, channelId);
     if (!prevInteraction) {
-      const message = await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-      storeInteraction(message.id, interaction.channelId, interaction);
-      const newButtons = player.usernames.accounts.map(account => {
-        return new ButtonBuilder()
-          .setCustomId(
-            `${CommandIds.ADMIN}_${CommandIds.PRIMARY}_${discordId}_${account.hotsBattleTag}_${message.id}_${channelId}`
-          )
-          .setLabel(account.hotsBattleTag)
-          .setStyle(account.isPrimary ? ButtonStyle.Primary : ButtonStyle.Secondary);
-      });
-      return {
-        success: false,
-        messageOptions: {
-          content:
-            'Previous interaction not found to update buttons\nPlease select the account to set as primary using the buttons below.',
-          components: [new ActionRowBuilder<ButtonBuilder>().addComponents(...newButtons)],
-        },
-      };
+      throw new Error('Previous interaction not found');
     }
     const updatedButtons = player.usernames.accounts.map(account => {
       return new ButtonBuilder()
@@ -447,18 +430,29 @@ async function updateButtonInterface(
         .setLabel(account.hotsBattleTag)
         .setStyle(account.isPrimary ? ButtonStyle.Primary : ButtonStyle.Secondary);
     });
-    prevInteraction.editReply({
+    await prevInteraction.editReply({
       components: [new ActionRowBuilder<ButtonBuilder>().addComponents(...updatedButtons)],
     });
     await interaction.deferUpdate(); // Acknowledge the button interaction without showing loading
     return { success: true, messageOptions: { content: '' } };
-  } catch (error: any) {
-    if (error.code === 10008) {
-      console.log('Message was already deleted or does not exist');
-    } else {
-      console.error('Error deleting message:', error);
-    }
-    return { success: false, messageOptions: { content: 'Failed to update button interface' } };
+  } catch (error: unknown) {
+    console.error('Error updating button interface:', error);
+    const message = await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    storeInteraction(message.id, interaction.channelId, interaction);
+    const newButtons = player.usernames.accounts.map(account => {
+      return new ButtonBuilder()
+        .setCustomId(
+          `${CommandIds.ADMIN}_${CommandIds.PRIMARY}_${discordId}_${account.hotsBattleTag}_${message.id}_${channelId}`
+        )
+        .setLabel(account.hotsBattleTag)
+        .setStyle(account.isPrimary ? ButtonStyle.Primary : ButtonStyle.Secondary);
+    });
+    safeReply(interaction, {
+      content:
+        'Previous interaction not found to update buttons\nPlease select the account to set as primary using the buttons below.',
+      components: [new ActionRowBuilder<ButtonBuilder>().addComponents(...newButtons)],
+    });
+    return { success: true, messageOptions: { content: '' } };
   }
 }
 
