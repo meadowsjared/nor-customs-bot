@@ -5,6 +5,13 @@ interface Usernames extends DiscordUserNames {
   accounts?: HotsAccount[];
 }
 
+interface UsernamesWithAccounts extends DiscordUserNames {
+  /**
+   * The Heroes of the Storm accounts of the player
+   */
+  accounts: HotsAccount[];
+}
+
 export interface HotsAccount {
   /**
    * The Heroes of the Storm battle tag of the player
@@ -80,6 +87,13 @@ export interface Player {
    * This is used to determine which team the player is on
    */
   team: number | undefined;
+}
+
+export interface PlayerWithAccounts extends Player {
+  /**
+   * The Heroes of the Storm accounts of the player
+   */
+  usernames: UsernamesWithAccounts;
 }
 
 export interface FlatPlayer {

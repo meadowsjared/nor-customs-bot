@@ -178,6 +178,17 @@ export function storeInteraction(
 }
 
 /**
+ * Removes a stored interaction from the interaction store.
+ * @param messageId The ID of the message associated with the interaction.
+ * @param channelId The ID of the channel where the interaction occurred.
+ * @return {void}
+ */
+export function removeInteraction(messageId: string, channelId: string): void {
+  const key = getInteractionKey(messageId, channelId);
+  interactionStore.delete(key);
+}
+
+/**
  * Retrieves a stored interaction from the interaction store.
  * @param messageId The ID of the message associated with the interaction.
  * @param channelId The ID of the channel where the interaction occurred.
@@ -413,7 +424,8 @@ async function updateButtonInterface(
   messageId: string,
   channelId: string
 ): Promise<{ success: boolean; messageOptions: InteractionReplyOptions }> {
-  if (!player.usernames.accounts || player.usernames.accounts.length === 0) {
+  const accounts = player.usernames.accounts;
+  if (!accounts?.length) {
     return { success: false, messageOptions: { content: 'No accounts to update' } };
   }
   // Try to delete the original message with proper error handling
@@ -422,38 +434,48 @@ async function updateButtonInterface(
     if (!prevInteraction) {
       throw new Error('Previous interaction not found');
     }
-    const updatedButtons = player.usernames.accounts.map(account => {
-      return new ButtonBuilder()
-        .setCustomId(
-          `${CommandIds.ADMIN}_${CommandIds.PRIMARY}_${discordId}_${account.hotsBattleTag}_${messageId}_${channelId}`
-        )
-        .setLabel(account.hotsBattleTag)
-        .setStyle(account.isPrimary ? ButtonStyle.Primary : ButtonStyle.Secondary);
-    });
     await prevInteraction.editReply({
-      components: [new ActionRowBuilder<ButtonBuilder>().addComponents(...updatedButtons)],
+      components: getAccountButtons(accounts, discordId, messageId, channelId),
     });
     await interaction.deferUpdate(); // Acknowledge the button interaction without showing loading
     return { success: true, messageOptions: { content: '' } };
   } catch (error: unknown) {
+    removeInteraction(messageId, channelId); // if we can't find the interaction, remove it from the store
     console.error('Error updating button interface:', error);
     const message = await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
     storeInteraction(message.id, interaction.channelId, interaction);
-    const newButtons = player.usernames.accounts.map(account => {
-      return new ButtonBuilder()
-        .setCustomId(
-          `${CommandIds.ADMIN}_${CommandIds.PRIMARY}_${discordId}_${account.hotsBattleTag}_${message.id}_${channelId}`
-        )
-        .setLabel(account.hotsBattleTag)
-        .setStyle(account.isPrimary ? ButtonStyle.Primary : ButtonStyle.Secondary);
-    });
-    safeReply(interaction, {
+    await safeReply(interaction, {
       content:
         'Previous interaction not found to update buttons\nPlease select the account to set as primary using the buttons below.',
-      components: [new ActionRowBuilder<ButtonBuilder>().addComponents(...newButtons)],
+      components: getAccountButtons(accounts, discordId, message.id, channelId),
     });
     return { success: true, messageOptions: { content: '' } };
   }
+}
+
+/**
+ * get the account buttons for a player
+ * @param player the player to get the buttons for
+ * @param discordId the discord id of the player
+ * @param messageId the message id where the buttons will be displayed
+ * @param channelId the channel id where the buttons will be displayed
+ */
+export function getAccountButtons(
+  accounts: HotsAccount[],
+  discordId: string,
+  messageId: string,
+  channelId: string
+): ActionRowBuilder<ButtonBuilder>[] {
+  const buttons = accounts.map(account => {
+    return new ButtonBuilder()
+      .setCustomId(
+        `${CommandIds.ADMIN}_${CommandIds.PRIMARY}_${discordId}_${account.hotsBattleTag}_${messageId}_${channelId}`
+      )
+      .setLabel(account.hotsBattleTag)
+      .setStyle(account.isPrimary ? ButtonStyle.Primary : ButtonStyle.Secondary);
+  });
+  return [new ActionRowBuilder<ButtonBuilder>().addComponents(...buttons)];
 }
 
 /**
