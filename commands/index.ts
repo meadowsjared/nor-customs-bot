@@ -46,6 +46,7 @@ import {
   setPlayerRole,
   setPrimaryAccount,
   setTeams,
+  storeInteraction,
 } from '../store/player';
 import { saveChannel, getChannels, saveLobbyMessage, getLobbyMessage } from '../store/channels';
 import { DiscordUserNames, Player } from '../types/player';
@@ -146,7 +147,7 @@ export async function handleNewGameCommand(
  * Safely replies to an interaction, using followUp if already replied
  * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
  * @param replyOptions The options for the reply message
- * @returns Promise<void>
+ * @returns Promise<Message<boolean> | InteractionResponse<boolean> | undefined>
  */
 export async function safeReply(
   interaction: chatOrButtonOrModal | undefined,
@@ -170,15 +171,14 @@ export async function safeReply(
       return;
     }
     const message = getMessageContent(options);
-    channel.send({
+    return channel.send({
       content: message,
     });
-    return;
   }
-  if (interaction.replied) {
-    await interaction.followUp(options);
+  if (interaction.replied || interaction.deferred) {
+    return await interaction.followUp(options);
   } else {
-    await interaction.reply(options);
+    return await interaction.reply(options);
   }
 }
 
@@ -894,7 +894,9 @@ export async function handleAdminAddHotsAccountCommand(interaction: ChatInputCom
 export async function handleAdminPrimaryCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
   discordIdParam?: string,
-  battleTagParam?: string
+  battleTagParam?: string,
+  messageIdParam?: string,
+  channelIdParam?: string
 ) {
   const discordId = getDiscordId(interaction, discordIdParam);
   if (!discordId) {
@@ -919,22 +921,33 @@ export async function handleAdminPrimaryCommand(
     return;
   }
   const battleTag = getBattleTag(interaction, battleTagParam);
-  if (!battleTag) {
+  if (!battleTag || !messageIdParam || !channelIdParam) {
     // if they didn't provide a battle tag, then show them a list of buttons for each account the user has
+    const channelId = interaction.channelId;
+    const message = await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const accountButtons = player.usernames.accounts.map(account => {
       return new ButtonBuilder()
-        .setCustomId(`${CommandIds.ADMIN}_${CommandIds.PRIMARY}_${discordId}_${account.hotsBattleTag}`)
+        .setCustomId(
+          `${CommandIds.ADMIN}_${CommandIds.PRIMARY}_${discordId}_${account.hotsBattleTag}_${message.id}_${channelId}`
+        )
         .setLabel(account.hotsBattleTag)
         .setStyle(account.isPrimary ? ButtonStyle.Primary : ButtonStyle.Secondary);
     });
-    await safeReply(interaction, {
+    await interaction.editReply({
       content: 'Please select the account to set as primary using the buttons below.',
-      flags: MessageFlags.Ephemeral,
       components: [new ActionRowBuilder<ButtonBuilder>().addComponents(...accountButtons)],
     });
+    if (!message) {
+      await safeReply(interaction, {
+        content: 'An error occurred while trying to send the message. Please try again.',
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    storeInteraction(message.id, interaction.channelId, interaction);
     return;
   }
-  await setPrimaryAccount(interaction, discordId, battleTag);
+  await setPrimaryAccount(interaction, discordId, battleTag, messageIdParam, channelIdParam);
 }
 
 function getDiscordId(

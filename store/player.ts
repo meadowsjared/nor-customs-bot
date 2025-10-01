@@ -2,15 +2,25 @@ import { writeFile, rename } from 'fs/promises';
 import Database from 'better-sqlite3';
 import { DiscordUserNames, FlatPlayer, HotsAccount, HotsAccountRow, Player } from '../types/player';
 import {
+  ActionRowBuilder,
+  ButtonBuilder,
   ButtonInteraction,
+  ButtonStyle,
   CacheType,
   ChatInputCommandInteraction,
+  InteractionReplyOptions,
   MessageFlags,
   ModalSubmitInteraction,
 } from 'discord.js';
 import { safeReply } from '../commands';
+import { CommandIds } from '../constants';
 
 const db = new Database('./store/nor_customs.db');
+
+export const interactionStore = new Map<
+  string,
+  ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+>();
 
 const initSchema = db.transaction(() => {
   // Ensure the players table exists
@@ -150,6 +160,39 @@ try {
   initSchema();
 } catch (error) {
   console.error('Error initializing database schema:', error);
+}
+
+/**
+ * Stores an interaction in the interaction store.
+ * @param messageId The ID of the message associated with the interaction.
+ * @param channelId The ID of the channel where the interaction occurred.
+ * @param interaction The interaction object to store.
+ */
+export function storeInteraction(
+  messageId: string,
+  channelId: string,
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+) {
+  const key = getInteractionKey(messageId, channelId);
+  interactionStore.set(key, interaction);
+}
+
+/**
+ * Retrieves a stored interaction from the interaction store.
+ * @param messageId The ID of the message associated with the interaction.
+ * @param channelId The ID of the channel where the interaction occurred.
+ * @returns The stored interaction object, or undefined if not found.
+ */
+function getStoredInteraction(
+  messageId: string,
+  channelId: string
+): ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType> | undefined {
+  const key = getInteractionKey(messageId, channelId);
+  return interactionStore.get(key);
+}
+
+function getInteractionKey(messageId: string, channelId: string): string {
+  return `${channelId}-${messageId}`;
 }
 
 /**
@@ -328,41 +371,131 @@ export async function handleAddHotsAccount(
 export async function setPrimaryAccount(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
   discordId: string,
-  hotsBattleTag: string
+  hotsBattleTag: string,
+  messageId: string,
+  channelId: string
 ) {
-  const player = getPlayerByDiscordId(discordId);
-  if (!player) {
+  const { success, message, player } = await updatePrimaryAccountInDb(discordId, hotsBattleTag);
+  if (!success || !player?.usernames.accounts) {
     await safeReply(interaction, {
-      content: 'Player not found',
+      content: message,
       flags: MessageFlags.Ephemeral,
     });
-    return false; // Player not found
+    return false; // Failed to set primary account
   }
+
+  // Handle non-button interactions (slash commands)
+  if (!interaction.isButton()) {
+    await safeReply(interaction, {
+      content: `${
+        discordId === interaction?.user.id ? 'Your' : '<@' + discordId + ">'s"
+      } primary HotS account has been set to \`${hotsBattleTag}\`.`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return true; // Primary account set successfully
+  }
+  const buttonUpdateSuccess = await updateButtonInterface(interaction, player, discordId, messageId, channelId);
+  if (!buttonUpdateSuccess.success) {
+    await safeReply(interaction, {
+      ...buttonUpdateSuccess.messageOptions,
+      flags: MessageFlags.Ephemeral,
+    });
+    return false; // Failed to update button interface
+  }
+
+  return true;
+}
+
+async function updateButtonInterface(
+  interaction: ButtonInteraction<CacheType>,
+  player: Player,
+  discordId: string,
+  messageId: string,
+  channelId: string
+): Promise<{ success: boolean; messageOptions: InteractionReplyOptions }> {
   if (!player.usernames.accounts || player.usernames.accounts.length === 0) {
-    await safeReply(interaction, {
-      content: 'This player has no Heroes of the Storm accounts linked.',
-      flags: MessageFlags.Ephemeral,
-    });
-    return false; // No accounts linked
+    return { success: false, messageOptions: { content: 'No accounts to update' } };
   }
+  // Try to delete the original message with proper error handling
+  try {
+    const prevInteraction = getStoredInteraction(messageId, channelId);
+    if (!prevInteraction) {
+      const message = await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      storeInteraction(message.id, interaction.channelId, interaction);
+      const newButtons = player.usernames.accounts.map(account => {
+        return new ButtonBuilder()
+          .setCustomId(
+            `${CommandIds.ADMIN}_${CommandIds.PRIMARY}_${discordId}_${account.hotsBattleTag}_${message.id}_${channelId}`
+          )
+          .setLabel(account.hotsBattleTag)
+          .setStyle(account.isPrimary ? ButtonStyle.Primary : ButtonStyle.Secondary);
+      });
+      return {
+        success: false,
+        messageOptions: {
+          content:
+            'Previous interaction not found to update buttons\nPlease select the account to set as primary using the buttons below.',
+          components: [new ActionRowBuilder<ButtonBuilder>().addComponents(...newButtons)],
+        },
+      };
+    }
+    const updatedButtons = player.usernames.accounts.map(account => {
+      return new ButtonBuilder()
+        .setCustomId(
+          `${CommandIds.ADMIN}_${CommandIds.PRIMARY}_${discordId}_${account.hotsBattleTag}_${messageId}_${channelId}`
+        )
+        .setLabel(account.hotsBattleTag)
+        .setStyle(account.isPrimary ? ButtonStyle.Primary : ButtonStyle.Secondary);
+    });
+    prevInteraction.editReply({
+      components: [new ActionRowBuilder<ButtonBuilder>().addComponents(...updatedButtons)],
+    });
+    await interaction.deferUpdate(); // Acknowledge the button interaction without showing loading
+    return { success: true, messageOptions: { content: '' } };
+  } catch (error: any) {
+    if (error.code === 10008) {
+      console.log('Message was already deleted or does not exist');
+    } else {
+      console.error('Error deleting message:', error);
+    }
+    return { success: false, messageOptions: { content: 'Failed to update button interface' } };
+  }
+}
+
+/**
+ * Updates the primary Heroes of the Storm account for a player in the database.
+ * @param discordId The Discord ID of the player.
+ * @param hotsBattleTag The Heroes of the Storm battle tag to set as primary.
+ * @returns An object containing the success status, optional error message, and updated player data.
+ */
+async function updatePrimaryAccountInDb(
+  discordId: string,
+  hotsBattleTag: string
+): Promise<{ success: boolean; message?: string; player?: Player }> {
   const stmt = db.prepare(
     'UPDATE hots_accounts SET is_primary = CASE WHEN hots_battle_tag = ? THEN 1 ELSE 0 END WHERE discord_id = ?'
   );
   const result = stmt.run(hotsBattleTag, discordId);
   if (result.changes === 0) {
-    await safeReply(interaction, {
-      content: `The specified Heroes of the Storm account \`${hotsBattleTag}\` was not found for this player.`,
-      flags: MessageFlags.Ephemeral,
-    });
-    return false; // No account updated
+    return {
+      success: false,
+      message: `The specified Heroes of the Storm account \`${hotsBattleTag}\` was not found for this player.`,
+    };
   }
-  await safeReply(interaction, {
-    content: `${
-      discordId === interaction?.user.id ? 'Your' : '<@' + discordId + ">'s"
-    } primary HotS account has been set to \`${hotsBattleTag}\`.`,
-    flags: MessageFlags.Ephemeral,
-  });
-  return true;
+  const player = getPlayerByDiscordId(discordId);
+  if (!player) {
+    return {
+      success: false,
+      message: 'Player not found',
+    };
+  }
+  if (!player.usernames.accounts || player.usernames.accounts.length === 0) {
+    return {
+      success: false,
+      message: 'This player has no Heroes of the Storm accounts linked.',
+    };
+  }
+  return { success: true, player };
 }
 
 /**

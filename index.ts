@@ -301,8 +301,8 @@ async function handleDefaultCommand(
     handleEditRoleButtonCommand(interaction, parts[2], parts[0], parts[3], parts[1] === CommandIds.ACTIVE);
     return;
   }
-  if (parts.length === 4 && parts[0] === CommandIds.ADMIN && parts[1] === CommandIds.PRIMARY) {
-    handleAdminPrimaryCommand(interaction, parts[2], parts[3]);
+  if (parts.length === 6 && parts[0] === CommandIds.ADMIN && parts[1] === CommandIds.PRIMARY) {
+    handleAdminPrimaryCommand(interaction, parts[2], parts[3], parts[4], parts[5]);
     return;
   }
   await handleUnknownCommand(interaction, commandName);
