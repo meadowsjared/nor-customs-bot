@@ -355,7 +355,7 @@ export async function handleMoveToLobbyCommand(
               ?.hotsBattleTag.replace(/#.*$/, '')}`
         )
         .join('\n')}`,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 }
