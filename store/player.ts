@@ -14,6 +14,7 @@ import {
 } from 'discord.js';
 import { safeReply } from '../commands';
 import { CommandIds } from '../constants';
+import { getHeroesProfileData } from './heroesProfile';
 
 const db = new Database('./store/nor_customs.db');
 
@@ -344,31 +345,69 @@ export async function handleAddHotsAccount(
     return false; // Player not found
   }
 
+  await interaction?.deferReply({ flags: MessageFlags.Ephemeral, withResponse: true });
+  await interaction?.editReply({
+    content:
+      '🔍 Fetching Heroes Profile data... This may take 30-60 seconds.\n<a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004>',
+  });
+  // get their heroes profile data
+  const profileData = await getHeroesProfileData(hotsBattleTag);
+  if (!profileData) {
+    await safeReply(interaction, {
+      content: `Failed to retrieve Heroes profile data for \`${hotsBattleTag}\`.`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return false;
+  }
+
   // check if the player already has this hots account
   const hasAccount = player.usernames.accounts?.some(
     account => account.hotsBattleTag.toLowerCase() === hotsBattleTag.toLowerCase()
   );
   if (hasAccount) {
     const userIsSelf = discordId === interaction?.user.id;
-    await safeReply(interaction, {
+    //update their heroes profile data anyway
+    const updateProfileStmt = db.prepare(
+      `UPDATE hots_accounts SET
+        HP_url = ?,
+        HP_QM_MMR = ?,
+        HP_SL_MMR = ?,
+        HP_QM_Games = ?,
+        HP_SL_Games = ?
+      WHERE discord_id = ? AND hots_battle_tag = ?`
+    );
+    updateProfileStmt.run(
+      profileData.url,
+      profileData.qmMmr,
+      profileData.slMmr,
+      profileData.qmGames,
+      profileData.slGames,
+      discordId,
+      hotsBattleTag
+    );
+    await interaction?.editReply({
       content: `${userIsSelf ? 'You' : '<@' + discordId + '>'} already ${
         userIsSelf ? 'have' : 'has'
       } this HotS account linked: \`${
         player.usernames.accounts?.find(account => account.hotsBattleTag.toLowerCase() === hotsBattleTag.toLowerCase())
           ?.hotsBattleTag
-      }\``,
-      flags: MessageFlags.Ephemeral,
+      }\`\n\nHowever, your Heroes profile data has been updated.`,
     });
     return false;
   }
 
   const hotsAccountStmt = db.prepare(
-    'INSERT INTO hots_accounts (discord_id, hots_battle_tag, is_primary) VALUES (?, ?, ?)'
+    'INSERT INTO hots_accounts (discord_id, hots_battle_tag, is_primary, HP_url, HP_QM_MMR, HP_SL_MMR, HP_QM_Games, HP_SL_Games) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
   );
   hotsAccountStmt.run(
     discordId,
     hotsBattleTag,
-    player.usernames.accounts && player.usernames.accounts.length === 0 ? 1 : 0
+    player.usernames.accounts && player.usernames.accounts.length === 0 ? 1 : 0,
+    profileData.url,
+    profileData.qmMmr,
+    profileData.slMmr,
+    profileData.qmGames,
+    profileData.slGames
   );
   await safeReply(interaction, {
     content: `${
