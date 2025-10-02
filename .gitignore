@@ -10,3 +10,4 @@ dist/**
 log.latest
 .pid
 /screenshots
+latest.log
