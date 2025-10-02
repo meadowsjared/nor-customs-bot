@@ -76,3 +76,7 @@ UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM hots_accounts) WHERE name 
 
 # check the current value of the autoincrement counter
 SELECT seq FROM sqlite_sequence WHERE name = 'hots_accounts';
+
+SELECT id,discord_id,is_primary,updated_at,hots_battle_tag,hp_url, HP_QM_MMR, HP_SL_MMR, HP_QM_Games, HP_SL_Games FROM hots_accounts WHERE hots_battle_tag='IMcD23#1632';
+
+SELECT id,discord_id,is_primary,updated_at,hots_battle_tag, hp_url, hp_sl_mmr FROM hots_accounts WHERE discord_id='128651159769448448';

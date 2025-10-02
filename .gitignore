@@ -9,3 +9,4 @@ sqldiff.exe
 dist/**
 log.latest
 .pid
+/screenshots
