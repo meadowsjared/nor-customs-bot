@@ -1,6 +1,7 @@
 export interface CSVRecord {
   Lookup: string;
   Player: string;
+  Sorting: string;
   'HP url': string;
   'QM MMR': string;
   'SL MMR': string;
