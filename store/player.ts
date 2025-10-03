@@ -345,7 +345,13 @@ export async function handleAddHotsAccount(
     return false; // Player not found
   }
 
-  await interaction?.deferReply({ flags: MessageFlags.Ephemeral, withResponse: true });
+  try {
+    await interaction?.deferReply({ flags: MessageFlags.Ephemeral, withResponse: true });
+  } catch (error) {
+    if (!error) {
+      console.error('Error deferring reply:', error);
+    }
+  }
   // await interaction?.editReply({
   //   content:
   //     '🔍 Fetching Heroes Profile data... This may take 30-60 seconds.\n<a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004>',

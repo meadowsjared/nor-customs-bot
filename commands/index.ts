@@ -704,6 +704,24 @@ async function showJoinModal(
   await handleEditRoleCommand(modalInteraction, true); // Show the edit role buttons
 }
 
+export async function handleLookupByDiscordIdCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+) {
+  if (interaction.isButton()) {
+    console.error('Interaction is not a command or button interaction');
+    return;
+  }
+  const discordId = interaction.options.getString(CommandIds.DISCORD_ID, true);
+  const displayName = interaction.options.getString(CommandIds.DISCORD_DISPLAY_NAME, true);
+  const discordName = interaction.options.getString(CommandIds.DISCORD_NAME, true);
+  const discordData: DiscordUserNames = {
+    discordName: discordName,
+    discordGlobalName: displayName,
+    discordDisplayName: displayName,
+  };
+  return await handleLookupCommandSub(interaction, discordId, discordData);
+}
+
 export async function handleLookupCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
 ) {
@@ -721,8 +739,16 @@ export async function handleLookupCommand(
   }
   const discordId = member.user.id;
   const discordData = fetchDiscordNames(interaction, discordId);
-  const hotsBattleTag = interaction.options.getString(CommandIds.BATTLE_TAG, false) ?? '';
+  return await handleLookupCommandSub(interaction, discordId, discordData);
+  // return;
+}
 
+async function handleLookupCommandSub(
+  interaction: ChatInputCommandInteraction<CacheType>,
+  discordId: string,
+  discordData: DiscordUserNames
+) {
+  const hotsBattleTag = interaction.options.getString(CommandIds.BATTLE_TAG, false) ?? '';
   const player = getPlayerByDiscordId(discordId);
   if (player || (!player && hotsBattleTag === '')) {
     const message = player
@@ -882,6 +908,18 @@ export async function handleAddHotsAccountCommand(
   const discordId = interaction.user.id;
   const hotsBattleTag = interaction.options.getString(CommandIds.BATTLE_TAG);
   // check if the battleTag is valid, it should be in the format of Name#1234
+  await handleAddHotsAccountCommandSub(interaction, discordId, hotsBattleTag);
+}
+
+export async function handleAdminAddHotsAccountByDiscordIdCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+) {
+  if (interaction.isButton()) {
+    console.error('Interaction is not a command or button interaction');
+    return;
+  }
+  const discordId = interaction.options.getString(CommandIds.DISCORD_ID, true);
+  const hotsBattleTag = interaction.options.getString(CommandIds.BATTLE_TAG);
   await handleAddHotsAccountCommandSub(interaction, discordId, hotsBattleTag);
 }
 

@@ -32,6 +32,8 @@ export const enum CommandIds {
   ADD_ACCOUNT = 'add-account',
   PRIMARY = 'primary',
   DISCORD_ID = 'discord-id',
+  DISCORD_DISPLAY_NAME = 'discord-display-name',
+  DISCORD_NAME = 'discord-name',
   ROLE = 'role',
   EDIT_ROLES = 'edit-roles',
   ROLE_EDIT_ADD = 'role-edit-add',

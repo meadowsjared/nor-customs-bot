@@ -40,6 +40,8 @@ import {
   safeReply,
   handleAdminAddHotsAccountButton,
   handleAdminPrimaryCommand,
+  handleLookupByDiscordIdCommand,
+  handleAdminAddHotsAccountByDiscordIdCommand,
 } from './commands';
 import { slashCommands } from './commands/definitions';
 
@@ -194,6 +196,9 @@ client.on('interactionCreate', async interaction => {
       // Handle twitch command
       handleTwitchCommand(interaction);
       break;
+    case `${CommandIds.LOOKUP}_${CommandIds.DISCORD_ID}`:
+      handleLookupByDiscordIdCommand(interaction);
+      break;
     case CommandIds.LOOKUP:
       // Handle lookup command
       handleLookupCommand(interaction); // Pass true to perform a lookup
@@ -237,6 +242,9 @@ function handleAdminSubCommand(interaction: ChatInputCommandInteraction<CacheTyp
       break;
     case CommandIds.ACTIVE:
       handleAdminSetActiveCommand(interaction);
+      break;
+    case `${CommandIds.ADD_ACCOUNT}_${CommandIds.DISCORD_ID}`:
+      handleAdminAddHotsAccountByDiscordIdCommand(interaction);
       break;
     case CommandIds.ADD_ACCOUNT:
       handleAdminAddHotsAccountCommand(interaction);

@@ -205,6 +205,36 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     ],
   },
   {
+    name: `${CommandIds.LOOKUP}_${CommandIds.DISCORD_ID}`,
+    description: "Import a player's Discord information",
+    options: [
+      {
+        name: CommandIds.DISCORD_ID,
+        type: ApplicationCommandOptionType.String,
+        description: 'The Discord ID of the player to lookup',
+        required: true,
+      },
+      {
+        name: CommandIds.BATTLE_TAG,
+        type: ApplicationCommandOptionType.String,
+        description: 'The Heroes of the Storm battle tag of the player (including the # and number)',
+        required: true,
+      },
+      {
+        name: CommandIds.DISCORD_DISPLAY_NAME,
+        type: ApplicationCommandOptionType.String,
+        description: 'The Discord display name of the player (e.g. Name#1234)',
+        required: true,
+      },
+      {
+        name: CommandIds.DISCORD_NAME,
+        type: ApplicationCommandOptionType.String,
+        description: 'The Discord username of the player (e.g. Name)',
+        required: true,
+      },
+    ],
+  },
+  {
     name: CommandIds.ADMIN,
     description: 'Admin commands to manage players.',
     defaultMemberPermissions: minimumAdminPermissions,
@@ -267,6 +297,24 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
             description: 'Set the player as active (true) or inactive (false).',
             type: ApplicationCommandOptionType.Boolean,
             required: true,
+          },
+        ],
+      },
+      {
+        name: `${CommandIds.ADD_ACCOUNT}_${CommandIds.DISCORD_ID}`,
+        description: "Add a Heroes of the Storm account to a player's profile.",
+        type: ApplicationCommandOptionType.Subcommand,
+        options: [
+          {
+            name: CommandIds.DISCORD_ID,
+            description: 'The user to modify.',
+            type: ApplicationCommandOptionType.String,
+            required: true,
+          },
+          {
+            name: CommandIds.BATTLE_TAG,
+            description: 'The Heroes of the Storm battle tag to add (including the # and number)',
+            type: ApplicationCommandOptionType.String,
           },
         ],
       },
