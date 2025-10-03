@@ -732,8 +732,9 @@ export async function handleLookupCommand(
         )}\`.`;
     // show the player's hots_accounts.hotsBattleTag
     const accounts =
-      player?.usernames.accounts?.map(a => '* ' + a.hotsBattleTag + (a.isPrimary ? ' (Primary)' : '')).join('\n') ||
-      'No HotS accounts';
+      player?.usernames.accounts
+        ?.map((a, index) => `${index + 1}. ` + a.hotsBattleTag + (a.isPrimary ? ' (Primary)' : ''))
+        .join('\n') || 'No HotS accounts';
 
     await safeReply(interaction, {
       content: `Discord ID: \`${discordId}\`\ndiscordName: \`${discordData.discordName}\`\ndiscordGlobalName: \`${discordData.discordGlobalName}\`\nDisplay Name: \`${discordData.discordDisplayName}\`\n${message}\nHotS Accounts:\n${accounts}`,
