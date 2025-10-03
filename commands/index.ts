@@ -729,10 +729,10 @@ export async function handleLookupCommand(
     : `${hotsBattleTag || 'Player'} not found in the lobby, adding them with default role \`${getPlayerRolesFormatted(
         CommandIds.ROLE_FLEX
       )}\`.`;
-  await safeReply(interaction, {
-    content: `Discord ID: \`${discordId}\`\ndiscordName: \`${discordData.discordName}\`\ndiscordGlobalName: \`${discordData.discordGlobalName}\`\nDisplay Name: \`${discordData.discordDisplayName}\`\n${message}`,
-    flags: MessageFlags.Ephemeral,
-  });
+  // await safeReply(interaction, {
+  //   content: `Discord ID: \`${discordId}\`\ndiscordName: \`${discordData.discordName}\`\ndiscordGlobalName: \`${discordData.discordGlobalName}\`\nDisplay Name: \`${discordData.discordDisplayName}\`\n${message}`,
+  //   flags: MessageFlags.Ephemeral,
+  // });
   // save the player to the database if they are not already there
   if (!player) {
     await savePlayer(
