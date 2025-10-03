@@ -397,7 +397,7 @@ export async function handleAddHotsAccount(
       } this HotS account linked: \`${
         player.usernames.accounts?.find(account => account.hotsBattleTag.toLowerCase() === hotsBattleTag.toLowerCase())
           ?.hotsBattleTag
-      }\`\n\nHowever, your Heroes profile data has been updated.`,
+      }\`\n\nHowever, ${userIsSelf ? 'your' : '<@' + discordId + '>' + "'s"} Heroes profile data has been updated.`,
     });
     return false;
   }
