@@ -724,15 +724,6 @@ export async function handleLookupCommand(
   const hotsBattleTag = interaction.options.getString(CommandIds.BATTLE_TAG, false) ?? '';
 
   const player = getPlayerByDiscordId(discordId);
-  // const message = player
-  //   ? `${hotsBattleTag || 'Player'} found in the lobby with role: \`${getPlayerRolesFormatted(player.role)}\``
-  //   : `${hotsBattleTag || 'Player'} not found in the lobby, adding them with default role \`${getPlayerRolesFormatted(
-  //       CommandIds.ROLE_FLEX
-  //     )}\`.`;
-  // await safeReply(interaction, {
-  //   content: `Discord ID: \`${discordId}\`\ndiscordName: \`${discordData.discordName}\`\ndiscordGlobalName: \`${discordData.discordGlobalName}\`\nDisplay Name: \`${discordData.discordDisplayName}\`\n${message}`,
-  //   flags: MessageFlags.Ephemeral,
-  // });
   // save the player to the database if they are not already there
   if (!player) {
     await savePlayer(
@@ -750,6 +741,21 @@ export async function handleLookupCommand(
       hotsBattleTag
     );
     return;
+  } else {
+    const message = player
+      ? `${hotsBattleTag || 'Player'} found in the lobby with role: \`${getPlayerRolesFormatted(player.role)}\``
+      : `${hotsBattleTag || 'Player'} not found in the lobby, adding them with default role \`${getPlayerRolesFormatted(
+          CommandIds.ROLE_FLEX
+        )}\`.`;
+    // show the player's hots_accounts.hotsBattleTag
+    const accounts =
+      player.usernames.accounts?.map(a => '* ' + a.hotsBattleTag + (a.isPrimary ? ' (Primary)' : '')).join('\n') ||
+      'No HotS accounts';
+
+    await safeReply(interaction, {
+      content: `Discord ID: \`${discordId}\`\ndiscordName: \`${discordData.discordName}\`\ndiscordGlobalName: \`${discordData.discordGlobalName}\`\nDisplay Name: \`${discordData.discordDisplayName}\`\n${message}\nHotS Accounts:\n${accounts}`,
+      flags: MessageFlags.Ephemeral,
+    });
   }
   // update the player's Discord data in the database
   setPlayerDiscordNames(discordId, discordData);
