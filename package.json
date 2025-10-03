@@ -5,6 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "tsx index.ts",
+    "check:db": "bun tsx utils/csvImport.ts missing-from-db",
+    "check:csv": "bun tsx utils/csvImport.ts missing-from-csv",
+    "check:match": "bun tsx utils/csvImport.ts check-matches",
+    "import:csv": "bun tsx utils/csvImport.ts import-csv",
+    "csv:help": "bun tsx utils/csvImport.ts --help",
     "start": "bash -c 'nohup bun dev > log.latest 2>&1 & echo $! > .pid'",
     "stop": "bash -c 'if [ -f .pid ]; then kill $(cat .pid) && rm .pid; else pkill -f \"bun dev\"; fi'",
     "status": "bash -c 'if [ -f .pid ] && ps -p $(cat .pid) > /dev/null 2>&1; then echo \"Bot is running (PID: $(cat .pid))\"; else echo \"Bot is not running\"; fi'",
