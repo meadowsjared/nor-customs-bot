@@ -86,19 +86,18 @@ class CSVImporter {
   }
 
   // Task 1: Find accounts in CSV but missing from database
-  public findMissingFromDatabase(): string[] {
+  public findMissingFromDatabase(): CSVRecord[] {
     console.log('🔍 Task 1: Finding accounts in CSV but missing from database...\n');
 
     const csvRecords = this.readCSV();
     const dbAccounts = this.getHotsAccounts();
 
-    const csvLookups = new Set(csvRecords.map(record => record.Lookup));
     const dbBattleTags = new Set(dbAccounts.map(account => account.hots_battle_tag));
 
-    const missingFromDb = Array.from(csvLookups).filter(lookup => !dbBattleTags.has(lookup));
+    const missingFromDb = Array.from(csvRecords).filter(record => !dbBattleTags.has(record.Lookup));
 
     console.log(`Found ${missingFromDb.length} accounts in CSV but missing from database:`);
-    missingFromDb.forEach(battleTag => console.log(`  - ${battleTag}`));
+    missingFromDb.forEach(record => console.log(`  - ${record.Lookup}\t\t${record.Player}`));
     console.log('');
 
     return missingFromDb;
