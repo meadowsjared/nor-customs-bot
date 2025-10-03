@@ -80,3 +80,7 @@ SELECT seq FROM sqlite_sequence WHERE name = 'hots_accounts';
 SELECT id,discord_id,is_primary,updated_at,hots_battle_tag,hp_url, HP_QM_MMR, HP_SL_MMR, HP_QM_Games, HP_SL_Games FROM hots_accounts WHERE hots_battle_tag='IMcD23#1632';
 
 SELECT id,discord_id,is_primary,updated_at,hots_battle_tag, hp_url, hp_sl_mmr FROM hots_accounts WHERE discord_id='128651159769448448';
+
+INSERT INTO players (discord_id, discord_name, discord_global_name, discord_display_name, role, active, team) VALUES ('927801814101942303', 'auslesejager3328', 'auslesejager3328', 'Auslesejager', 'F', 0, NULL);
+
+INSERT INTO hots_accounts (discord_id, hots_battle_tag, is_primary, hp_url, HP_QM_MMR, HP_SL_MMR, HP_QM_Games, HP_SL_Games) VALUES ('927801814101942303', 'Auslesejager#1855', 1, 'https://www.heroesprofile.com/Player/Auslesejager/1490580/1', 2433, 2165, 396, 68);
