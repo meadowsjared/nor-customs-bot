@@ -97,7 +97,7 @@ class CSVImporter {
     const missingFromDb = Array.from(csvRecords).filter(record => !dbBattleTags.has(record.Lookup));
 
     console.log(`Found ${missingFromDb.length} accounts in CSV but missing from database:`);
-    missingFromDb.forEach(record => console.log(`  - ${record.Lookup}\t\t${record.Player}`));
+    missingFromDb.forEach((record, index) => console.log(` ${index + 1}: ${record.Lookup}\t\t${record.Sorting}`));
     console.log('');
 
     return missingFromDb;
