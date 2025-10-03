@@ -737,7 +737,7 @@ export async function handleLookupCommand(
         .join('\n') || 'No HotS accounts';
 
     await safeReply(interaction, {
-      content: `Discord ID: \`${discordId}\`\ndiscordName: \`${discordData.discordName}\`\ndiscordGlobalName: \`${discordData.discordGlobalName}\`\nDisplay Name: \`${discordData.discordDisplayName}\`\n${message}\nHotS Accounts:\n${accounts}`,
+      content: `<@${discordId}>\nDiscord ID: \`${discordId}\`\ndiscordName: \`${discordData.discordName}\`\ndiscordGlobalName: \`${discordData.discordGlobalName}\`\nDisplay Name: \`${discordData.discordDisplayName}\`\n${message}\nHotS Accounts:\n${accounts}`,
       flags: MessageFlags.Ephemeral,
     });
   }
