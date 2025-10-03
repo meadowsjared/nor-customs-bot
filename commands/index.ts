@@ -724,11 +724,11 @@ export async function handleLookupCommand(
   const hotsBattleTag = interaction.options.getString(CommandIds.BATTLE_TAG, false) ?? '';
 
   const player = getPlayerByDiscordId(discordId);
-  const message = player
-    ? `${hotsBattleTag || 'Player'} found in the lobby with role: \`${getPlayerRolesFormatted(player.role)}\``
-    : `${hotsBattleTag || 'Player'} not found in the lobby, adding them with default role \`${getPlayerRolesFormatted(
-        CommandIds.ROLE_FLEX
-      )}\`.`;
+  // const message = player
+  //   ? `${hotsBattleTag || 'Player'} found in the lobby with role: \`${getPlayerRolesFormatted(player.role)}\``
+  //   : `${hotsBattleTag || 'Player'} not found in the lobby, adding them with default role \`${getPlayerRolesFormatted(
+  //       CommandIds.ROLE_FLEX
+  //     )}\`.`;
   // await safeReply(interaction, {
   //   content: `Discord ID: \`${discordId}\`\ndiscordName: \`${discordData.discordName}\`\ndiscordGlobalName: \`${discordData.discordGlobalName}\`\nDisplay Name: \`${discordData.discordDisplayName}\`\n${message}`,
   //   flags: MessageFlags.Ephemeral,
