@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import { readFileSync } from 'fs';
 import { parse } from 'csv-parse/sync';
-import { CSVRecord } from '../types/csvSpreadsheet';
+import { ColumnDefinition, CSVRecord, HOTS_ACCOUNTS_COLUMNS, SQLiteColumnType } from '../types/csvSpreadsheet';
 
 interface HotsAccount {
   hots_battle_tag: string;
@@ -17,9 +17,13 @@ class CSVImporter {
   }
 
   // Helper function to convert string values to appropriate types
-  private parseValue(value: string): number | string | null {
+  private parseValue(value: string | number): number | string | null {
     if (value === '' || value === 'None' || value === undefined) {
       return null;
+    }
+
+    if (typeof value === 'number') {
+      return value;
     }
 
     // Remove commas and parse as number if it's numeric
@@ -34,15 +38,19 @@ class CSVImporter {
   }
 
   // Helper function to parse percentage values
-  private parsePercentage(value: string): number | null {
+  private parsePercentage(value: string | number): number | null {
     if (value === '' || value === 'None' || value === undefined) {
       return null;
+    }
+
+    if (typeof value === 'number') {
+      return value;
     }
 
     const cleanValue = value.replace('%', '');
     const numericValue = parseFloat(cleanValue);
 
-    return !isNaN(numericValue) ? numericValue : null;
+    return !isNaN(numericValue) ? numericValue / 100 : null;
   }
 
   // Helper function to parse time values (MM:SS format)
@@ -139,6 +147,53 @@ class CSVImporter {
     return matchingRecords;
   }
 
+  private parseBoolean(value: string | number) {
+    return value === 'TRUE' ? 1 : 0;
+  }
+
+  public parseValueForColumn(record: CSVRecord, column: ColumnDefinition) {
+    const csvColumnName = column.csvColumnName;
+    if (column.name !== 'updated_at' && !csvColumnName) {
+      console.warn(`No CSV mapping found for DB column: ${column.name}`);
+      return null;
+    }
+
+    const rawValue = csvColumnName ? record[csvColumnName] : 'CURRENT_TIMESTAMP';
+
+    // Handle empty/null values
+    if (!rawValue || rawValue === '' || rawValue === 'None' || rawValue === undefined) {
+      return null;
+    }
+
+    // Parse based on SQLite column type and special cases
+    switch (column.type) {
+      case SQLiteColumnType.INTEGER:
+        // Check if this is actually a boolean stored as integer
+        if (column.isBoolean) {
+          return this.parseBoolean(rawValue);
+        }
+        return this.parseValue(rawValue);
+
+      case SQLiteColumnType.REAL:
+        // Check if this is a percentage column
+        if (column.isPercentage) {
+          return this.parsePercentage(rawValue);
+        }
+        return this.parseValue(rawValue);
+
+      case SQLiteColumnType.TEXT:
+        // Keep as string, but handle time formats if needed
+        return rawValue;
+
+      case SQLiteColumnType.DATETIME:
+        // Handle datetime parsing if needed
+        return 'CURRENT_TIMESTAMP';
+
+      default:
+        return rawValue;
+    }
+  }
+
   // Task 4: Transfer data from CSV to database for matching accounts
   public transferMatchingData(): number {
     console.log('🔄 Task 4: Transferring data for matching accounts...\n');
@@ -160,107 +215,9 @@ class CSVImporter {
 
     // Prepare update statement
     const updateStmt = this.db.prepare(`
-      UPDATE hots_accounts SET
-        HP_url = ?,
-        HP_QM_MMR = ?,
-        HP_SL_MMR = ?,
-        HP_QM_Games = ?,
-        HP_SL_Games = ?,
-        HP_MMR = ?,
-        \`SotS_Win_%\` = ?,
-        SotS_Games = ?,
-        SotS_Takedowns = ?,
-        SotS_Kills = ?,
-        SotS_Assists = ?,
-        SotS_Deaths = ?,
-        SotS_Kill_Participation = ?,
-        SotS_KDA_Ratio = ?,
-        SotS_Highest_Kill_Streak = ?,
-        SotS_Vengeances = ?,
-        SotS_Time_Dead = ?,
-        \`SotS_Time_Dead_%\` = ?,
-        SotS_Deaths_While_Outnumbered = ?,
-        SotS_Escapes = ?,
-        SotS_Team_Fight_Escapes = ?,
-        SotS_Hero_Damage = ?,
-        SotS_DPM = ?,
-        SotS_Physical_Damage = ?,
-        SotS_Ability_Damage = ?,
-        SotS_Damage_per_Death = ?,
-        SotS_Team_Fight_Hero_Damage = ?,
-        SotS_Siege_Damage = ?,
-        SotS_Structure_Damage = ?,
-        SotS_Minion_Damage = ?,
-        SotS_Summon_Damage = ?,
-        SotS_Creep_Damage = ?,
-        SotS_Healing = ?,
-        SotS_HPM = ?,
-        SotS_Healing_per_Death = ?,
-        SotS_Team_Fight_Healing = ?,
-        SotS_Self_Healing = ?,
-        SotS_Allied_Shields = ?,
-        SotS_Clutch_Heals = ?,
-        SotS_Damage_Taken = ?,
-        SotS_Damage_Soaked = ?,
-        SotS_Damage_Taken_per_Death = ?,
-        SotS_Team_Fight_Damage_Taken = ?,
-        SotS_CC_Time = ?,
-        SotS_Root_Time = ?,
-        SotS_Silence_Time = ?,
-        SotS_Stun_Time = ?,
-        SotS_Time_on_Fire = ?,
-        SotS_XP_Contribution = ?,
-        SotS_XPM = ?,
-        SotS_Merc_Camp_Captures = ?,
-        SotS_Watch_Tower_Captures = ?,
-        SotS_Aces = ?,
-        SotS_Wipes = ?,
-        \`SotS_%_of_Game_with_Level_Adv\` = ?,
-        \`SotS_%_of_Game_with_Hero_Adv\` = ?,
-        \`SotS_Passive_XP/Second\` = ?,
-        SotS_Passive_XP_Gained = ?,
-        SotS_Altar_Damage_Done = ?,
-        SotS_Damage_to_Immortal = ?,
-        SotS_Dragon_Knights_Captured = ?,
-        SotS_Shrines_Captured = ?,
-        SotS_Dubloons_Held_At_End = ?,
-        SotS_Dubloons_Turned_In = ?,
-        SotS_Skulls_Collected = ?,
-        SotS_Shrine_Minion_Damage = ?,
-        SotS_Plant_Damage = ?,
-        SotS_Seeds_Collected = ?,
-        SotS_Garden_Seeds_Collected = ?,
-        SotS_Gems_Turned_In = ?,
-        SotS_Nuke_Damage = ?,
-        SotS_Curse_Damage = ?,
-        SotS_Time_On_Temple = ?,
-        SotS_Damage_Done_to_Zerg = ?,
-        SotS_Cage_Unlocks_Interrupted = ?,
-        SotS_Hero_Pool = ?,
-        SotS_Damage_Ratio = ?,
-        \`SotS_%_of_Team_Damage\` = ?,
-        \`SotS_%_of_Team_Damage_Taken\` = ?,
-        \`SotS_%_of_Team_Damage_Healed\` = ?,
-        \`SotS_%_of_Time_Slow_CC\` = ?,
-        \`SotS_%_of_Time_Non-Slow_CC\` = ?,
-        SotS_Votes = ?,
-        SotS_Awards = ?,
-        \`SotS_Award_%\` = ?,
-        SotS_MVP = ?,
-        \`SotS_MVP_%\` = ?,
-        SotS_Bsteps = ?,
-        SotS_Bstep_TD = ?,
-        SotS_Bstep_Deaths = ?,
-        SotS_Taunts = ?,
-        SotS_Taunt_TD = ?,
-        SotS_Taunt_Deaths = ?,
-        SotS_Sprays = ?,
-        SotS_Spray_TD = ?,
-        SotS_Spray_Deaths = ?,
-        SotS_Dances = ?,
-        SotS_Dance_TD = ?,
-        SotS_Dance_Deaths = ?
-      WHERE hots_battle_tag = ?
+      UPDATE hots_accounts SET ${HOTS_ACCOUNTS_COLUMNS.filter(col => col.skipImport !== true)
+        .map(col => `${col.name} = ?`)
+        .join(', ')} WHERE hots_battle_tag = ?
     `);
 
     let updatedCount = 0;
@@ -269,106 +226,10 @@ class CSVImporter {
     for (const record of matchingRecords) {
       try {
         const result = updateStmt.run(
-          record['HP url'],
-          this.parseValue(record['QM MMR']),
-          this.parseValue(record['SL MMR']),
-          this.parseValue(record['QM Games']),
-          this.parseValue(record['SL Games']),
-          this.parseValue(record.MMR),
-          this.parsePercentage(record['Win %']),
-          this.parseValue(record.Games),
-          this.parseValue(record.Takedowns),
-          this.parseValue(record.Kills),
-          this.parseValue(record.Assists),
-          this.parseValue(record.Deaths),
-          this.parsePercentage(record['Kill Participation']),
-          this.parseValue(record.KDA),
-          this.parseValue(record['Highest Kill Streak']),
-          this.parseValue(record.Vengeances),
-          record['Time Dead'],
-          this.parsePercentage(record['Time Dead %']),
-          this.parseValue(record['Deaths While Outnumbered']),
-          this.parseValue(record.Escapes),
-          this.parseValue(record['Team Fight Escapes']),
-          this.parseValue(record['Hero Damage']),
-          this.parseValue(record.DPM),
-          this.parseValue(record['Physical Damage']),
-          this.parseValue(record['Ability Damage']),
-          this.parseValue(record['Damage per Death']),
-          this.parseValue(record['Team Fight Hero Damage']),
-          this.parseValue(record['Siege Damage']),
-          this.parseValue(record['Structure Damage']),
-          this.parseValue(record['Minion Damage']),
-          this.parseValue(record['Summon Damage']),
-          this.parseValue(record['Creep Damage']),
-          this.parseValue(record.Healing),
-          this.parseValue(record.HPM),
-          this.parseValue(record['Healing per Death']),
-          this.parseValue(record['Team Fight Healing']),
-          this.parseValue(record['Self Healing']),
-          this.parseValue(record['Allied Shields']),
-          this.parseValue(record['Clutch Heals']),
-          this.parseValue(record['Damage Taken']),
-          this.parseValue(record['Damage Soaked']),
-          this.parseValue(record['Damage Taken per Death']),
-          this.parseValue(record['Team Fight Damage Taken']),
-          record['CC Time'],
-          record['Root Time'],
-          record['Silence Time'],
-          record['Stun Time'],
-          record['Time on Fire'],
-          this.parseValue(record['XP Contribution']),
-          this.parseValue(record.XPM),
-          this.parseValue(record['Merc Camp Captures']),
-          this.parseValue(record['Watch Tower Captures']),
-          this.parseValue(record.Aces),
-          this.parseValue(record.Wipes),
-          this.parsePercentage(record['% of Game with Level Adv.']),
-          this.parsePercentage(record['% of Game with Hero Adv.']),
-          this.parseValue(record['Passive XP/Second']),
-          this.parseValue(record['Passive XP Gained']),
-          this.parseValue(record['Altar Damage Done']),
-          this.parseValue(record['Damage to Immortal']),
-          this.parseValue(record['Dragon Knights Captured']),
-          this.parseValue(record['Shrines Captured']),
-          this.parseValue(record['Dubloons Held At End']),
-          this.parseValue(record['Dubloons Turned In']),
-          this.parseValue(record['Skulls Collected']),
-          this.parseValue(record['Shrine Minion Damage']),
-          this.parseValue(record['Plant Damage']),
-          this.parseValue(record['Seeds Collected']),
-          this.parseValue(record['Garden Seeds Collected']),
-          this.parseValue(record['Gems Turned In']),
-          this.parseValue(record['Nuke Damage']),
-          this.parseValue(record['Curse Damage']),
-          record['Time On Temple'],
-          this.parseValue(record['Damage Done to Zerg']),
-          this.parseValue(record['Cage Unlocks Interrupted']),
-          this.parseValue(record['Hero Pool']),
-          this.parseValue(record['Damage Ratio']),
-          this.parsePercentage(record['% of Team Damage']),
-          this.parsePercentage(record['% of Team Damage Taken']),
-          this.parsePercentage(record['% of Team Damage Healed']),
-          this.parsePercentage(record['% of Time Slow CC']),
-          this.parsePercentage(record['% of Time Non-Slow CC']),
-          this.parseValue(record.Votes),
-          this.parseValue(record.Awards),
-          this.parsePercentage(record['Award %']),
-          this.parseValue(record.MVP),
-          this.parsePercentage(record['MVP %']),
-          this.parseValue(record.Bsteps),
-          this.parseValue(record['Bstep TD']),
-          this.parseValue(record['Bstep Deaths']),
-          this.parseValue(record.Taunts),
-          this.parseValue(record['Taunt TD']),
-          this.parseValue(record['Taunt Deaths']),
-          this.parseValue(record.Sprays),
-          this.parseValue(record['Spray TD']),
-          this.parseValue(record['Spray Deaths']),
-          this.parseValue(record.Dances),
-          this.parseValue(record['Dance TD']),
-          this.parseValue(record['Dance Deaths']),
-          record.Lookup // WHERE clause - hots_battle_tag
+          ...HOTS_ACCOUNTS_COLUMNS.filter(col => col.skipImport !== true).map(col =>
+            this.parseValueForColumn(record, col)
+          ),
+          record.Lookup
         );
 
         if (result.changes > 0) {

@@ -15,6 +15,7 @@ import {
 import { safeReply } from '../commands';
 import { CommandIds } from '../constants';
 import { getHeroesProfileData } from './heroesProfile';
+import { ColumnDefinition, HOTS_ACCOUNTS_COLUMNS } from '../types/csvSpreadsheet';
 
 const db = new Database('./store/nor_customs.db');
 
@@ -36,114 +37,33 @@ const initSchema = db.transaction(() => {
     )
   `);
 
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS hots_accounts (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      discord_id TEXT NOT NULL,
-      is_primary INTEGER DEFAULT 0,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      hots_battle_tag TEXT NOT NULL, -- hots name including the # and number
-      HP_url TEXT,
-      HP_QM_MMR INTEGER,
-      HP_SL_MMR INTEGER,
-      HP_QM_Games INTEGER,
-      HP_SL_Games INTEGER,
-      HP_MMR INTEGER,
-      \`SotS_Win_%\` REAL,
-      SotS_Games INTEGER,
-      SotS_Takedowns REAL,
-      SotS_Kills REAL,
-      SotS_Assists REAL,
-      SotS_Deaths REAL,
-      SotS_Kill_Participation REAL,
-      SotS_KDA_Ratio REAL,
-      SotS_Highest_Kill_Streak REAL,
-      SotS_Vengeances REAL,
-      SotS_Time_Dead TEXT,
-      \`SotS_Time_Dead_%\` REAL,
-      SotS_Deaths_While_Outnumbered REAL,
-      SotS_Escapes REAL,
-      SotS_Team_Fight_Escapes REAL,
-      SotS_Hero_Damage REAL,
-      SotS_DPM REAL,
-      SotS_Physical_Damage REAL,
-      SotS_Ability_Damage REAL,
-      SotS_Damage_per_Death REAL,
-      SotS_Team_Fight_Hero_Damage REAL,
-      SotS_Siege_Damage REAL,
-      SotS_Structure_Damage REAL,
-      SotS_Minion_Damage REAL,
-      SotS_Summon_Damage REAL,
-      SotS_Creep_Damage REAL,
-      SotS_Healing REAL,
-      SotS_HPM REAL,
-      SotS_Healing_per_Death REAL,
-      SotS_Team_Fight_Healing REAL,
-      SotS_Self_Healing REAL,
-      SotS_Allied_Shields REAL,
-      SotS_Clutch_Heals REAL,
-      SotS_Damage_Taken REAL,
-      SotS_Damage_Soaked REAL,
-      SotS_Damage_Taken_per_Death REAL,
-      SotS_Team_Fight_Damage_Taken REAL,
-      SotS_CC_Time TEXT,
-      SotS_Root_Time TEXT,
-      SotS_Silence_Time TEXT,
-      SotS_Stun_Time TEXT,
-      SotS_Time_on_Fire TEXT,
-      SotS_XP_Contribution REAL,
-      SotS_XPM REAL,
-      SotS_Merc_Camp_Captures REAL,
-      SotS_Watch_Tower_Captures REAL,
-      SotS_Aces REAL,
-      SotS_Wipes REAL,
-      \`SotS_%_of_Game_with_Level_Adv\` REAL,
-      \`SotS_%_of_Game_with_Hero_Adv\` REAL,
-      SotS_Passive_XP_Second REAL,
-      SotS_Passive_XP_Gained REAL,
-      SotS_Altar_Damage_Done REAL,
-      SotS_Damage_to_Immortal REAL,
-      SotS_Dragon_Knights_Captured REAL,
-      SotS_Shrines_Captured REAL,
-      SotS_Dubloons_Held_At_End REAL,
-      SotS_Dubloons_Turned_In REAL,
-      SotS_Skulls_Collected REAL,
-      SotS_Shrine_Minion_Damage REAL,
-      SotS_Plant_Damage REAL,
-      SotS_Seeds_Collected REAL,
-      SotS_Garden_Seeds_Collected REAL,
-      SotS_Gems_Turned_In REAL,
-      SotS_Nuke_Damage REAL,
-      SotS_Curse_Damage REAL,
-      SotS_Time_On_Temple TEXT,
-      SotS_Damage_Done_to_Zerg REAL,
-      SotS_Cage_Unlocks_Interrupted REAL,
-      SotS_Hero_Pool INTEGER,
-      SotS_Damage_Ratio REAL,
-      \`SotS_%_of_Team_Damage\` REAL,
-      \`SotS_%_of_Team_Damage_Taken\` REAL,
-      \`SotS_%_of_Team_Damage_Healed\` REAL,
-      \`SotS_%_of_Time_Slow_CC\` REAL,
-      \`SotS_%_of_Time_Non-Slow_CC\` REAL,
-      SotS_Votes INTEGER,
-      SotS_Awards INTEGER,
-      \`SotS_Award_%\` REAL,
-      SotS_MVP INTEGER,
-      \`SotS_MVP_%\` REAL,
-      SotS_Bsteps INTEGER,
-      SotS_Bstep_TD INTEGER,
-      SotS_Bstep_Deaths INTEGER,
-      SotS_Taunts INTEGER,
-      SotS_Taunt_TD INTEGER,
-      SotS_Taunt_Deaths INTEGER,
-      SotS_Sprays INTEGER,
-      SotS_Spray_TD INTEGER,
-      SotS_Spray_Deaths INTEGER,
-      SotS_Dances INTEGER,
-      SotS_Dance_TD INTEGER,
-      SotS_Dance_Deaths INTEGER
-    )
-  `);
+  // Helper function to generate CREATE TABLE SQL from column definitions
+  function generateCreateTableSQL(tableName: string, columns: ColumnDefinition[]): string {
+    const columnDefinitions = columns
+      .map(col => {
+        let definition = `${col.name} ${col.type}`;
+
+        if (col.primaryKey) definition += ' PRIMARY KEY';
+        if (col.autoIncrement) definition += ' AUTOINCREMENT';
+        if (col.nullable === false) definition += ' NOT NULL';
+        if (col.unique) definition += ' UNIQUE';
+        if (col.defaultValue !== undefined) {
+          if (typeof col.defaultValue === 'string' && col.defaultValue !== 'CURRENT_TIMESTAMP') {
+            definition += ` DEFAULT '${col.defaultValue}'`;
+          } else {
+            definition += ` DEFAULT ${col.defaultValue}`;
+          }
+        }
+
+        return definition;
+      })
+      .join(',\n      ');
+
+    return `CREATE TABLE IF NOT EXISTS ${tableName} (\n      ${columnDefinitions}\n    )`;
+  }
+
+  const createHotsAccountsSQL = generateCreateTableSQL('hots_accounts', HOTS_ACCOUNTS_COLUMNS);
+  db.exec(createHotsAccountsSQL);
 
   // Create an index for better performance
   db.exec(`
