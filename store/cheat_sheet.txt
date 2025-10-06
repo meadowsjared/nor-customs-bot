@@ -87,3 +87,22 @@ INSERT INTO players (discord_id, discord_name, discord_global_name, discord_disp
 INSERT INTO hots_accounts (discord_id, hots_battle_tag, is_primary, hp_url, HP_QM_MMR, HP_SL_MMR, HP_QM_Games, HP_SL_Games) VALUES ('927801814101942303', 'Auslesejager#1855', 1, 'https://www.heroesprofile.com/Player/Auslesejager/1490580/1', 2433, 2165, 396, 68);
 INSERT INTO hots_accounts (discord_id, hots_battle_tag, is_primary, hp_url, HP_QM_MMR, HP_SL_MMR, HP_QM_Games, HP_SL_Games) VALUES ('196114062369619968', 'KidCanuck#2293', 1, 'https://www.heroesprofile.com/Player/KidCanuck/910667/1', 0, 0, 0, 0);
 
+
+#===================================================#
+# to recreate the hots_accounts table with the data #
+#===================================================#
+# Backup the existing table
+ALTER TABLE hots_accounts RENAME TO hots_accounts_old;
+
+# restart the app to recreate the table with the new schema
+
+# Copy data from the old table to the new table
+INSERT INTO hots_accounts SELECT * FROM hots_accounts_old;
+
+# check the data
+SELECT id,discord_id,is_primary,updated_at,hots_battle_tag,hp_url,HP_QM_Games FROM hots_accounts;
+
+# Drop the old table if everything looks good
+DROP TABLE hots_accounts_old;
+
+# restart the app again to ensure the indexes are recreated now that the old table is gone
