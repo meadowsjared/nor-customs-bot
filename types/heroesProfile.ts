@@ -173,12 +173,12 @@ export interface HPPlayerStatsData {
   heroes_three_highest_win_rate: HPHeroStats[];
   heroes_three_most_played: HPHeroStats[];
   heroes_three_latest_played: HPHeroStats[];
-  qm_mmr_data: HPMMRData;
-  ud_mmr_data: HPMMRData;
-  hl_mmr_data: HPMMRData;
-  tl_mmr_data: HPMMRData;
-  sl_mmr_data: HPMMRData;
-  ar_mmr_data: HPMMRData;
+  qm_mmr_data: HPMMRData | null;
+  ud_mmr_data: HPMMRData | null;
+  hl_mmr_data: HPMMRData | null;
+  tl_mmr_data: HPMMRData | null;
+  sl_mmr_data: HPMMRData | null;
+  ar_mmr_data: HPMMRData | null;
   maps_three_highest_win_rate: HPMapStats[];
   maps_three_most_played: HPMapStats[];
   maps_three_latest_played: HPMapStats[];

@@ -384,10 +384,10 @@ export async function getHeroesProfileData(battleTag: string): Promise<HPData | 
     const hpData: HPData = {
       region,
       blizz_id,
-      qmMmr: hpDataReturned.qm_mmr_data.mmr,
-      slMmr: hpDataReturned.sl_mmr_data.mmr,
-      qmGames: hpDataReturned.qm_mmr_data.win + hpDataReturned.qm_mmr_data.loss,
-      slGames: hpDataReturned.sl_mmr_data.win + hpDataReturned.sl_mmr_data.loss,
+      qmMmr: hpDataReturned.qm_mmr_data?.mmr ?? NaN,
+      slMmr: hpDataReturned.sl_mmr_data?.mmr ?? NaN,
+      qmGames: (hpDataReturned.qm_mmr_data?.win ?? 0) + (hpDataReturned.qm_mmr_data?.loss ?? 0),
+      slGames: (hpDataReturned.sl_mmr_data?.win ?? 0) + (hpDataReturned.sl_mmr_data?.loss ?? 0),
     };
 
     const endTime = Date.now();
