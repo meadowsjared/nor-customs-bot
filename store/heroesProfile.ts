@@ -1,6 +1,9 @@
 import puppeteer, { Browser, Page } from 'puppeteer';
-import { HPData, HPSelectors } from '../types/heroesProfile'; // Assuming you have a types.ts file for type definitions
+import { HPData, HPPlayerData, HPPlayerStatsData, HPSelectors } from '../types/heroesProfile'; // Assuming you have a types.ts file for type definitions
 import { appendFileSync, existsSync, mkdirSync } from 'fs';
+import Database from 'better-sqlite3';
+
+const db = new Database('./store/nor_customs.db');
 
 // Save original console methods
 const origLog = console.log;
@@ -134,7 +137,8 @@ async function scrapePlayerStats(browser: Browser, url: string, battleTag: strin
       console.log(`SL: ${playerName}: SL Games: ${slGames} = ${slWins} + ${slLosses}`);
 
       await page.close();
-      return { url: currentUrl, qmMmr, slMmr, qmGames, slGames };
+      const { region, blizz_id } = getRegionBlizzIDFromUrl(currentUrl);
+      return { region, blizz_id, qmMmr, slMmr, qmGames, slGames };
     } catch (error: any) {
       // take a screenshot
       await page.screenshot({ path: `./screenshots/debug_${playerName}.png` });
@@ -143,8 +147,10 @@ async function scrapePlayerStats(browser: Browser, url: string, battleTag: strin
       if (attempts >= maxAttempts - 1) {
         console.error(`${playerName}: Max attempts reached. Skipping this player.`);
         await page.close();
+        const { region, blizz_id } = getRegionBlizzIDFromUrl(currentUrl);
         return {
-          url: currentUrl,
+          region,
+          blizz_id,
           qmMmr: qmMmr !== 'None' ? qmMmr : 'Error',
           slMmr: slMmr !== 'None' ? slMmr : 'Error',
           qmGames: qmGames !== 'None' ? qmGames : 'Error',
@@ -155,8 +161,10 @@ async function scrapePlayerStats(browser: Browser, url: string, battleTag: strin
       }
     }
   }
+  const { region, blizz_id } = getRegionBlizzIDFromUrl(currentUrl);
   return {
-    url: currentUrl,
+    region,
+    blizz_id,
     qmMmr: qmMmr !== 'None' ? qmMmr : 'Error',
     slMmr: slMmr !== 'None' ? slMmr : 'Error',
     qmGames: qmGames !== 'None' ? qmGames : 'Error',
@@ -164,8 +172,19 @@ async function scrapePlayerStats(browser: Browser, url: string, battleTag: strin
   };
 }
 
+function getRegionBlizzIDFromUrl(url: string): { region: number; blizz_id: string } {
+  const regex = /\/battletag\/searched\/([^/]+)\/(\d+)\/alt/;
+  const match = url.match(regex);
+  if (match && match.length === 3) {
+    const blizz_id = match[1];
+    const region = parseInt(match[2], 10);
+    return { region, blizz_id };
+  }
+  return { region: 0, blizz_id: '' };
+}
+
 /**
-	This function retrieves the MMR value for a specific player for a given row name.
+ * This function retrieves the MMR value for a specific player for a given row name.
  * @param {puppeteer.Page} page - The Puppeteer page instance.
  * @param {string} playerName - The name of the player.
  * @param {string} rowName - The name of the row to find.
@@ -273,7 +292,7 @@ async function getGames(
   return { games, wins, losses };
 }
 
-export async function getHeroesProfileData(battleTag: string): Promise<HPData | undefined> {
+export async function getHeroesProfileData_old(battleTag: string): Promise<HPData | undefined> {
   try {
     // if the screenshots directory doesn't exist, create it
     const dir = './screenshots';
@@ -289,7 +308,7 @@ export async function getHeroesProfileData(battleTag: string): Promise<HPData | 
     const verifyBattleTag = /^.+#\d+$/;
     if (!verifyBattleTag.test(battleTag)) {
       console.error('Invalid BattleTag format. Please use the format Name#1234');
-      return { url, qmMmr: 'Error', slMmr: 'Error', qmGames: 'Error', slGames: 'Error' };
+      return { region: 0, blizz_id: '', qmMmr: 'Error', slMmr: 'Error', qmGames: 'Error', slGames: 'Error' };
     }
 
     const browser = await puppeteer.launch({ headless: true });
@@ -302,6 +321,79 @@ export async function getHeroesProfileData(battleTag: string): Promise<HPData | 
     const elapsedTime = (endTime - startTime) / 1000;
     console.log(`Elapsed time: ${elapsedTime.toFixed(2)} seconds`);
     return stats;
+  } catch (error) {
+    console.error('An error occurred:', error);
+  }
+}
+
+export async function getHeroesProfileData(battleTag: string): Promise<HPData | undefined> {
+  try {
+    const startTime = Date.now();
+    // first check if we have their region and blizz_id stored already
+    const hpRegionStmt = db.prepare<string, { HP_Blizz_ID: string; HP_Region: number }>(
+      'SELECT HP_Blizz_ID, HP_Region FROM hots_accounts WHERE hots_battle_tag = ?'
+    );
+    const row = hpRegionStmt.get(battleTag);
+    console.log(`Getting HP Data for ${battleTag}`);
+    let blizz_id = row?.HP_Blizz_ID;
+    let region = row?.HP_Region;
+    if (!blizz_id || !region) {
+      // execute a post request
+      const response = await fetch('https://www.heroesprofile.com/api/v1/battletag/search', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ userinput: battleTag }),
+      });
+
+      if (!response.ok) {
+        console.error(`Error fetching data: ${response.statusText}`);
+        return undefined;
+      }
+
+      const data: HPPlayerData[] = await response.json();
+      data.sort((a, b) => b.totalGamesPlayed - a.totalGamesPlayed); // Sort by totalGamesPlayed descending
+      if (data.length === 0) {
+        console.log(`No data found for BattleTag: ${battleTag}`);
+        return undefined;
+      }
+      const bestMatch = data[0]; // after sorting, the first item is the best match
+      blizz_id = bestMatch.blizz_id;
+      region = bestMatch.region;
+      // store blizz_id, region for the first item in the array
+      const hpUpdateStmt = db.prepare(
+        'UPDATE hots_accounts SET HP_Blizz_ID = ?, HP_Region = ? WHERE hots_battle_tag = ?'
+      );
+      hpUpdateStmt.run(blizz_id, region, battleTag);
+    }
+
+    const response = await fetch('https://www.heroesprofile.com/api/v1/player', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ battletag: battleTag, region, blizz_id }),
+    });
+    if (!response.ok) {
+      console.error(`Error fetching data: ${response.statusText}`);
+      return undefined;
+    }
+
+    const hpDataReturned: HPPlayerStatsData = await response.json();
+    const hpData: HPData = {
+      region,
+      blizz_id,
+      qmMmr: hpDataReturned.qm_mmr_data.mmr,
+      slMmr: hpDataReturned.sl_mmr_data.mmr,
+      qmGames: hpDataReturned.qm_mmr_data.win + hpDataReturned.qm_mmr_data.loss,
+      slGames: hpDataReturned.sl_mmr_data.win + hpDataReturned.sl_mmr_data.loss,
+    };
+
+    const endTime = Date.now();
+    const elapsedTime = (endTime - startTime) / 1000;
+    console.log(`Elapsed time: ${elapsedTime.toFixed(2)} seconds`);
+    return hpData;
   } catch (error) {
     console.error('An error occurred:', error);
   }

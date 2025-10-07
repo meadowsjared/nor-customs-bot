@@ -295,7 +295,8 @@ export async function handleAddHotsAccount(
     //update their heroes profile data anyway
     const updateProfileStmt = db.prepare(
       `UPDATE hots_accounts SET
-        HP_URL = ?,
+        HP_Region = ?,
+        HP_Blizz_ID = ?,
         HP_QM_MMR = ?,
         HP_SL_MMR = ?,
         HP_QM_Games = ?,
@@ -303,7 +304,8 @@ export async function handleAddHotsAccount(
       WHERE discord_id = ? AND hots_battle_tag = ?`
     );
     updateProfileStmt.run(
-      profileData.url,
+      profileData.region,
+      profileData.blizz_id,
       profileData.qmMmr,
       profileData.slMmr,
       profileData.qmGames,
@@ -323,13 +325,14 @@ export async function handleAddHotsAccount(
   }
 
   const hotsAccountStmt = db.prepare(
-    'INSERT INTO hots_accounts (discord_id, hots_battle_tag, is_primary, HP_URL, HP_QM_MMR, HP_SL_MMR, HP_QM_Games, HP_SL_Games) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    'INSERT INTO hots_accounts (discord_id, hots_battle_tag, is_primary, HP_Region, HP_Blizz_ID, HP_QM_MMR, HP_SL_MMR, HP_QM_Games, HP_SL_Games) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
   );
   hotsAccountStmt.run(
     discordId,
     hotsBattleTag,
     player.usernames.accounts && player.usernames.accounts.length === 0 ? 1 : 0,
-    profileData.url,
+    profileData.region,
+    profileData.blizz_id,
     profileData.qmMmr,
     profileData.slMmr,
     profileData.qmGames,

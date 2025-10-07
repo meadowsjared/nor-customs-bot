@@ -127,6 +127,7 @@ export interface ColumnDefinition {
   autoIncrement?: true;
   isBoolean?: true;
   isPercentage?: true;
+  /** true if this column should not be imported from the Nor-Customs CSV file */
   skipImport?: true;
 }
 
@@ -143,7 +144,8 @@ export const HOTS_ACCOUNTS_COLUMNS: ColumnDefinition[] = [
   },
   { name: 'updated_at', type: SQLiteColumnType.DATETIME, defaultValue: 'CURRENT_TIMESTAMP' },
   { name: 'hots_battle_tag', type: SQLiteColumnType.TEXT, nullable: false, skipImport: true },
-  { name: 'HP_URL', type: SQLiteColumnType.TEXT, skipImport: true },
+  { name: 'HP_Region', type: SQLiteColumnType.INTEGER, skipImport: true },
+  { name: 'HP_Blizz_ID', type: SQLiteColumnType.INTEGER, skipImport: true },
   { name: 'HP_QM_MMR', csvColumnName: 'QM MMR', type: SQLiteColumnType.INTEGER },
   { name: 'HP_SL_MMR', csvColumnName: 'SL MMR', type: SQLiteColumnType.INTEGER },
   { name: 'HP_QM_Games', csvColumnName: 'QM Games', type: SQLiteColumnType.INTEGER },
