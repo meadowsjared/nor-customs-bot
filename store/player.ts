@@ -280,7 +280,7 @@ export async function handleAddHotsAccount(
   const profileData = await getHeroesProfileData(hotsBattleTag);
   if (!profileData) {
     await safeReply(interaction, {
-      content: `Failed to retrieve Heroes profile data for \`${hotsBattleTag}\`.`,
+      content: `Failed to retrieve Heroes profile data for \`${hotsBattleTag}\`.\nAre you sure you typed it right?`,
       flags: MessageFlags.Ephemeral,
     });
     return false;
