@@ -4,11 +4,13 @@
     "AUTOINCREMENT",
     "Aviater",
     "battletag",
+    "blizz",
     "Bstep",
     "Bsteps",
     "Dubloons",
     "Finalstand",
     "Geneveve",
+    "HPAPI",
     "hunterlust",
     "jmeadows",
     "lterplinge",
@@ -23,6 +25,7 @@
     "saika",
     "selym",
     "Urid",
+    "userinput",
     "Vengeances",
     "Zerg"
   ]
