@@ -143,7 +143,7 @@ export const HOTS_ACCOUNTS_COLUMNS: ColumnDefinition[] = [
   },
   { name: 'updated_at', type: SQLiteColumnType.DATETIME, defaultValue: 'CURRENT_TIMESTAMP' },
   { name: 'hots_battle_tag', type: SQLiteColumnType.TEXT, nullable: false, skipImport: true },
-  { name: 'HP_url', csvColumnName: 'HP url', type: SQLiteColumnType.TEXT, skipImport: true },
+  { name: 'HP_URL', type: SQLiteColumnType.TEXT, skipImport: true },
   { name: 'HP_QM_MMR', csvColumnName: 'QM MMR', type: SQLiteColumnType.INTEGER },
   { name: 'HP_SL_MMR', csvColumnName: 'SL MMR', type: SQLiteColumnType.INTEGER },
   { name: 'HP_QM_Games', csvColumnName: 'QM Games', type: SQLiteColumnType.INTEGER },

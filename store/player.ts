@@ -295,7 +295,7 @@ export async function handleAddHotsAccount(
     //update their heroes profile data anyway
     const updateProfileStmt = db.prepare(
       `UPDATE hots_accounts SET
-        HP_url = ?,
+        HP_URL = ?,
         HP_QM_MMR = ?,
         HP_SL_MMR = ?,
         HP_QM_Games = ?,
@@ -323,7 +323,7 @@ export async function handleAddHotsAccount(
   }
 
   const hotsAccountStmt = db.prepare(
-    'INSERT INTO hots_accounts (discord_id, hots_battle_tag, is_primary, HP_url, HP_QM_MMR, HP_SL_MMR, HP_QM_Games, HP_SL_Games) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    'INSERT INTO hots_accounts (discord_id, hots_battle_tag, is_primary, HP_URL, HP_QM_MMR, HP_SL_MMR, HP_QM_Games, HP_SL_Games) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
   );
   hotsAccountStmt.run(
     discordId,
