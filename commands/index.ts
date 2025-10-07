@@ -787,8 +787,14 @@ async function handleLookupCommandSub(
   }
   // update the player's Discord data in the database
   setPlayerDiscordNames(discordId, discordData);
-  if (hotsBattleTag && !player.usernames.accounts?.some(a => a.hotsBattleTag !== hotsBattleTag)) {
+  // If a hotsBattleTag is provided, and does this player already have this specific battle tag?
+  if (
+    hotsBattleTag &&
+    player.usernames.accounts?.some(a => a.hotsBattleTag.toLowerCase() === hotsBattleTag.toLowerCase())
+  ) {
     setPlayerName(interaction, discordId, hotsBattleTag); // Update the player's Heroes of the Storm name in the database
+  } else if (hotsBattleTag) {
+    handleAddHotsAccountCommandSub(interaction, discordId, hotsBattleTag); // Add the new battle tag to the player's accounts in the database
   }
   // return;
 }
