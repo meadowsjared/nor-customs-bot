@@ -2,12 +2,7 @@ import Database from 'better-sqlite3';
 import { readFileSync } from 'fs';
 import { parse } from 'csv-parse/sync';
 import { ColumnDefinition, CSVRecord, HOTS_ACCOUNTS_COLUMNS, SQLiteColumnType } from '../types/csvSpreadsheet';
-
-interface HotsAccount {
-  hots_battle_tag: string;
-  discord_id: string;
-  is_primary: boolean;
-}
+import { HotsAccountRow } from '../types/player';
 
 class CSVImporter {
   private readonly db: Database.Database;
@@ -88,9 +83,11 @@ class CSVImporter {
   }
 
   // Get all hots_accounts from database
-  private getHotsAccounts(): HotsAccount[] {
-    const stmt = this.db.prepare('SELECT hots_battle_tag, discord_id, is_primary FROM hots_accounts');
-    return stmt.all() as HotsAccount[];
+  private getHotsAccounts(): HotsAccountRow[] {
+    const stmt = this.db.prepare<[], HotsAccountRow>(
+      'SELECT hots_battle_tag, discord_id, is_primary, HP_QM_MMR, HP_SL_MMR FROM hots_accounts'
+    );
+    return stmt.all();
   }
 
   // Task 1: Find accounts in CSV but missing from database
