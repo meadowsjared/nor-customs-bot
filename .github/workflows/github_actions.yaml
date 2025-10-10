@@ -1,0 +1,29 @@
+name: Build and Release Nor Customs Bot
+
+on:
+  push:
+    branches:
+      - main  # Set this to the branch you want to build from
+
+jobs:
+  build:
+    runs-on: windows-latest  # Specifies that the job should run on the latest Ubuntu runner
+
+    steps:
+      - name: Create Release
+        id: create_release
+        uses: ncipollo/release-action@v1.14.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # GitHub automatically creates this secret to use in your workflow
+        with:
+          name: Nor Customs v${{ env.VERSION }}
+          draft: false
+          prerelease: false
+          generateReleaseNotes: true
+          tag: v${{ env.VERSION }}
+          allowUpdates: true
+      - uses: phips28/gh-action-bump-version@v11.0.7
+        name: Automated Version Bump
+        with:
+          version-type:  'minor'
+      - uses: actions/checkout@v3  # Checks out your repository under $GITHUB_WORKSPACE
