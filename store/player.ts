@@ -194,6 +194,7 @@ function getPlayerFromRow(row: FlatPlayer, accounts: HotsAccountRow[]): Player {
     role: row.role,
     active: row.active === 1,
     team: row.team ?? undefined, // Ensure team is undefined if null
+    draftRank: row.draft_rank ?? NaN,
   };
 }
 
@@ -202,6 +203,8 @@ function getAccountFromAccountRow(account: HotsAccountRow): HotsAccount {
     id: account.id,
     hotsBattleTag: account.hots_battle_tag,
     isPrimary: !!account.is_primary,
+    hpQmMMR: account.HP_QM_MMR,
+    hpSlMMR: account.HP_SL_MMR,
   };
 }
 
@@ -213,7 +216,7 @@ export function getActivePlayers(): Player[] {
   const stmt = db.prepare<[], FlatPlayer>('SELECT * FROM players WHERE active = 1 ORDER BY active, team;');
   const rows: FlatPlayer[] = stmt.all();
   const accountsStmt = db.prepare<[], HotsAccountRow>(
-    'SELECT discord_id, hots_battle_tag, is_primary FROM hots_accounts;'
+    'SELECT discord_id, hots_battle_tag, is_primary, HP_QM_MMR, HP_SL_MMR FROM hots_accounts;'
   );
   const accounts = accountsStmt.all();
   return rows.map<Player>(row => getPlayerFromRow(row, accounts));
@@ -662,6 +665,42 @@ export function setTeams(team1Ids: string[], team2Ids: string[]): void {
 }
 
 /**
+ * Sets the teams for the players in the database using player objects.
+ * @param team1 Array of Player objects for team 1.
+ * @param team2 Array of Player objects for team 2.
+ * @returns void
+ */
+export function setTeamsFromPlayers(
+  team1: { player: Player; index: number }[],
+  team2: { player: Player; index: number }[]
+): void {
+  const transaction = db.transaction(() => {
+    const clearStmt = db.prepare('UPDATE players SET team = NULL');
+    clearStmt.run();
+    team1.forEach(p => {
+      const updateStmt = db.prepare('UPDATE players SET team = ?, draft_rank = ? WHERE discord_id = ?');
+      updateStmt.run(1, p.index, p.player.discordId);
+    });
+    team2.forEach(p => {
+      const updateStmt = db.prepare('UPDATE players SET team = ?, draft_rank = ? WHERE discord_id = ?');
+      updateStmt.run(2, p.index, p.player.discordId);
+    });
+  });
+  transaction();
+}
+
+export function changeTeams(playerChanges: { playerId: string; newTeam: number }[]): boolean {
+  const transaction = db.transaction(() => {
+    playerChanges.forEach(({ playerId, newTeam }) => {
+      const stmt = db.prepare('UPDATE players SET team = ? WHERE discord_id = ?');
+      stmt.run(newTeam, playerId);
+    });
+  });
+  transaction();
+  return true;
+}
+
+/**
  * Retrieves the teams from the database.
  * This function queries the players table for all players with a non-null team assignment,
  * and organizes them into two separate arrays based on their team number.
@@ -672,7 +711,7 @@ export function getTeams(): { team1: Player[]; team2: Player[] } {
   const rows: FlatPlayer[] = stmt.all();
   // select all hots accounts by first joining to the players where team is not null, then getting all accounts where is_primary = 1
   const accountsStmt = db.prepare<[], HotsAccountRow>(
-    'SELECT discord_id, hots_battle_tag, is_primary FROM hots_accounts WHERE is_primary = 1;'
+    'SELECT discord_id, hots_battle_tag, is_primary, HP_QM_MMR, HP_SL_MMR FROM hots_accounts WHERE is_primary = 1;'
   );
   const accounts = accountsStmt.all();
   const team1: Player[] = [];
@@ -685,6 +724,8 @@ export function getTeams(): { team1: Player[]; team2: Player[] } {
       team2.push(player);
     }
   });
+  team1.sort((a, b) => (a.draftRank ?? 0) - (b.draftRank ?? 0));
+  team2.sort((a, b) => (a.draftRank ?? 0) - (b.draftRank ?? 0));
   return { team1, team2 };
 }
 

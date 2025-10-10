@@ -21,6 +21,9 @@ export const adminUserIds = [
 export const enum CommandIds {
   NEW_GAME = 'new_game',
   SET_TEAMS = 'set_teams',
+  DRAFT = 'draft',
+  SWAP_PLAYERS = 'swap_players',
+  PUBLISH_TEAMS = 'publish_teams',
   SET_CHANNEL_TEAM_ID = 'set_team_channel',
   SET_LOBBY_CHANNEL = 'set_lobby_channel',
   MOVE_TO_LOBBY = 'move_all_to_lobby',

@@ -26,6 +26,8 @@ export interface HotsAccount {
    * Used for updating/deleting the account
    */
   id: number;
+  hpQmMMR: number | null; // HP_QM_MMR
+  hpSlMMR: number | null; // HP_SL_MMR
 }
 
 export interface HotsAccountRow {
@@ -46,6 +48,8 @@ export interface HotsAccountRow {
    * Used for updating/deleting the account
    */
   id: number;
+  HP_QM_MMR: number | null; // HP_QM_MMR
+  HP_SL_MMR: number | null; // HP_SL_MMR
 }
 
 export interface DiscordUserNames {
@@ -87,6 +91,7 @@ export interface Player {
    * This is used to determine which team the player is on
    */
   team: number | undefined;
+  draftRank: number;
 }
 
 export interface PlayerWithAccounts extends Player {
@@ -132,4 +137,5 @@ export interface FlatPlayer {
    * This is used to determine which team the player is on
    */
   team: number;
+  draft_rank: number | null;
 }

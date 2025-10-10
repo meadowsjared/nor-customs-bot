@@ -42,6 +42,9 @@ import {
   handleAdminPrimaryCommand,
   handleLookupByDiscordIdCommand,
   handleAdminAddHotsAccountByDiscordIdCommand,
+  handleDraftTeamsCommand,
+  handlePublishTeamsCommand,
+  handleSwapTeamsCommand,
 } from './commands';
 import { slashCommands } from './commands/definitions';
 
@@ -138,6 +141,18 @@ client.on('interactionCreate', async interaction => {
     case CommandIds.SET_TEAMS:
       // Handle load teams command
       handleLoadTeamsCommand(interaction);
+      break;
+    case CommandIds.DRAFT:
+      // Handle draft command
+      handleDraftTeamsCommand(interaction);
+      break;
+    case CommandIds.SWAP_PLAYERS:
+      // Handle swap command
+      handleSwapTeamsCommand(interaction);
+      break;
+    case CommandIds.PUBLISH_TEAMS:
+      // Handle publish teams command
+      handlePublishTeamsCommand(interaction);
       break;
     case CommandIds.SET_CHANNEL_TEAM_ID:
       // Handle set channel team ID command

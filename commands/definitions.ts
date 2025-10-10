@@ -113,6 +113,35 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     ],
   },
   {
+    name: CommandIds.DRAFT,
+    description: 'Draft players into teams',
+    defaultMemberPermissions: minimumAdminPermissions,
+  },
+  {
+    name: CommandIds.SWAP_PLAYERS,
+    description: 'Swap two players between teams',
+    defaultMemberPermissions: minimumAdminPermissions,
+    options: [
+      {
+        name: 'player-a',
+        type: ApplicationCommandOptionType.Integer,
+        description: 'The first player to swap',
+        required: true,
+      },
+      {
+        name: 'player-b',
+        type: ApplicationCommandOptionType.Integer,
+        description: 'The second player to swap',
+        required: true,
+      },
+    ],
+  },
+  {
+    name: CommandIds.PUBLISH_TEAMS,
+    description: 'Post the teams to the channel',
+    defaultMemberPermissions: minimumAdminPermissions,
+  },
+  {
     name: CommandIds.SET_CHANNEL_TEAM_ID,
     description: 'Set the channel team ID',
     defaultMemberPermissions: minimumAdminPermissions,

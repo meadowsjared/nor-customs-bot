@@ -46,7 +46,9 @@ import {
   setPlayerRole,
   setPrimaryAccount,
   setTeams,
+  setTeamsFromPlayers,
   storeInteraction,
+  changeTeams,
 } from '../store/player';
 import { saveChannel, getChannels, saveLobbyMessage, getLobbyMessage } from '../store/channels';
 import { DiscordUserNames, Player } from '../types/player';
@@ -211,45 +213,147 @@ export async function handleLoadTeamsCommand(
     console.error('Interaction is not a command or button interaction');
     return;
   }
-  const teamsData: Teams = JSON.parse(interaction.options.getString('teams_data', true));
-  const activePlayers = getActivePlayers();
-  const team1 = teamsData.team1
-    .map(name =>
-      activePlayers.find(player =>
-        player.usernames.accounts?.some(
-          account => account.hotsBattleTag.replace(/#.*$/, '').toLowerCase() === name.toLowerCase()
-        )
-      )
-    )
-    .filter(p => p !== undefined);
-  const team2 = teamsData.team2
-    .map(name =>
-      activePlayers.find(player =>
-        player.usernames.accounts?.some(
-          account => account.hotsBattleTag.replace(/#.*$/, '').toLowerCase() === name.toLowerCase()
-        )
-      )
-    )
-    .filter(p => p !== undefined);
-  setTeams(
-    team1.map(p => p.discordId),
-    team2.map(p => p.discordId)
-  ); // Save the teams to the database
+  const teamsData: number[] = interaction.options
+    .getString('teams_data', true)
+    .split(/\W/)
+    .map(n => parseInt(n, 10));
+  // now that we have the new team assignments
+  const { team1, team2 } = getTeams();
+  const bothTeams = [...team1, ...team2];
+  if (teamsData.length < team1.length) {
+    // the minimum length is the number of players on team 1
+    await safeReply(interaction, {
+      content: `Not enough players provided. There are currently ${team1.length} players on team 1.`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  if (teamsData.length > bothTeams.length) {
+    // the maximum length is the total number of players
+    await safeReply(interaction, {
+      content: `Too many players provided. There are currently ${bothTeams.length} players in total.`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  // check if the teamsData contains any duplicates
+  const uniqueTeamsData = Array.from(new Set(teamsData));
+  if (uniqueTeamsData.length !== teamsData.length) {
+    // Find the duplicates
+    const duplicates = teamsData.filter((num, index) => teamsData.indexOf(num) !== index);
+    const uniqueDuplicates = Array.from(new Set(duplicates));
 
-  const team1Message = team1
+    await safeReply(interaction, {
+      content: `Duplicate player numbers provided: \`${uniqueDuplicates.join(
+        ', '
+      )}\`. Please provide each player number only once.`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  // go through and subtract one from each number, so we're using 0-based indexes
+  for (let i = 0; i < teamsData.length; i++) {
+    teamsData[i] = teamsData[i] - 1;
+  }
+  if (teamsData.length < bothTeams.length) {
+    // populate it with the missing numbers
+    const missingNumbers = bothTeams.filter(n => !teamsData.includes(n.draftRank)).map(n => n.draftRank);
+    teamsData.push(...missingNumbers);
+  }
+
+  // now that wwe have the numbers:
+  const newTeam1 = teamsData.slice(0, team1.length);
+
+  changeTeams(bothTeams.map(p => ({ playerId: p.discordId, newTeam: newTeam1.includes(p.draftRank ?? -1) ? 1 : 2 })));
+  const { team1: newTeam1Players, team2: newTeam2Players } = getTeams();
+  generateTeamsMessage(
+    interaction,
+    newTeam1Players.map(p => ({ player: p, index: p.draftRank ?? 0 })),
+    newTeam2Players.map(p => ({ player: p, index: p.draftRank ?? 0 }))
+  );
+}
+
+/**
+ * Handles the /draft command interaction, which creates teams from the active players.
+ * The teams are created by sorting the players by their MMR and alternating them between the two teams.
+ * The teams are then saved to the database and a message is generated to show who is on what team.
+ * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
+ * @returns Promise<void>
+ */
+export async function handleDraftTeamsCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+) {
+  if (interaction.isButton()) {
+    console.error('Interaction is not a command or button interaction');
+    return;
+  }
+  const activePlayers = getActivePlayers();
+  if (activePlayers.length < 1) {
+    await safeReply(interaction, {
+      content: 'Not enough players to draft teams.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  // sort the players by their MMR
+  const sortedPlayers = [...activePlayers].sort((a, b) => {
+    const aMmr = getPlayerMMR(a);
+    const bMmr = getPlayerMMR(b);
+    return bMmr - aMmr;
+  });
+  // go through the sorted players, and alternate adding them to each team
+  const team1: { player: Player; index: number }[] = [];
+  const team2: { player: Player; index: number }[] = [];
+  for (let i = 0; i < sortedPlayers.length; i++) {
+    if ((i % 2 === 0 && i !== 0) || i === 1) {
+      team2.push({ player: sortedPlayers[i], index: i });
+    } else {
+      team1.push({ player: sortedPlayers[i], index: i });
+    }
+  }
+  // set the teams in the database
+  setTeams(
+    team1.map(p => p.player.discordId),
+    team2.map(p => p.player.discordId)
+  ); // Save the teams to the database
+  setTeamsFromPlayers(team1, team2);
+  await generateTeamsMessage(interaction, team1, team2);
+}
+
+function getPlayerMMR(player: Player): number {
+  return (
+    player.usernames.accounts?.reduce(
+      (bestMMR, account) => Math.max(bestMMR, account.hpQmMMR ?? 0, account.hpSlMMR ?? 0),
+      0
+    ) ?? 0
+  );
+}
+
+/**
+ * Generate the message to show who is on what team
+ */
+async function generateTeamsMessage(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+  team1: { player: Player; index: number }[],
+  team2: { player: Player; index: number }[],
+  publish = false
+): Promise<void> {
+  team1.sort((a, b) => a.index - b.index);
+  team2.sort((a, b) => a.index - b.index);
+  const team1List = team1
     .map(
       p =>
-        `* ${p.usernames.discordDisplayName} (${p.usernames.accounts
+        `\`${p.index + 1}: ${getPlayerMMR(p.player)}\` <@${p.player.discordId}> ${p.player.usernames.accounts
           ?.find(account => account.isPrimary)
-          ?.hotsBattleTag.replace(/#.*$/, '')})`
+          ?.hotsBattleTag.replace(/#.*$/, '')}`
     )
     .join('\n');
-  const team2Message = team2
+  const team2List = team2
     .map(
       p =>
-        `* ${p.usernames.discordDisplayName} (${p.usernames.accounts
+        `\`${p.index + 1}: ${getPlayerMMR(p.player)}\` <@${p.player.discordId}> ${p.player.usernames.accounts
           ?.find(account => account.isPrimary)
-          ?.hotsBattleTag.replace(/#.*$/, '')})`
+          ?.hotsBattleTag.replace(/#.*$/, '')}`
     )
     .join('\n');
 
@@ -257,17 +361,97 @@ export async function handleLoadTeamsCommand(
   const team2lengthMessage = team2.length === 5 ? '' : ` (${team2.length} players)`;
   const team1embed = new EmbedBuilder()
     .setTitle(`Team 1${team1lengthMessage}`)
-    .setDescription(team1Message || '* No players in this team')
+    .setDescription(team1List || '* No players in this team')
     .setColor('#0099ff');
   const team2embed = new EmbedBuilder()
     .setTitle(`💩 Filthy Team 2${team2lengthMessage}`)
-    .setDescription(team2Message || '* No players in this team')
+    .setDescription(team2List || '* No players in this team')
     .setColor('#8B4513');
   await safeReply(interaction, {
     content: `<@${norDiscordId}>`,
     embeds: [team1embed, team2embed],
-    // flags: MessageFlags.Ephemeral,
+    flags: publish ? undefined : MessageFlags.Ephemeral,
   });
+}
+
+export async function handleSwapTeamsCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+) {
+  if (interaction.isButton()) {
+    safeReply(interaction, {
+      content: 'Interaction is not a command or button interaction',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  const playerANumber = interaction.options.getInteger('player-a', true);
+  const playerBNumber = interaction.options.getInteger('player-b', true);
+  const { team1, team2 } = getTeams();
+  // get the discord_id of the two players
+  const bothTeams = [...team1, ...team2];
+  const playerA = bothTeams.find(p => (p.draftRank ?? NaN) + 1 === playerANumber);
+  const playerB = bothTeams.find(p => (p.draftRank ?? NaN) + 1 === playerBNumber);
+  // now we have the teams, and we know who to swap
+  if (
+    playerANumber < 1 ||
+    playerANumber > bothTeams.length ||
+    playerBNumber < 1 ||
+    playerBNumber > bothTeams.length ||
+    !playerA ||
+    !playerB
+  ) {
+    await safeReply(interaction, {
+      content: `Invalid player numbers (playerANumber: ${playerANumber}, playerBNumber: ${playerBNumber}, playerA: ${playerA?.discordId}, playerB: ${playerB?.discordId}) There are only ${bothTeams.length} players.`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  if (playerA.team === playerB.team) {
+    await safeReply(interaction, {
+      content: `Both players are on the same team. Cannot swap.`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  if (playerA.team === undefined || playerB.team === undefined) {
+    await safeReply(interaction, {
+      content: `One or both players are not assigned to a team.`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  // swap the teams
+  // note we set playerA to playerB's team, and playerB to playerA's team
+  changeTeams([
+    { playerId: playerA.discordId, newTeam: playerB.team },
+    { playerId: playerB.discordId, newTeam: playerA.team },
+  ]);
+  const { team1: newTeam1, team2: newTeam2 } = getTeams();
+  const team1Obj = newTeam1.map(p => ({ player: p, index: p.draftRank ?? 0 }));
+  const team2Obj = newTeam2.map(p => ({ player: p, index: p.draftRank ?? 0 }));
+  await generateTeamsMessage(interaction, team1Obj, team2Obj);
+}
+
+/**
+ * Publish the teams that are already store in the database
+ * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
+ * @returns Promise<void>
+ */
+export async function handlePublishTeamsCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+) {
+  if (interaction.isButton()) {
+    console.error('Interaction is not a command or button interaction');
+    return;
+  }
+  // get the teams from the database
+  const { team1, team2 } = getTeams();
+  generateTeamsMessage(
+    interaction,
+    team1.map(p => ({ player: p, index: p.draftRank ?? 0 })),
+    team2.map(p => ({ player: p, index: p.draftRank ?? 0 })),
+    true
+  );
 }
 
 export async function handleMoveToLobbyCommand(
@@ -698,6 +882,7 @@ async function showJoinModal(
       role: CommandIds.ROLE_FLEX, // Default role is Flex
       active: false,
       team: undefined,
+      draftRank: NaN,
     },
     hotsBattleTag
   ); // Save player data to the database with default role Flex
@@ -780,6 +965,7 @@ async function handleLookupCommandSub(
         role: CommandIds.ROLE_FLEX, // Default role is Flex
         active: false,
         team: undefined,
+        draftRank: NaN,
       },
       hotsBattleTag
     );
@@ -860,6 +1046,7 @@ export async function handleJoinCommand(
     role,
     active: true,
     team: undefined,
+    draftRank: NaN,
   };
   await savePlayer(interaction, interaction.user.id, newPlayer, hotsBattleTag); // Save player data to the database
   // announce in the channel who has joined
