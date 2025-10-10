@@ -33,7 +33,9 @@ const initSchema = db.transaction(() => {
       discord_global_name TEXT NOT NULL,
       discord_display_name TEXT NOT NULL,
       role TEXT NOT NULL,
-      active INTEGER NOT NULL
+      active INTEGER NOT NULL,
+      team INTEGER CHECK(team IN (1, 2, 3)),
+      draft_rank INTEGER
     )
   `);
 
