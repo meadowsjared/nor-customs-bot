@@ -106,3 +106,6 @@ SELECT id,discord_id,is_primary,updated_at,hots_battle_tag,HP_URL,HP_QM_Games FR
 DROP TABLE hots_accounts_old;
 
 # restart the app again to ensure the indexes are recreated now that the old table is gone
+
+# get all players with a team or draft rank, ordered by team and draft rank:
+SELECT * FROM players WHERE team IS NOT NULL OR draft_rank IS NOT NULL ORDER BY team, draft_rank;
