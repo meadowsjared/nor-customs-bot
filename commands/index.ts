@@ -59,14 +59,12 @@ import { client } from '../index';
 function generateLobbyStatusMessage(pPreviousPlayersList?: string): string {
   const previousPlayersList = pPreviousPlayersList ?? getLobbyMessage()?.previousPlayersList ?? '';
   const activePlayers = getActivePlayers();
-  const lobbyPlayers = activePlayers
-    .filter(p => p?.team === undefined)
-    .map(
-      (p, index) =>
-        `${index + 1}: @${p.usernames.discordDisplayName}: (${p.usernames.accounts
-          ?.find(a => a.isPrimary)
-          ?.hotsBattleTag.replace(/#.*$/, '')}) \`${getPlayerRolesFormatted(p.role)}\``
-    );
+  const lobbyPlayers = activePlayers.map(
+    (p, index) =>
+      `${index + 1}: @${p.usernames.discordDisplayName}: (${p.usernames.accounts
+        ?.find(a => a.isPrimary)
+        ?.hotsBattleTag.replace(/#.*$/, '')}) \`${getPlayerRolesFormatted(p.role)}\``
+  );
 
   // combine the lobbyPlayers and previousPlayersList, into one string, labeling each section, but skip a section if there are no players in that section
   const playerListWithLabels = [];
@@ -105,6 +103,7 @@ async function updateLobbyMessage(interaction: chatOrButtonOrModal) {
     const channel = interaction.guild?.channels.cache.get(lobbyMessage.channelId);
     if (channel?.isTextBased()) {
       const message = await channel.messages.fetch(lobbyMessage.messageId);
+      // purposely don't pass in the previousPlayersList, so it uses the stored value in the database
       const updatedContent = generateLobbyStatusMessage();
       await message.edit({
         content: updatedContent,
