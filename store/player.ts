@@ -754,6 +754,6 @@ export async function loadPlayerDataIntoSqlite(): Promise<Player[] | undefined> 
     return adaptedPlayersMap;
   } catch (error) {
     console.error('Error loading player data:', error);
-    throw error; // Re-throw the error to handle it upstream
+    // throw error; // Re-throw the error to handle it upstream
   }
 }
