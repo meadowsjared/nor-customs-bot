@@ -16,6 +16,11 @@ jobs:
     steps:
       - uses: actions/checkout@v3  # Checks out your repository under $GITHUB_WORKSPACE
 
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: 'latest'
+
       - name: Create Release
         id: create_release
         uses: ncipollo/release-action@v1.14.0
