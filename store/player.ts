@@ -649,22 +649,6 @@ export function clearTeams(): void {
 }
 
 /**
- * sets the team for all players in the database.
- * @returns void
- */
-export function setTeams(team1Ids: string[], team2Ids: string[]): void {
-  const transaction = db.transaction(() => {
-    const clearStmt = db.prepare('UPDATE players SET team = NULL');
-    const stmts1 = db.prepare(`UPDATE players SET team = ? WHERE discord_id IN ('${team1Ids.join("', '")}')`);
-    const stmts2 = db.prepare(`UPDATE players SET team = ? WHERE discord_id IN ('${team2Ids.join("', '")}')`);
-    clearStmt.run();
-    stmts1.run(1);
-    stmts2.run(2);
-  });
-  transaction();
-}
-
-/**
  * Sets the teams for the players in the database using player objects.
  * @param team1 Array of Player objects for team 1.
  * @param team2 Array of Player objects for team 2.

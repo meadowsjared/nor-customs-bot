@@ -45,7 +45,6 @@ import {
   setPlayerName,
   setPlayerRole,
   setPrimaryAccount,
-  setTeams,
   setTeamsFromPlayers,
   storeInteraction,
   changeTeams,
@@ -312,10 +311,6 @@ export async function handleDraftTeamsCommand(
     }
   }
   // set the teams in the database
-  setTeams(
-    team1.map(p => p.player.discordId),
-    team2.map(p => p.player.discordId)
-  ); // Save the teams to the database
   setTeamsFromPlayers(team1, team2);
   await generateTeamsMessage(interaction, team1, team2);
 }
