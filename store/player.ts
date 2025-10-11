@@ -508,7 +508,7 @@ export function markPlayerInactive(discordId: string): false | Player {
   if (!player) {
     return false;
   }
-  const stmt = db.prepare('UPDATE players SET active = 0 WHERE discord_id = ?');
+  const stmt = db.prepare('UPDATE players SET active = 0, team = NULL, draft_rank = NULL WHERE discord_id = ?');
   stmt.run(discordId);
   player.active = false;
   return player;
