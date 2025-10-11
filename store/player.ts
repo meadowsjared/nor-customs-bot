@@ -729,31 +729,32 @@ export function getTeams(): { team1: Player[]; team2: Player[] } {
   return { team1, team2 };
 }
 
-export async function loadPlayerDataIntoSqlite(): Promise<Player[] | undefined> {
+export async function loadPlayerDataIntoSqlite() {
+  //: Promise<Player[] | undefined> {
   interface PlayerJSON extends Omit<Player, 'team'> {
     team: number | null;
   }
-  try {
-    const data = await import('./players.json');
-    const playersMap = new Map<string, PlayerJSON>(Object.entries(data.default ?? {}));
-    // transfer the loaded players to the sqlite database
-    // const adaptedPlayersMap = Array.from(playersMap).map((player, discordId) => {
-    const adaptedPlayersMap = Array.from(playersMap.entries()).map(([discordId, player]) => {
-      const playerData: Player = {
-        ...player,
-        usernames: {
-          ...player.usernames,
-        },
-        discordId,
-        team: player.team ?? undefined, // Ensure team is undefined if null
-      };
-      const accounts = player.usernames.accounts ?? [];
-      savePlayer(undefined, discordId, playerData, accounts[0]?.hotsBattleTag ?? '');
-      return playerData;
-    });
-    return adaptedPlayersMap;
-  } catch (error) {
-    console.error('Error loading player data:', error);
-    // throw error; // Re-throw the error to handle it upstream
-  }
+  // try {
+  //   const data = await import('./players.json');
+  //   const playersMap = new Map<string, PlayerJSON>(Object.entries(data.default ?? {}));
+  //   // transfer the loaded players to the sqlite database
+  //   // const adaptedPlayersMap = Array.from(playersMap).map((player, discordId) => {
+  //   const adaptedPlayersMap = Array.from(playersMap.entries()).map(([discordId, player]) => {
+  //     const playerData: Player = {
+  //       ...player,
+  //       usernames: {
+  //         ...player.usernames,
+  //       },
+  //       discordId,
+  //       team: player.team ?? undefined, // Ensure team is undefined if null
+  //     };
+  //     const accounts = player.usernames.accounts ?? [];
+  //     savePlayer(undefined, discordId, playerData, accounts[0]?.hotsBattleTag ?? '');
+  //     return playerData;
+  //   });
+  //   return adaptedPlayersMap;
+  // } catch (error) {
+  //   console.error('Error loading player data:', error);
+  //   throw error; // Re-throw the error to handle it upstream
+  // }
 }
