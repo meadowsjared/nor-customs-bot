@@ -21,7 +21,10 @@ jobs:
         with:
           bun-version: 'latest'
 
-      - uses: phips28/gh-action-bump-version@v11.0.7
-        name: Automated Version Bump
-        with:
-          version-type:  'minor'
+  publish:
+  - uses: phips28/gh-action-bump-version@v11.0.7
+    name: Automated Version Bump
+    with:
+      version-type:  'minor'
+    permissions:
+      contents: write
