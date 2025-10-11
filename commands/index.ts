@@ -57,7 +57,7 @@ import { client } from '../index';
  * @returns The formatted lobby status message
  */
 function generateLobbyStatusMessage(pPreviousPlayersList?: string): string {
-  const previousPlayersList = pPreviousPlayersList ?? getLobbyMessage()?.previousPlayersList ?? '';
+  const previousPlayersList = pPreviousPlayersList ?? getLobbyMessage(CommandIds.NEW_GAME)?.previousPlayersList ?? '';
   const activePlayers = getActivePlayers();
   const lobbyPlayers = activePlayers.map(
     (p, index) =>
@@ -94,7 +94,7 @@ function generatePreviousPlayersList(): string {
  * @param interaction The interaction object for guild access
  */
 async function updateLobbyMessage(interaction: chatOrButtonOrModal) {
-  const lobbyMessage = getLobbyMessage();
+  const lobbyMessage = getLobbyMessage(CommandIds.NEW_GAME);
   if (!lobbyMessage) {
     return; // No lobby message to update
   }
@@ -134,7 +134,7 @@ export async function handleNewGameCommand(
 
   // Store the message ID so we can update it later
   if (sentMessage) {
-    saveLobbyMessage(sentMessage.id, sentMessage.channelId, previousPlayersList);
+    saveLobbyMessage(CommandIds.NEW_GAME, sentMessage.id, sentMessage.channelId, previousPlayersList);
   }
 
   await safeReply(interaction, {

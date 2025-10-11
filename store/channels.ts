@@ -17,13 +17,13 @@ db.exec(`
 // and reset the previous messages
 db.exec(`
   CREATE TABLE IF NOT EXISTS lobby_messages (
-    id INTEGER PRIMARY KEY CHECK (id = 1),
+    messageType TEXT PRIMARY KEY,
     messageId TEXT DEFAULT '',
     channelId TEXT DEFAULT '',
     previousPlayersList TEXT DEFAULT ''
   );
 `);
-//DELETE FROM lobby_messages WHERE id = 1;
+//DELETE FROM lobby_messages WHERE messageType = 'new_game';
 
 /**
  * Saves a Discord VoiceChannel to the local store.
@@ -66,31 +66,41 @@ export function getChannels(channelTypes: channelTypes[]): ChannelLocal[] | unde
 
 /**
  * Saves the lobby announcement message ID and channel ID
+ * @param messageType The type of the message, e.g., 'new_game'
  * @param messageId The Discord message ID of the lobby announcement
  * @param channelId The Discord channel ID where the announcement was sent
+ * @param previousPlayersList The previous players list string to store
  */
-export function saveLobbyMessage(messageId: string, channelId: string, previousPlayersList: string): void {
+export function saveLobbyMessage(
+  messageType: string,
+  messageId: string,
+  channelId: string,
+  previousPlayersList: string
+): void {
   const stmt = db.prepare(`
-    INSERT INTO lobby_messages (id, messageId, channelId, previousPlayersList)
-    VALUES (1, ?, ?, ?)
-    ON CONFLICT(id) DO UPDATE SET
+    INSERT INTO lobby_messages (messageType, messageId, channelId, previousPlayersList)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(messageType) DO UPDATE SET
       messageId=excluded.messageId,
       channelId=excluded.channelId,
       previousPlayersList=excluded.previousPlayersList
-    WHERE id = 1
+    WHERE messageType = ?
   `);
-  stmt.run(messageId, channelId, previousPlayersList);
+  stmt.run(messageType, messageId, channelId, previousPlayersList, messageType);
 }
 
 /**
  * Retrieves the current lobby announcement message ID and channel ID
+ * @param messageType The type of the message, e.g., 'new_game'
  * @returns The message and channel IDs, or undefined if no announcement exists
  */
-export function getLobbyMessage(): { messageId: string; channelId: string; previousPlayersList: string } | undefined {
-  const stmt = db.prepare<[], { messageId: string; channelId: string; previousPlayersList: string }>(`
-    SELECT messageId, channelId, previousPlayersList FROM lobby_messages WHERE id = 1
+export function getLobbyMessage(
+  messageType: string
+): { messageId: string; channelId: string; previousPlayersList: string } | undefined {
+  const stmt = db.prepare<string, { messageId: string; channelId: string; previousPlayersList: string }>(`
+    SELECT messageId, channelId, previousPlayersList FROM lobby_messages WHERE messageType = ?
   `);
-  const row = stmt.get();
+  const row = stmt.get(messageType);
   return row || undefined;
 }
 
