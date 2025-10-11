@@ -26,7 +26,7 @@ UPDATE players SET team = 1 WHERE discord_id IN ('243668219712372736','174577718
 UPDATE players SET team = 2 WHERE discord_id IN ('168240037924831232','85523383193698304','226434789387927552','235235346864930816','845713006796734495');
 
 mark all players as inactive:
-UPDATE players SET active = 0, team = NULL WHERE active = 1 OR team IS NOT NULL;
+UPDATE players SET active = 0, team = NULL, draft_rank = NULL WHERE active = 1 OR team IS NOT NULL;
 
 get all active players:
 SELECT * FROM players WHERE active = 1 ORDER BY active, team;

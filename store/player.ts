@@ -492,7 +492,9 @@ async function updatePrimaryAccountInDb(
  * @returns void
  */
 export function markAllPlayersInactive(): void {
-  const stmt = db.prepare('UPDATE players SET active = 0, team = NULL WHERE active = 1 OR team IS NOT NULL');
+  const stmt = db.prepare(
+    'UPDATE players SET active = 0, team = NULL, draft_rank = NULL WHERE active = 1 OR team IS NOT NULL'
+  );
   stmt.run();
 }
 
@@ -644,12 +646,14 @@ export function setPlayerActive(discordId: string, active: boolean): { updated: 
  * @returns void
  */
 export function clearTeams(): void {
-  const stmt = db.prepare('UPDATE players SET team = NULL');
+  const stmt = db.prepare('UPDATE players SET team = NULL, draft_rank = NULL');
   stmt.run();
 }
 
 /**
  * Sets the teams for the players in the database using player objects.
+ * This function first clears any existing team assignments and draft ranks,
+ * then assigns players to team 1 and team 2 based on the provided arrays.
  * @param team1 Array of Player objects for team 1.
  * @param team2 Array of Player objects for team 2.
  * @returns void
@@ -659,7 +663,7 @@ export function setTeamsFromPlayers(
   team2: { player: Player; index: number }[]
 ): void {
   const transaction = db.transaction(() => {
-    const clearStmt = db.prepare('UPDATE players SET team = NULL');
+    const clearStmt = db.prepare('UPDATE players SET team = NULL, draft_rank = NULL');
     clearStmt.run();
     team1.forEach(p => {
       const updateStmt = db.prepare('UPDATE players SET team = ?, draft_rank = ? WHERE discord_id = ?');
