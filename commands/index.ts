@@ -564,7 +564,7 @@ export async function handleMoveToTeamsCommand(
     // result.forEach((channel, index) => {
     const teamChannel = interaction.guild?.channels.cache.get(channel.channelId);
     if (!teamChannel || !(teamChannel instanceof VoiceChannel)) {
-      interaction.editReply({
+      await interaction.editReply({
         content: `Team channel \`${channel.channelName}\` is not a valid voice channel.`,
       });
       return;
