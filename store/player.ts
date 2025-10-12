@@ -117,7 +117,7 @@ export function removeInteraction(messageId: string, channelId: string): void {
  * @param channelId The ID of the channel where the interaction occurred.
  * @returns The stored interaction object, or undefined if not found.
  */
-function getStoredInteraction(
+export function getStoredInteraction(
   messageId: string,
   channelId: string
 ): ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType> | undefined {
