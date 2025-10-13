@@ -30,7 +30,7 @@ import {
   roleBtn,
   roleMap,
 } from '../constants';
-import { announce } from '../utils/announce';
+import { announce, safePing } from '../utils/announce';
 import {
   getActivePlayers,
   getPlayerByDiscordId,
@@ -83,7 +83,7 @@ function generateLobbyStatusMessage(pPreviousPlayersList?: string): string {
 
 /** generates the list of previous players */
 function generatePreviousPlayersList(): string {
-  const previousPlayers = getActivePlayers().map(p => `<@${p.discordId}>`);
+  const previousPlayers = getActivePlayers().map(p => safePing(`<@${p.discordId}>`));
   if (previousPlayers.length === 0) {
     return '**No Previous Players**';
   }
@@ -338,17 +338,17 @@ async function generateTeamsMessage(
   const team1List = team1
     .map(
       p =>
-        `\`${p.index + 1}: ${getPlayerMMR(p.player)}\` <@${p.player.discordId}> ${p.player.usernames.accounts
-          ?.find(account => account.isPrimary)
-          ?.hotsBattleTag.replace(/#.*$/, '')}`
+        `\`${p.index + 1}: ${getPlayerMMR(p.player)}\` ${safePing(
+          `<@${p.player.discordId}>`
+        )} ${p.player.usernames.accounts?.find(account => account.isPrimary)?.hotsBattleTag.replace(/#.*$/, '')}`
     )
     .join('\n');
   const team2List = team2
     .map(
       p =>
-        `\`${p.index + 1}: ${getPlayerMMR(p.player)}\` <@${p.player.discordId}> ${p.player.usernames.accounts
-          ?.find(account => account.isPrimary)
-          ?.hotsBattleTag.replace(/#.*$/, '')}`
+        `\`${p.index + 1}: ${getPlayerMMR(p.player)}\` ${safePing(
+          `<@${p.player.discordId}>`
+        )} ${p.player.usernames.accounts?.find(account => account.isPrimary)?.hotsBattleTag.replace(/#.*$/, '')}`
     )
     .join('\n');
 
@@ -379,7 +379,9 @@ export async function handleSwapTeamsCommand(
     });
     return;
   }
+  /** this is a 1-based index */
   const playerANumber = interaction.options.getInteger('player-a', true);
+  /** this is a 1-based index */
   const playerBNumber = interaction.options.getInteger('player-b', true);
   const { team1, team2 } = getTeams();
   // get the discord_id of the two players
@@ -489,7 +491,9 @@ export async function handleMoveToLobbyCommand(
 
   // Initial update after deferring, showing progress
   await interaction.editReply({
-    content: `Moving ${totalPlayers} players to the lobby channel: <@${lobby.channelId}>... (0/${totalPlayers} moved)`,
+    content: `Moving ${totalPlayers} players to the lobby channel: ${safePing(
+      `<@${lobby.channelId}>`
+    )}... (0/${totalPlayers} moved)`,
   });
 
   /** Array to store players that failed to move */
@@ -529,7 +533,7 @@ export async function handleMoveToLobbyCommand(
       content: `Note: Failed to move ${totalPlayers - numberMoved} players:\n${failedToMove
         .map(
           player =>
-            `<@${player.discordId}>: ${player.usernames.accounts
+            `${safePing(`<@${player.discordId}>`)}: ${player.usernames.accounts
               ?.find(a => a.isPrimary)
               ?.hotsBattleTag.replace(/#.*$/, '')}`
         )
@@ -594,7 +598,7 @@ export async function handleMoveToTeamsCommand(
       content: `Failed to move the following players to their team channels:\n${failedToMove
         .map(
           player =>
-            `<@${player.discordId}>: ${player.usernames.accounts
+            `${safePing(`<@${player.discordId}>`)}: ${player.usernames.accounts
               ?.find(a => a.isPrimary)
               ?.hotsBattleTag.replace(/#.*$/, '')}`
         )
@@ -745,7 +749,7 @@ export async function handlePlayersCommand(
       .map(({ discordId, usernames, role }) => {
         if (pingLobby) {
           // if pingLobby is true, mention the user
-          return `<@${discordId}>: (${usernames.accounts
+          return `${safePing(`<@${discordId}>`)}: (${usernames.accounts
             ?.find(a => a.isPrimary)
             ?.hotsBattleTag.replace(/#.*$/, '')}) \`${getPlayerRolesFormatted(role)}\``;
         }
@@ -944,7 +948,11 @@ async function handleLookupCommandSub(
         .join('\n') || 'No HotS accounts';
 
     await safeReply(interaction, {
-      content: `<@${discordId}>\nDiscord ID: \`${discordId}\`\ndiscordName: \`${discordData.discordName}\`\ndiscordGlobalName: \`${discordData.discordGlobalName}\`\nDisplay Name: \`${discordData.discordDisplayName}\`\n${message}\nHotS Accounts:\n${accounts}`,
+      content: `${safePing(`<@${discordId}>`)}\nDiscord ID: \`${discordId}\`\ndiscordName: \`${
+        discordData.discordName
+      }\`\ndiscordGlobalName: \`${discordData.discordGlobalName}\`\nDisplay Name: \`${
+        discordData.discordDisplayName
+      }\`\n${message}\nHotS Accounts:\n${accounts}`,
       flags: MessageFlags.Ephemeral,
     });
   }
@@ -1466,7 +1474,7 @@ export async function handleEditRoleButtonCommand(
     // If setActive is true, we need to set the player as active
     announce(
       interaction,
-      `<@${interaction.user.id}> (${player.usernames.accounts
+      `${safePing(`<@${interaction.user.id}>`)} (${player.usernames.accounts
         ?.find(a => a.isPrimary)
         ?.hotsBattleTag.replace(/#.*$/, '')}) has joined the lobby as \`${getPlayerRolesFormatted(player.role)}\``
     );

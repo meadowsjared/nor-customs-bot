@@ -38,3 +38,14 @@ export async function announce(
   }
   return undefined;
 }
+
+/**
+ * will either wrap the text in `` or return the text as is, depending on if we're testing
+ */
+export function safePing(text: string): string {
+  const testing = process.env.DEBUG === 'true';
+  if (testing) {
+    return `\`${text}\``;
+  }
+  return text;
+}
