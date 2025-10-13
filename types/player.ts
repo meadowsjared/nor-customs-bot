@@ -92,6 +92,7 @@ export interface Player {
    */
   team: number | undefined;
   draftRank: number;
+  mmr: number | null;
 }
 
 export interface PlayerWithAccounts extends Player {

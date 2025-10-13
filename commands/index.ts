@@ -877,6 +877,7 @@ async function showJoinModal(
       active: false,
       team: undefined,
       draftRank: NaN,
+      mmr: 0,
     },
     hotsBattleTag
   ); // Save player data to the database with default role Flex
@@ -960,6 +961,7 @@ async function handleLookupCommandSub(
         active: false,
         team: undefined,
         draftRank: NaN,
+        mmr: 0,
       },
       hotsBattleTag
     );
@@ -1041,6 +1043,7 @@ export async function handleJoinCommand(
     active: true,
     team: undefined,
     draftRank: NaN,
+    mmr: 0,
   };
   await savePlayer(interaction, interaction.user.id, newPlayer, hotsBattleTag); // Save player data to the database
   // announce in the channel who has joined

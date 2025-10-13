@@ -181,12 +181,13 @@ export async function savePlayerData(players: Map<string, Player>): Promise<void
 }
 
 function getPlayerFromRow(row: FlatPlayer, accounts: HotsAccountRow[]): Player {
+  const accountsNew = accounts
+    .filter(account => account.discord_id === row.discord_id)
+    .map(account => getAccountFromAccountRow(account));
   return {
     discordId: row.discord_id,
     usernames: {
-      accounts: accounts
-        .filter(account => account.discord_id === row.discord_id)
-        .map(account => getAccountFromAccountRow(account)),
+      accounts: accountsNew,
       discordName: row.discord_name,
       discordGlobalName: row.discord_global_name,
       discordDisplayName: row.discord_display_name,
@@ -195,6 +196,12 @@ function getPlayerFromRow(row: FlatPlayer, accounts: HotsAccountRow[]): Player {
     active: row.active === 1,
     team: row.team ?? undefined, // Ensure team is undefined if null
     draftRank: row.draft_rank ?? NaN,
+    mmr: accountsNew.reduce(
+      (max: number | null, account) =>
+        // find the highest MMR including both QM and SL
+        Math.max(max ?? 0, account.hpQmMMR ?? 0, account.hpSlMMR ?? 0),
+      0
+    ),
   };
 }
 
