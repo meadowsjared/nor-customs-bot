@@ -116,6 +116,14 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     name: CommandIds.DRAFT,
     description: 'Draft players into teams',
     defaultMemberPermissions: minimumAdminPermissions,
+    options: [
+      {
+        name: 'publish',
+        type: ApplicationCommandOptionType.Boolean,
+        description: 'Whether to instantly publish the draft',
+        required: false,
+      },
+    ],
   },
   {
     name: CommandIds.SWAP_PLAYERS,

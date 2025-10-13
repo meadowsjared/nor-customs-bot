@@ -12,6 +12,7 @@ import {
   MessagePayload,
   ModalBuilder,
   ModalSubmitInteraction,
+  TextBasedChannel,
   TextInputBuilder,
   TextInputStyle,
   VoiceChannel,
@@ -286,6 +287,7 @@ export async function handleDraftTeamsCommand(
     console.error('Interaction is not a command or button interaction');
     return;
   }
+  const publish = interaction.options.getBoolean('publish', false) ?? false;
   const activePlayers = getActivePlayers();
   if (activePlayers.length < 1) {
     await safeReply(interaction, {
