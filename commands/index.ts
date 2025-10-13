@@ -1654,6 +1654,14 @@ export async function handleDeleteMessageCommand(
   const messageId = interaction.options.getString('message_id', true);
   const channel = interaction.channel;
 
+  await deleteMessage(interaction, channel, messageId);
+}
+
+async function deleteMessage(
+  interaction: ChatInputCommandInteraction<CacheType>,
+  channel: TextBasedChannel | null,
+  messageId: string
+) {
   if (!channel) {
     await safeReply(interaction, {
       content: 'Channel not found.',
@@ -1673,10 +1681,11 @@ export async function handleDeleteMessageCommand(
       content: `Deleted message: ${message.content}`,
       flags: MessageFlags.Ephemeral,
     });
+    await interaction.deleteReply();
   } catch (error) {
     console.error('Error deleting message:', error);
     await safeReply(interaction, {
-      content: 'Failed to delete message. Please make sure the message ID is correct.',
+      content: `Failed to delete message. Please make sure the message ID is correct.\nmessageId: ${messageId}`,
       flags: MessageFlags.Ephemeral,
     });
   }
