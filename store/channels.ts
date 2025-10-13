@@ -65,7 +65,7 @@ export function getChannels(channelTypes: channelTypes[]): ChannelLocal[] | unde
 }
 
 /**
- * Saves the lobby announcement message ID and channel ID
+ * Saves the lobby announcement message ID and channel ID to the database
  * @param messageType The type of the message, e.g., 'new_game'
  * @param messageId The Discord message ID of the lobby announcement
  * @param channelId The Discord channel ID where the announcement was sent
@@ -94,14 +94,32 @@ export function saveLobbyMessage(
  * @param messageType The type of the message, e.g., 'new_game'
  * @returns The message and channel IDs, or undefined if no announcement exists
  */
-export function getLobbyMessage(
-  messageType: string
-): { messageId: string; channelId: string; previousPlayersList: string } | undefined {
-  const stmt = db.prepare<string, { messageId: string; channelId: string; previousPlayersList: string }>(`
-    SELECT messageId, channelId, previousPlayersList FROM lobby_messages WHERE messageType = ?
+export function getLobbyMessages(
+  messageTypes: string[]
+): { messageType: string; messageId: string; channelId: string; previousPlayersList: string }[] | undefined {
+  const stmt = db.prepare<
+    string[],
+    { messageType: string; messageId: string; channelId: string; previousPlayersList: string }
+  >(`
+    SELECT messageType, messageId, channelId, previousPlayersList FROM lobby_messages WHERE messageType IN (${messageTypes
+      .map(() => '?')
+      .join(', ')})
   `);
-  const row = stmt.get(messageType);
-  return row || undefined;
+  const row = stmt.all(...messageTypes);
+  return row.length > 0 ? row : undefined;
+}
+
+/**
+ * Deletes lobby messages of the specified types from the local store.
+ * @param messageTypes An array of message types to delete, e.g., ['new_game']
+ */
+export function deleteLobbyMessages(messageTypes: string[]): void {
+  if (messageTypes.length === 0) {
+    return;
+  }
+  const placeholders = messageTypes.map(() => '?').join(', ');
+  const stmt = db.prepare(`DELETE FROM lobby_messages WHERE messageType IN (${placeholders})`);
+  stmt.run(...messageTypes);
 }
 
 /**

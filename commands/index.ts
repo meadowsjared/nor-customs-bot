@@ -49,7 +49,7 @@ import {
   storeInteraction,
   changeTeams,
 } from '../store/player';
-import { saveChannel, getChannels, saveLobbyMessage, getLobbyMessage } from '../store/channels';
+import { saveChannel, getChannels, saveLobbyMessage, getLobbyMessages, deleteLobbyMessages } from '../store/channels';
 import { DiscordUserNames, Player } from '../types/player';
 import { client } from '../index';
 /**
@@ -57,7 +57,8 @@ import { client } from '../index';
  * @returns The formatted lobby status message
  */
 function generateLobbyStatusMessage(pPreviousPlayersList?: string): string {
-  const previousPlayersList = pPreviousPlayersList ?? getLobbyMessage(CommandIds.NEW_GAME)?.previousPlayersList ?? '';
+  const previousPlayersList =
+    pPreviousPlayersList ?? getLobbyMessages([CommandIds.NEW_GAME])?.[0]?.previousPlayersList ?? '';
   const activePlayers = getActivePlayers();
   const lobbyPlayers = activePlayers.map(
     (p, index) =>
@@ -94,15 +95,15 @@ function generatePreviousPlayersList(): string {
  * @param interaction The interaction object for guild access
  */
 async function updateLobbyMessage(interaction: chatOrButtonOrModal) {
-  const lobbyMessage = getLobbyMessage(CommandIds.NEW_GAME);
-  if (!lobbyMessage) {
+  const lobbyMessages = getLobbyMessages([CommandIds.NEW_GAME]);
+  if (!lobbyMessages || lobbyMessages.length === 0) {
     return; // No lobby message to update
   }
 
   try {
-    const channel = interaction.guild?.channels.cache.get(lobbyMessage.channelId);
+    const channel = interaction.guild?.channels.cache.get(lobbyMessages[0].channelId);
     if (channel?.isTextBased()) {
-      const message = await channel.messages.fetch(lobbyMessage.messageId);
+      const message = await channel.messages.fetch(lobbyMessages[0].messageId);
       // purposely don't pass in the previousPlayersList, so it uses the stored value in the database
       const updatedContent = generateLobbyStatusMessage();
       await message.edit({
