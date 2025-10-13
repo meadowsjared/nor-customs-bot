@@ -49,6 +49,7 @@ import {
   setTeamsFromPlayers,
   storeInteraction,
   changeTeams,
+  getStoredInteraction,
 } from '../store/player';
 import { saveChannel, getChannels, saveLobbyMessage, getLobbyMessages, deleteLobbyMessages } from '../store/channels';
 import { DiscordUserNames, Player } from '../types/player';
@@ -180,7 +181,11 @@ export async function safeReply(
   if (interaction.replied || interaction.deferred) {
     return await interaction.followUp(options);
   } else {
-    return await interaction.reply(options);
+    try {
+      return await interaction.reply(options);
+    } catch (error) {
+      return await interaction.followUp(options);
+    }
   }
 }
 
@@ -213,34 +218,33 @@ export async function handleSetTeamsCommand(
     console.error('Interaction is not a command or button interaction');
     return;
   }
-  const teamsData: number[] = interaction.options
-    .getString('teams_data', true)
-    .split(/\W/)
-    .map(n => parseInt(n, 10));
+  const originalTeamsData = interaction.options.getString('teams_data', true);
+  const splitResult = originalTeamsData.split(',');
+  const team1Input: number[] | null = splitResult[0]
+    ?.split(/\W/)
+    .map(n => parseInt(n, 10))
+    .filter(n => !isNaN(n));
+  const team2Input: number[] | null = splitResult[1]
+    ?.split(/\W/)
+    .map(n => parseInt(n, 10))
+    .filter(n => !isNaN(n));
   // now that we have the new team assignments
-  const { team1, team2 } = getTeams();
-  const bothTeams = [...team1, ...team2];
-  if (teamsData.length < team1.length) {
-    // the minimum length is the number of players on team 1
-    await safeReply(interaction, {
-      content: `Not enough players provided. There are currently ${team1.length} players on team 1.`,
-      flags: MessageFlags.Ephemeral,
-    });
-    return;
-  }
-  if (teamsData.length > bothTeams.length) {
+  const activePlayers = getActivePlayers();
+  activePlayers.sort((a, b) => (b.mmr ?? 0) - (a.mmr ?? 0));
+  activePlayers.forEach((p, index) => (p.draftRank = index));
+  if (team1Input.length > activePlayers.length) {
     // the maximum length is the total number of players
     await safeReply(interaction, {
-      content: `Too many players provided. There are currently ${bothTeams.length} players in total.`,
+      content: `Too many players provided. There are currently ${activePlayers.length} players in total.`,
       flags: MessageFlags.Ephemeral,
     });
     return;
   }
   // check if the teamsData contains any duplicates
-  const uniqueTeamsData = Array.from(new Set(teamsData));
-  if (uniqueTeamsData.length !== teamsData.length) {
+  const uniqueTeamsData = Array.from(new Set(team1Input));
+  if (uniqueTeamsData.length !== team1Input.length) {
     // Find the duplicates
-    const duplicates = teamsData.filter((num, index) => teamsData.indexOf(num) !== index);
+    const duplicates = team1Input.filter((num, index) => team1Input.indexOf(num) !== index);
     const uniqueDuplicates = Array.from(new Set(duplicates));
 
     await safeReply(interaction, {
@@ -252,25 +256,31 @@ export async function handleSetTeamsCommand(
     return;
   }
   // go through and subtract one from each number, so we're using 0-based indexes
-  for (let i = 0; i < teamsData.length; i++) {
-    teamsData[i] = teamsData[i] - 1;
+  for (let i = 0; i < (team1Input.length ?? 0); i++) {
+    team1Input[i] = team1Input[i] - 1;
   }
-  if (teamsData.length < bothTeams.length) {
-    // populate it with the missing numbers
-    const missingNumbers = bothTeams.filter(n => !teamsData.includes(n.draftRank)).map(n => n.draftRank);
-    teamsData.push(...missingNumbers);
+  for (let i = 0; i < (team2Input?.length ?? 0); i++) {
+    team2Input[i] = team2Input[i] - 1;
   }
 
-  // now that wwe have the numbers:
-  const newTeam1 = teamsData.slice(0, team1.length);
-
-  changeTeams(bothTeams.map(p => ({ playerId: p.discordId, newTeam: newTeam1.includes(p.draftRank ?? -1) ? 1 : 2 })));
-  const { team1: newTeam1Players, team2: newTeam2Players } = getTeams();
-  generateTeamsMessage(
-    interaction,
-    newTeam1Players.map(p => ({ player: p, index: p.draftRank ?? 0 })),
-    newTeam2Players.map(p => ({ player: p, index: p.draftRank ?? 0 }))
-  );
+  // populate team 2
+  const team2InputEffective =
+    team2Input ??
+    activePlayers.reduce((acc: number[], _, index: number) => {
+      if (!team1Input.includes(index) && acc.length < 5) {
+        acc.push(index);
+      }
+      return acc;
+    }, []);
+  // now we have the two teams, we need to set them in the database
+  const team1 = activePlayers
+    .filter(p => team1Input.includes(p.draftRank))
+    .map(p => ({ player: p, index: p.draftRank }));
+  const team2 = activePlayers
+    .filter(p => team2InputEffective.includes(p.draftRank))
+    .map(p => ({ player: p, index: p.draftRank }));
+  setTeamsFromPlayers(team1, team2);
+  generateTeamsMessage(interaction, team1, team2);
 }
 
 /**
@@ -314,7 +324,7 @@ export async function handleDraftTeamsCommand(
   }
   // set the teams in the database
   setTeamsFromPlayers(team1, team2);
-  await generateTeamsMessage(interaction, team1, team2);
+  await generateTeamsMessage(interaction, team1, team2, publish, true);
 }
 
 function getPlayerMMR(player: Player): number {
@@ -328,13 +338,44 @@ function getPlayerMMR(player: Player): number {
 
 /**
  * Generate the message to show who is on what team
+ * if publish it true, the message will be posted publicly, no ephemeral message is made
+ * and the previous ephemeral message is deleted
+ * otherwise it will be ephemeral
+ *
+ * therefore only one teams or teams_ephemeral message should be in the database at any time
+ *
+ * if isDraft is true, then we're creating a new draft, so delete any previous ephemeral messages
+ * and previous public messages are deleted from the database also we'll post it according to [@publish]
+ *
+ * if both are false, then it will just update whatever was done last
+ *
+ * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
+ * @param team1 The list of players on team 1
+ * @param team2 The list of players on team 2
+ * @param publish Whether to publish the message publicly or as an ephemeral message
+ * @returns Promise<void>
  */
 async function generateTeamsMessage(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
   team1: { player: Player; index: number }[],
   team2: { player: Player; index: number }[],
-  publish = false
+  /**
+   * If this is true, we're publishing the teams to the channel, so delete the old ephemeral message
+   * and post a new message publicly
+   */
+  publish = false,
+  /**
+   * if this is true, then we're creating a new team draft
+   */
+  isDraft = false
 ): Promise<void> {
+  if (interaction.isButton()) {
+    safeReply(interaction, {
+      content: 'Interaction is not a command or button interaction',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
   team1.sort((a, b) => a.index - b.index);
   team2.sort((a, b) => a.index - b.index);
   const team1List = team1
@@ -364,11 +405,89 @@ async function generateTeamsMessage(
     .setTitle(`💩 Filthy Team 2${team2lengthMessage}`)
     .setDescription(team2List || '* No players in this team')
     .setColor('#8B4513');
-  await safeReply(interaction, {
-    content: `<@${norDiscordId}>`,
-    embeds: [team1embed, team2embed],
-    flags: publish ? undefined : MessageFlags.Ephemeral,
+  let messages = getLobbyMessages([CommandIds.TEAMS_EPHEMERAL, CommandIds.TEAMS]);
+  if (publish || isDraft) {
+    // clear the previous message from the database, so it doesn't get updated until it's published again
+    if (messages) {
+      messages
+        .filter(msg => msg.messageType === CommandIds.TEAMS_EPHEMERAL)
+        .forEach(async msg => {
+          // we know it's an ephemeral message so:
+          const message = getStoredInteraction(msg.messageId, msg.channelId);
+          message?.deleteReply().catch(console.error);
+        });
+      messages = messages.filter(msg => msg.messageType !== CommandIds.TEAMS_EPHEMERAL);
+    }
+
+    // if publish or isDraft is true, we're deleting the old messages from the database
+    deleteLobbyMessages([CommandIds.TEAMS_EPHEMERAL, CommandIds.TEAMS]);
+  }
+
+  if (publish) {
+    // if we're publishing it, then we know the ephemeral messages got deleted above, so just post a new message
+    const message = await safeReply(interaction, {
+      content: safePing(`<@${norDiscordId}>`),
+      embeds: [team1embed, team2embed],
+    });
+    if (message) {
+      const fetchedMessage = await message.fetch();
+      saveLobbyMessage(CommandIds.TEAMS, fetchedMessage.id, interaction.channelId, ''); // store the interaction ID as the message ID, so we know it was a draft
+    }
+    return; // no need to update anything
+  }
+  if (isDraft) {
+    // else then it's a ephemeral
+    const message = await safeReply(interaction, {
+      content: safePing(`<@${norDiscordId}>`),
+      embeds: [team1embed, team2embed],
+      flags: MessageFlags.Ephemeral,
+    });
+    if (message) {
+      storeInteraction(message.id, interaction.channelId, interaction);
+      saveLobbyMessage(CommandIds.TEAMS_EPHEMERAL, message.id, interaction.channelId, '');
+    }
+    return;
+  }
+
+  // if we got here, we know isDraft === false
+  // therefore we're editing the previous message
+  // also of note, there should only be a single
+  // ephemeral message, OR a published message
+  // never both
+  const reply = await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  messages?.forEach(async msg => {
+    const channel = interaction.guild?.channels.cache.get(msg.channelId);
+    if (!channel?.isTextBased()) return;
+    if (messages) {
+      try {
+        if (msg.messageType === CommandIds.TEAMS_EPHEMERAL) {
+          const prevInteraction = getStoredInteraction(msg.messageId, msg.channelId);
+          if (!prevInteraction) return;
+          await prevInteraction.editReply({
+            content: safePing(`<@${norDiscordId}>`),
+            embeds: [team1embed, team2embed],
+          });
+          return;
+        }
+        // so it's not an ephemeral message, so:
+        const previousMessage = await channel.messages.fetch(msg.messageId);
+        if (!previousMessage) return;
+        const message = await previousMessage.edit({
+          content: safePing(`<@${norDiscordId}>`),
+          embeds: [team1embed, team2embed],
+        });
+        // only save the message if we successfully edited it
+        const fetchedMessage = await message.fetch();
+        saveLobbyMessage(CommandIds.TEAMS, fetchedMessage.id, interaction.channelId, ''); // store the interaction ID as the message ID, so we know it was a draft
+        return;
+      } catch (error) {
+        // if we couldn't edit the message, then delete it from the database
+        deleteLobbyMessages([msg.messageType]);
+        console.error('Failed to update draft message:', [msg.messageType], error);
+      }
+    }
   });
+  await reply.delete().catch(console.error);
 }
 
 export async function handleSwapTeamsCommand(
