@@ -376,8 +376,11 @@ async function generateTeamsMessage(
     });
     return;
   }
+  const activePlayers = getActivePlayers();
   team1.sort((a, b) => a.index - b.index);
   team2.sort((a, b) => a.index - b.index);
+  activePlayers.sort((a, b) => (b.mmr ?? 0) - (a.mmr ?? 0));
+  activePlayers.forEach((p, index) => (p.draftRank = index));
   const team1List = team1
     .map(
       p =>
@@ -394,6 +397,17 @@ async function generateTeamsMessage(
         )} ${p.player.usernames.accounts?.find(account => account.isPrimary)?.hotsBattleTag.replace(/#.*$/, '')}`
     )
     .join('\n');
+  const spectators = activePlayers.filter(
+    p => team1.every(t => t.player.discordId !== p.discordId) && team2.every(t => t.player.discordId !== p.discordId)
+  );
+  const spectatorList = spectators
+    .map(
+      p =>
+        `\`${p.draftRank + 1}: ${getPlayerMMR(p)}\` ${safePing(`<@${p.discordId}>`)} ${p.usernames.accounts
+          ?.find(account => account.isPrimary)
+          ?.hotsBattleTag.replace(/#.*$/, '')}`
+    )
+    .join('\n');
 
   const team1lengthMessage = team1.length === 5 ? '' : ` (${team1.length} players)`;
   const team2lengthMessage = team2.length === 5 ? '' : ` (${team2.length} players)`;
@@ -405,6 +419,11 @@ async function generateTeamsMessage(
     .setTitle(`💩 Filthy Team 2${team2lengthMessage}`)
     .setDescription(team2List || '* No players in this team')
     .setColor('#8B4513');
+  const spectatorEmbedAr =
+    spectators.length > 0
+      ? [new EmbedBuilder().setTitle('Spectators').setDescription(spectatorList).setColor(`#909000`)]
+      : [];
+  const embeds = [team1embed, team2embed, ...spectatorEmbedAr];
   let messages = getLobbyMessages([CommandIds.TEAMS_EPHEMERAL, CommandIds.TEAMS]);
   if (publish || isDraft) {
     // clear the previous message from the database, so it doesn't get updated until it's published again
@@ -427,7 +446,7 @@ async function generateTeamsMessage(
     // if we're publishing it, then we know the ephemeral messages got deleted above, so just post a new message
     const message = await safeReply(interaction, {
       content: safePing(`<@${norDiscordId}>`),
-      embeds: [team1embed, team2embed],
+      embeds,
     });
     if (message) {
       const fetchedMessage = await message.fetch();
@@ -439,7 +458,7 @@ async function generateTeamsMessage(
     // else then it's a ephemeral
     const message = await safeReply(interaction, {
       content: safePing(`<@${norDiscordId}>`),
-      embeds: [team1embed, team2embed],
+      embeds,
       flags: MessageFlags.Ephemeral,
     });
     if (message) {
@@ -465,7 +484,7 @@ async function generateTeamsMessage(
           if (!prevInteraction) return;
           await prevInteraction.editReply({
             content: safePing(`<@${norDiscordId}>`),
-            embeds: [team1embed, team2embed],
+            embeds,
           });
           return;
         }
@@ -474,7 +493,7 @@ async function generateTeamsMessage(
         if (!previousMessage) return;
         const message = await previousMessage.edit({
           content: safePing(`<@${norDiscordId}>`),
-          embeds: [team1embed, team2embed],
+          embeds,
         });
         // only save the message if we successfully edited it
         const fetchedMessage = await message.fetch();
