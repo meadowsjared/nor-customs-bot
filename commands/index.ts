@@ -541,8 +541,8 @@ export async function handleSwapTeamsCommand(
   // swap the teams
   // note we set playerA to playerB's team, and playerB to playerA's team
   changeTeams([
-    { playerId: playerA.discordId, newTeam: playerB.team },
-    { playerId: playerB.discordId, newTeam: playerA.team },
+    { playerId: playerA.discordId, newTeam: playerB.team ?? null },
+    { playerId: playerB.discordId, newTeam: playerA.team ?? null },
   ]);
   const { team1: newTeam1, team2: newTeam2 } = getTeams();
   const team1Obj = newTeam1.map(p => ({ player: p, index: p.draftRank ?? 0 }));

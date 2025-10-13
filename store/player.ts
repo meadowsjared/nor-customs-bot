@@ -684,7 +684,7 @@ export function setTeamsFromPlayers(
   transaction();
 }
 
-export function changeTeams(playerChanges: { playerId: string; newTeam: number }[]): boolean {
+export function changeTeams(playerChanges: { playerId: string; newTeam: number | null }[]): boolean {
   const transaction = db.transaction(() => {
     playerChanges.forEach(({ playerId, newTeam }) => {
       const stmt = db.prepare('UPDATE players SET team = ? WHERE discord_id = ?');
