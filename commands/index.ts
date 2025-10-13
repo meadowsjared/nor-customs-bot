@@ -273,13 +273,22 @@ export async function handleSetTeamsCommand(
       return acc;
     }, []);
   // now we have the two teams, we need to set them in the database
-  const team1 = activePlayers
-    .filter(p => team1Input.includes(p.draftRank))
-    .map(p => ({ player: p, index: p.draftRank }));
-  const team2 = activePlayers
-    .filter(p => team2InputEffective.includes(p.draftRank))
-    .map(p => ({ player: p, index: p.draftRank }));
-  setTeamsFromPlayers(team1, team2);
+  const team1: { player: Player; index: number }[] = [];
+  const team2: { player: Player; index: number }[] = [];
+  const spectators: { player: Player; index: number }[] = [];
+  activePlayers.forEach(p => {
+    if (team1Input.includes(p.draftRank)) {
+      team1.push({ player: p, index: p.draftRank });
+      return;
+    }
+    if (team2InputEffective.includes(p.draftRank)) {
+      team2.push({ player: p, index: p.draftRank });
+      return;
+    }
+    spectators.push({ player: p, index: p.draftRank });
+  });
+  // set the teams in the database
+  setTeamsFromPlayers(team1, team2, spectators);
   generateTeamsMessage(interaction, team1, team2);
 }
 
@@ -315,15 +324,18 @@ export async function handleDraftTeamsCommand(
   // go through the sorted players, and alternate adding them to each team
   const team1: { player: Player; index: number }[] = [];
   const team2: { player: Player; index: number }[] = [];
+  const spectators: { player: Player; index: number }[] = [];
   for (let i = 0; i < sortedPlayers.length; i++) {
-    if ((i % 2 === 0 && i !== 0) || i === 1) {
+    if (((i % 2 === 0 && i !== 0) || i === 1) && team2.length < 5) {
       team2.push({ player: sortedPlayers[i], index: i });
-    } else {
+    } else if (team1.length < 5) {
       team1.push({ player: sortedPlayers[i], index: i });
+    } else {
+      spectators.push({ player: sortedPlayers[i], index: i });
     }
   }
   // set the teams in the database
-  setTeamsFromPlayers(team1, team2);
+  setTeamsFromPlayers(team1, team2, spectators);
   await generateTeamsMessage(interaction, team1, team2, publish, true);
 }
 
@@ -520,25 +532,30 @@ export async function handleSwapTeamsCommand(
     return;
   }
   /** this is a 1-based index */
-  const playerANumber = interaction.options.getInteger('player-a', true);
+  const playerANumber = interaction.options.getInteger('player-a', true) - 1;
   /** this is a 1-based index */
-  const playerBNumber = interaction.options.getInteger('player-b', true);
-  const { team1, team2 } = getTeams();
+  const playerBNumber = interaction.options.getInteger('player-b', true) - 1;
+  const activePlayers = getActivePlayers();
+  activePlayers.sort((a, b) => (b.mmr ?? 0) - (a.mmr ?? 0));
+  activePlayers.forEach((p, index) => (p.draftRank = index));
   // get the discord_id of the two players
-  const bothTeams = [...team1, ...team2];
-  const playerA = bothTeams.find(p => (p.draftRank ?? NaN) + 1 === playerANumber);
-  const playerB = bothTeams.find(p => (p.draftRank ?? NaN) + 1 === playerBNumber);
+  const playerA = activePlayers.find(p => (p.draftRank ?? NaN) === playerANumber);
+  const playerB = activePlayers.find(p => (p.draftRank ?? NaN) === playerBNumber);
   // now we have the teams, and we know who to swap
   if (
-    playerANumber < 1 ||
-    playerANumber > bothTeams.length ||
-    playerBNumber < 1 ||
-    playerBNumber > bothTeams.length ||
+    playerANumber < 0 ||
+    playerANumber > activePlayers.length ||
+    playerBNumber < 0 ||
+    playerBNumber > activePlayers.length ||
     !playerA ||
     !playerB
   ) {
     await safeReply(interaction, {
-      content: `Invalid player numbers (playerANumber: ${playerANumber}, playerBNumber: ${playerBNumber}, playerA: ${playerA?.discordId}, playerB: ${playerB?.discordId}) There are only ${bothTeams.length} players.`,
+      content: `Invalid player numbers (playerANumber: ${playerANumber + 1}, playerBNumber: ${
+        playerBNumber + 1
+      }, playerA: ${playerA?.discordId}, playerB: ${playerB?.discordId}) There are only ${
+        activePlayers.length
+      } players.`,
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -546,13 +563,6 @@ export async function handleSwapTeamsCommand(
   if (playerA.team === playerB.team) {
     await safeReply(interaction, {
       content: `Both players are on the same team. Cannot swap.`,
-      flags: MessageFlags.Ephemeral,
-    });
-    return;
-  }
-  if (playerA.team === undefined || playerB.team === undefined) {
-    await safeReply(interaction, {
-      content: `One or both players are not assigned to a team.`,
       flags: MessageFlags.Ephemeral,
     });
     return;

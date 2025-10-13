@@ -667,7 +667,8 @@ export function clearTeams(): void {
  */
 export function setTeamsFromPlayers(
   team1: { player: Player; index: number }[],
-  team2: { player: Player; index: number }[]
+  team2: { player: Player; index: number }[],
+  spectators: { player: Player; index: number }[]
 ): void {
   const transaction = db.transaction(() => {
     const clearStmt = db.prepare('UPDATE players SET team = NULL, draft_rank = NULL');
@@ -679,6 +680,10 @@ export function setTeamsFromPlayers(
     team2.forEach(p => {
       const updateStmt = db.prepare('UPDATE players SET team = ?, draft_rank = ? WHERE discord_id = ?');
       updateStmt.run(2, p.index, p.player.discordId);
+    });
+    spectators.forEach(p => {
+      const updateStmt = db.prepare('UPDATE players SET team = ?, draft_rank = ? WHERE discord_id = ?');
+      updateStmt.run(null, p.index, p.player.discordId);
     });
   });
   transaction();
