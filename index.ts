@@ -21,7 +21,7 @@ import {
   handlePlayersCommand,
   handleClearCommand,
   handleGuideCommand,
-  handleLoadTeamsCommand,
+  handleSetTeamsCommand,
   handleSetChannelTeamIdCommand,
   handleSetLobbyChannelCommand,
   handleMoveToLobbyCommand,
@@ -140,7 +140,7 @@ client.on('interactionCreate', async interaction => {
       break;
     case CommandIds.SET_TEAMS:
       // Handle load teams command
-      handleLoadTeamsCommand(interaction);
+      handleSetTeamsCommand(interaction);
       break;
     case CommandIds.DRAFT:
       // Handle draft command

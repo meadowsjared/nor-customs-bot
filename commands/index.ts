@@ -199,7 +199,7 @@ function getMessageContent(options: string | MessagePayload | InteractionReplyOp
  * note: If the interaction is not a command or button interaction, it logs an error and returns.
  * This function also sets the teams in the database, for use with the handleMoveToTeamsCommand and handleMoveToLobbyCommand functions.
  **/
-export async function handleLoadTeamsCommand(
+export async function handleSetTeamsCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
 ) {
   type TeamName = 'team1' | 'team2';
