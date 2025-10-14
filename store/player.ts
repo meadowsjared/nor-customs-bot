@@ -35,7 +35,9 @@ const initSchema = db.transaction(() => {
       role TEXT NOT NULL,
       active INTEGER NOT NULL,
       team INTEGER CHECK(team IN (1, 2, 3)),
-      draft_rank INTEGER
+      draft_rank INTEGER,
+      joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
 
@@ -608,7 +610,9 @@ export function setPlayerActive(discordId: string, active: boolean): { updated: 
   if (player.active === active) {
     return { updated: false, player }; // No change needed
   }
-  const stmt = db.prepare('UPDATE players SET active = ? WHERE discord_id = ?');
+  const stmt = db.prepare(
+    `UPDATE players SET active = ?${active ? ', last_active = CURRENT_TIMESTAMP' : ''} WHERE discord_id = ?`
+  );
   stmt.run(active ? 1 : 0, discordId);
   player.active = active;
   return { updated: true, player };
