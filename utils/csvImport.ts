@@ -210,7 +210,7 @@ class CSVImporter {
     const updateStmt = this.db.prepare(`
       UPDATE hots_accounts SET ${HOTS_ACCOUNTS_COLUMNS.filter(col => col.skipImport !== true)
         .map(col => `${col.name} = ?`)
-        .join(', ')} WHERE hots_battle_tag = ?
+        .join(', ')}, updated_at = '2025-09-13 11:56:00' WHERE hots_battle_tag = ?
     `);
 
     let updatedCount = 0;
