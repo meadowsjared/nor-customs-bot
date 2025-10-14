@@ -157,7 +157,8 @@ export async function savePlayer(
       discord_global_name=excluded.discord_global_name,
       discord_display_name=excluded.discord_display_name,
       role=excluded.role,
-      active=excluded.active
+      active=excluded.active,
+      last_active=CASE WHEN excluded.active = 1 THEN CURRENT_TIMESTAMP ELSE last_active END
   `);
   stmt.run(
     discordId,
