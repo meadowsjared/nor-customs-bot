@@ -182,10 +182,6 @@ class CSVImporter {
         // Keep as string, but handle time formats if needed
         return rawValue;
 
-      case SQLiteColumnType.DATETIME:
-        // Handle datetime parsing if needed
-        return 'CURRENT_TIMESTAMP';
-
       default:
         return rawValue;
     }

@@ -142,7 +142,7 @@ export const HOTS_ACCOUNTS_COLUMNS: ColumnDefinition[] = [
     isBoolean: true,
     skipImport: true,
   },
-  { name: 'updated_at', type: SQLiteColumnType.DATETIME, defaultValue: 'CURRENT_TIMESTAMP' },
+  { name: 'updated_at', type: SQLiteColumnType.DATETIME, defaultValue: 'CURRENT_TIMESTAMP', skipImport: true },
   { name: 'hots_battle_tag', type: SQLiteColumnType.TEXT, nullable: false, skipImport: true },
   { name: 'HP_Region', type: SQLiteColumnType.INTEGER, skipImport: true },
   { name: 'HP_Blizz_ID', type: SQLiteColumnType.INTEGER, skipImport: true },
