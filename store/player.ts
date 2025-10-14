@@ -317,7 +317,8 @@ export async function handleAddHotsAccount(
         HP_QM_MMR = ?,
         HP_SL_MMR = ?,
         HP_QM_Games = ?,
-        HP_SL_Games = ?
+        HP_SL_Games = ?,
+        updated_at = CURRENT_TIMESTAMP
       WHERE discord_id = ? AND hots_battle_tag = ?`
     );
     updateProfileStmt.run(
