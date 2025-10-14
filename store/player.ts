@@ -207,6 +207,7 @@ function getPlayerFromRow(row: FlatPlayer, accounts: HotsAccountRow[]): Player {
         Math.max(max ?? 0, account.hpQmMMR ?? 0, account.hpSlMMR ?? 0),
       0
     ),
+    lastActive: new Date(row.last_active),
   };
 }
 

@@ -93,6 +93,7 @@ export interface Player {
   team: number | undefined;
   draftRank: number;
   mmr: number | null;
+  lastActive: Date;
 }
 
 export interface PlayerWithAccounts extends Player {
@@ -139,4 +140,5 @@ export interface FlatPlayer {
    */
   team: number;
   draft_rank: number | null;
+  last_active: string; // ISO date string
 }

@@ -60,6 +60,7 @@ function generateLobbyStatusMessage(pPreviousPlayersList?: string): string {
   const previousPlayersList =
     pPreviousPlayersList ?? getLobbyMessages([CommandIds.NEW_GAME])?.[0]?.previousPlayersList ?? '';
   const activePlayers = getActivePlayers();
+  activePlayers.sort((a, b) => a.lastActive.getTime() - b.lastActive.getTime());
   const lobbyPlayers = activePlayers.map(
     (p, index) =>
       `${index + 1}: @${p.usernames.discordDisplayName}: (${p.usernames.accounts
@@ -1031,6 +1032,7 @@ async function showJoinModal(
       team: undefined,
       draftRank: NaN,
       mmr: 0,
+      lastActive: new Date(),
     },
     hotsBattleTag
   ); // Save player data to the database with default role Flex
@@ -1119,6 +1121,7 @@ async function handleLookupCommandSub(
         team: undefined,
         draftRank: NaN,
         mmr: 0,
+        lastActive: new Date(),
       },
       hotsBattleTag
     );
@@ -1201,6 +1204,7 @@ export async function handleJoinCommand(
     team: undefined,
     draftRank: NaN,
     mmr: 0,
+    lastActive: new Date(),
   };
   await savePlayer(interaction, interaction.user.id, newPlayer, hotsBattleTag); // Save player data to the database
   // announce in the channel who has joined
