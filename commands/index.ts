@@ -38,8 +38,6 @@ import {
   getTeams,
   handleAddHotsAccount,
   markAllPlayersInactive,
-  markPlayerActive,
-  markPlayerInactive,
   savePlayer,
   setPlayerActive,
   setPlayerDiscordNames,
@@ -939,7 +937,7 @@ export async function handlePlayersCommand(
 export async function handleLeaveCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
 ) {
-  const player = markPlayerInactive(interaction.user.id); // Mark player as inactive in the database
+  const { player } = setPlayerActive(interaction.user.id, false); // Mark player as inactive in the database
   if (player) {
     // Update the lobby message instead of announcing
     await updateLobbyMessage(interaction);
@@ -980,19 +978,19 @@ export async function handleRejoinCommand(
     await showJoinModal(interaction);
     return;
   }
-  const result = markPlayerActive(interaction.user.id); // Mark player as active in the database
-  if (result.player) {
-    if (result.alreadyActive === false) {
+  const { player, updated } = setPlayerActive(interaction.user.id, true); // Mark player as active in the database
+  if (player) {
+    if (updated === false) {
       // Update the lobby message instead of announcing
       await updateLobbyMessage(interaction);
     }
     const joinVerb = newUser ? 'joined' : 'rejoined';
     const content =
-      (result.alreadyActive === true ? `You are already in` : `You have ${joinVerb}`) +
-      ` the lobby as: \`${result.player.usernames.accounts
+      (updated === true ? `You are already in` : `You have ${joinVerb}`) +
+      ` the lobby as: \`${player.usernames.accounts
         ?.find(a => a.isPrimary)
         ?.hotsBattleTag.replace(/#.*$/, '')}\`, \`${getPlayerRolesFormatted(
-        result.player.role
+        player.role
       )}\`\nUse /leave to leave the lobby, or use the buttons below.`;
     await safeReply(interaction, {
       content,
@@ -1001,7 +999,7 @@ export async function handleRejoinCommand(
     });
     return;
   }
-  if (result.player === undefined) {
+  if (player === undefined) {
     // show a dialog to collect the battle tag and role
     await showJoinModal(interaction);
   }

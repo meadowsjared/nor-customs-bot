@@ -506,41 +506,6 @@ export function markAllPlayersInactive(): void {
 }
 
 /**
- * Mark this player as inactive in the database.
- * @param discordId The Discord ID of the player to mark as inactive.
- * @returns boolean true if the player was found and marked inactive, false otherwise.
- */
-export function markPlayerInactive(discordId: string): false | Player {
-  const player = getPlayerByDiscordId(discordId);
-  if (!player) {
-    return false;
-  }
-  const stmt = db.prepare('UPDATE players SET active = 0, team = NULL, draft_rank = NULL WHERE discord_id = ?');
-  stmt.run(discordId);
-  player.active = false;
-  return player;
-}
-
-/**
- * Marks a player as active in the database.
- * @param discordId The Discord ID of the player to mark as active.
- * @returns Player object if the player was found and marked active, false otherwise, true if the player was already active.
- */
-export function markPlayerActive(discordId: string): { alreadyActive: boolean; player: Player | undefined } {
-  const player = getPlayerByDiscordId(discordId);
-  if (!player) {
-    return { alreadyActive: false, player: undefined }; // Player not found
-  }
-  if (player?.active) {
-    return { alreadyActive: true, player }; // Player already active
-  }
-  const stmt = db.prepare('UPDATE players SET active = 1 WHERE discord_id = ?');
-  stmt.run(discordId);
-  player.active = true;
-  return { alreadyActive: false, player };
-}
-
-/**
  * Gets a player by their Discord ID.
  * @param discordId The Discord ID of the player to retrieve.
  * @returns Player object if found, undefined otherwise.
