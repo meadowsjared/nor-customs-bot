@@ -15,27 +15,9 @@ export async function getHeroesProfileData(battleTag: string): Promise<HPData | 
     let blizz_id = row?.HP_Blizz_ID;
     let region = row?.HP_Region;
     if (!blizz_id || !region) {
-      // execute a post request
-      const response = await fetch('https://www.heroesprofile.com/api/v1/battletag/search', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ userinput: battleTag }),
-      });
-
-      if (!response.ok) {
-        console.error(`Error fetching data: ${response.statusText}`);
-        return undefined;
-      }
-
-      const data: HPPlayerData[] = await response.json();
-      data.sort((a, b) => b.totalGamesPlayed - a.totalGamesPlayed); // Sort by totalGamesPlayed descending
-      if (data.length === 0) {
-        console.log(`No data found for BattleTag: ${battleTag}`);
-        return undefined;
-      }
-      const bestMatch = data[0]; // after sorting, the first item is the best match
+      // we don't know their blizz_id or region, so we need to look it up
+      const bestMatch = await getBestHpAccount(battleTag);
+      if (!bestMatch) return undefined;
       blizz_id = bestMatch.blizz_id;
       region = bestMatch.region;
       // store blizz_id, region for the first item in the array
@@ -74,4 +56,33 @@ export async function getHeroesProfileData(battleTag: string): Promise<HPData | 
   } catch (error) {
     console.error('An error occurred:', error);
   }
+}
+
+/**
+ * Fetches the best matching Heroes Profile account based on total games played.
+ * @param battleTag The BattleTag of the player to search for
+ * @returns The best matching HPPlayerData or undefined if not found
+ */
+async function getBestHpAccount(battleTag: string): Promise<HPPlayerData | undefined> {
+  // execute a post request
+  const response = await fetch('https://www.heroesprofile.com/api/v1/battletag/search', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ userinput: battleTag }),
+  });
+
+  if (!response.ok) {
+    console.error(`Error fetching data: ${response.statusText}`);
+    return undefined;
+  }
+
+  const data: HPPlayerData[] = await response.json();
+  data.sort((a, b) => b.totalGamesPlayed - a.totalGamesPlayed); // Sort by totalGamesPlayed descending
+  if (data.length === 0) {
+    console.log(`No data found for BattleTag: ${battleTag}`);
+    return undefined;
+  }
+  return data[0];
 }
