@@ -155,7 +155,7 @@ class CSVImporter {
       return null;
     }
 
-    const rawValue = csvColumnName ? record[csvColumnName] : 'CURRENT_TIMESTAMP';
+    const rawValue = csvColumnName ? record[csvColumnName] : null;
 
     // Handle empty/null values
     if (!rawValue || rawValue === '' || rawValue === 'None' || rawValue === undefined) {
