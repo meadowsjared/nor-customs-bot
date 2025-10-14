@@ -254,12 +254,11 @@ function showUsage() {
   console.log('📋 CSV Import Tool Usage:');
   console.log('');
   console.log('Available commands:');
+  console.log('  bun csv:help                              - Show this help message');
   console.log('  bun check:db                              - Find accounts in CSV but missing from database');
   console.log('  bun check:csv                             - Find accounts in database but not in CSV');
   console.log('  bun check:match                           - Find accounts with matching data');
-  console.log('  bun utils/csvImport.ts transfer           - Transfer data for matching accounts');
-  console.log('  bun utils/csvImport.ts all                - Run all three tasks');
-  console.log('  bun csv:help                              - Show this help message');
+  console.log('  bun import:csv                            - Transfer data for matching accounts');
   console.log('');
 }
 
