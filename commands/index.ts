@@ -341,7 +341,7 @@ export async function handleDraftTeamsCommand(
 function getPlayerMMR(player: Player): number {
   return (
     player.usernames.accounts?.reduce(
-      (bestMMR, account) => Math.max(bestMMR, account.hpQmMMR ?? 0, account.hpSlMMR ?? 0),
+      (bestMMR, account) => Math.max(bestMMR, account.hpQmMMR ?? 0, account.hpSlMMR ?? 0, account.hpArMMR ?? 0),
       0
     ) ?? 0
   );

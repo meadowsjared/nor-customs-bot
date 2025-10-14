@@ -28,6 +28,10 @@ export interface HotsAccount {
   id: number;
   hpQmMMR: number | null; // HP_QM_MMR
   hpSlMMR: number | null; // HP_SL_MMR
+  hpArMMR: number | null; // HP_AR_MMR
+  hpQmGames: number | null; // HP_QM_Games
+  hpSlGames: number | null; // HP_SL_Games
+  hpArGames: number | null; // HP_AR_Games
 }
 
 export interface HotsAccountRow {
@@ -50,6 +54,10 @@ export interface HotsAccountRow {
   id: number;
   HP_QM_MMR: number | null; // HP_QM_MMR
   HP_SL_MMR: number | null; // HP_SL_MMR
+  HP_AR_MMR: number | null; // HP_AR_MMR
+  HP_QM_Games: number | null; // HP_QM_Games
+  HP_SL_Games: number | null; // HP_SL_Games
+  HP_AR_Games: number | null; // HP_AR_Games
 }
 
 export interface DiscordUserNames {

@@ -203,8 +203,8 @@ function getPlayerFromRow(row: FlatPlayer, accounts: HotsAccountRow[]): Player {
     draftRank: row.draft_rank ?? NaN,
     mmr: accountsNew.reduce(
       (max: number | null, account) =>
-        // find the highest MMR including both QM and SL
-        Math.max(max ?? 0, account.hpQmMMR ?? 0, account.hpSlMMR ?? 0),
+        // find the highest MMR including both QM, SL, and AR
+        Math.max(max ?? 0, account.hpQmMMR ?? 0, account.hpSlMMR ?? 0, account.hpArMMR ?? 0),
       0
     ),
     lastActive: new Date(row.last_active),
@@ -218,6 +218,10 @@ function getAccountFromAccountRow(account: HotsAccountRow): HotsAccount {
     isPrimary: !!account.is_primary,
     hpQmMMR: account.HP_QM_MMR,
     hpSlMMR: account.HP_SL_MMR,
+    hpArMMR: account.HP_AR_MMR,
+    hpQmGames: account.HP_QM_Games,
+    hpSlGames: account.HP_SL_Games,
+    hpArGames: account.HP_AR_Games,
   };
 }
 
@@ -229,7 +233,7 @@ export function getActivePlayers(): Player[] {
   const stmt = db.prepare<[], FlatPlayer>('SELECT * FROM players WHERE active = 1 ORDER BY active, team;');
   const rows: FlatPlayer[] = stmt.all();
   const accountsStmt = db.prepare<[], HotsAccountRow>(
-    'SELECT discord_id, hots_battle_tag, is_primary, HP_QM_MMR, HP_SL_MMR FROM hots_accounts;'
+    'SELECT discord_id, hots_battle_tag, is_primary, HP_QM_MMR, HP_SL_MMR, HP_AR_MMR, HP_QM_Games, HP_SL_Games, HP_AR_Games FROM hots_accounts;'
   );
   const accounts = accountsStmt.all();
   return rows.map<Player>(row => getPlayerFromRow(row, accounts));
@@ -317,8 +321,10 @@ export async function handleAddHotsAccount(
         HP_Blizz_ID = ?,
         HP_QM_MMR = ?,
         HP_SL_MMR = ?,
+        HP_AR_MMR = ?,
         HP_QM_Games = ?,
         HP_SL_Games = ?,
+        HP_AR_Games = ?,
         updated_at = CURRENT_TIMESTAMP
       WHERE discord_id = ? AND hots_battle_tag = ?`
     );
@@ -327,8 +333,10 @@ export async function handleAddHotsAccount(
       profileData.blizz_id,
       profileData.qmMmr,
       profileData.slMmr,
+      profileData.arMmr,
       profileData.qmGames,
       profileData.slGames,
+      profileData.arGames,
       discordId,
       hotsBattleTag
     );
@@ -344,7 +352,7 @@ export async function handleAddHotsAccount(
   }
 
   const hotsAccountStmt = db.prepare(
-    'INSERT INTO hots_accounts (discord_id, hots_battle_tag, is_primary, HP_Region, HP_Blizz_ID, HP_QM_MMR, HP_SL_MMR, HP_QM_Games, HP_SL_Games) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    'INSERT INTO hots_accounts (discord_id, hots_battle_tag, is_primary, HP_Region, HP_Blizz_ID, HP_QM_MMR, HP_SL_MMR, HP_AR_MMR, HP_QM_Games, HP_SL_Games, HP_AR_Games) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
   );
   hotsAccountStmt.run(
     discordId,
@@ -354,8 +362,10 @@ export async function handleAddHotsAccount(
     profileData.blizz_id,
     profileData.qmMmr,
     profileData.slMmr,
+    profileData.arMmr,
     profileData.qmGames,
-    profileData.slGames
+    profileData.slGames,
+    profileData.arGames
   );
   await safeReply(interaction, {
     content: `${
@@ -685,7 +695,7 @@ export function getTeams(): { team1: Player[]; team2: Player[] } {
   const rows: FlatPlayer[] = stmt.all();
   // select all hots accounts by first joining to the players where team is not null, then getting all accounts where is_primary = 1
   const accountsStmt = db.prepare<[], HotsAccountRow>(
-    'SELECT discord_id, hots_battle_tag, is_primary, HP_QM_MMR, HP_SL_MMR FROM hots_accounts WHERE is_primary = 1;'
+    'SELECT discord_id, hots_battle_tag, is_primary, HP_QM_MMR, HP_SL_MMR, HP_AR_MMR, HP_QM_Games, HP_SL_Games, HP_AR_Games FROM hots_accounts WHERE is_primary = 1;'
   );
   const accounts = accountsStmt.all();
   const team1: Player[] = [];

@@ -77,15 +77,15 @@ UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM hots_accounts) WHERE name 
 # check the current value of the autoincrement counter
 SELECT seq FROM sqlite_sequence WHERE name = 'hots_accounts';
 
-SELECT id,discord_id,is_primary,updated_at,hots_battle_tag,HP_URL, HP_QM_MMR, HP_SL_MMR, HP_QM_Games, HP_SL_Games FROM hots_accounts WHERE hots_battle_tag='IMcD23#1632';
+SELECT id,discord_id,is_primary,updated_at,hots_battle_tag, HP_QM_MMR, HP_SL_MMR, HP_AR_MMR, HP_QM_Games, HP_SL_Games, HP_AR_Games FROM hots_accounts WHERE hots_battle_tag='IMcD23#1632';
 
-SELECT id,discord_id,is_primary,updated_at,hots_battle_tag, HP_URL, HP_SL_MMR FROM hots_accounts WHERE discord_id='128651159769448448';
+SELECT id,discord_id,is_primary,updated_at,hots_battle_tag, HP_SL_MMR, HP_AR_MMR, HP_SL_Games, HP_AR_Games FROM hots_accounts WHERE discord_id='128651159769448448';
 
 INSERT INTO players (discord_id, discord_name, discord_global_name, discord_display_name, role, active, team) VALUES ('927801814101942303', 'auslesejager3328', 'auslesejager3328', 'Auslesejager', 'F', 0, NULL);
 INSERT INTO players (discord_id, discord_name, discord_global_name, discord_display_name, role, active, team) VALUES ('196114062369619968', 'kidcanuck', 'kidcanuck', 'Kidcanuck', 'F', 0, NULL);
 
-INSERT INTO hots_accounts (discord_id, hots_battle_tag, is_primary, HP_URL, HP_QM_MMR, HP_SL_MMR, HP_QM_Games, HP_SL_Games) VALUES ('927801814101942303', 'Auslesejager#1855', 1, 'https://www.heroesprofile.com/Player/Auslesejager/1490580/1', 2433, 2165, 396, 68);
-INSERT INTO hots_accounts (discord_id, hots_battle_tag, is_primary, HP_URL, HP_QM_MMR, HP_SL_MMR, HP_QM_Games, HP_SL_Games) VALUES ('196114062369619968', 'KidCanuck#2293', 1, 'https://www.heroesprofile.com/Player/KidCanuck/910667/1', 0, 0, 0, 0);
+INSERT INTO hots_accounts (discord_id, hots_battle_tag, is_primary, HP_QM_MMR, HP_SL_MMR, HP_AR_MMR, HP_QM_Games, HP_SL_Games, HP_AR_Games) VALUES ('927801814101942303', 'Auslesejager#1855', 1, 2433, 2165, 2100, 396, 68, 50);
+INSERT INTO hots_accounts (discord_id, hots_battle_tag, is_primary, HP_QM_MMR, HP_SL_MMR, HP_AR_MMR, HP_QM_Games, HP_SL_Games, HP_AR_Games) VALUES ('196114062369619968', 'KidCanuck#2293', 1, 0, 0, 0, 0, 0, 0);
 
 
 #===================================================#
@@ -100,7 +100,7 @@ ALTER TABLE hots_accounts RENAME TO hots_accounts_old;
 INSERT INTO hots_accounts SELECT * FROM hots_accounts_old;
 
 # check the data
-SELECT id,discord_id,is_primary,updated_at,hots_battle_tag,HP_URL,HP_QM_Games FROM hots_accounts;
+SELECT id,discord_id,is_primary,updated_at,hots_battle_tag,HP_Region,HP_Blizz_ID,HP_QM_MMR,HP_SL_MMR,HP_AR_MMR,HP_QM_Games,HP_SL_Games,HP_AR_Games FROM hots_accounts;
 
 # Drop the old table if everything looks good
 DROP TABLE hots_accounts_old;

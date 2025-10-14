@@ -85,7 +85,7 @@ class CSVImporter {
   // Get all hots_accounts from database
   private getHotsAccounts(): HotsAccountRow[] {
     const stmt = this.db.prepare<[], HotsAccountRow>(
-      'SELECT hots_battle_tag, discord_id, is_primary, HP_QM_MMR, HP_SL_MMR FROM hots_accounts'
+      'SELECT hots_battle_tag, discord_id, is_primary, HP_QM_MMR, HP_SL_MMR, HP_AR_MMR, HP_QM_Games, HP_SL_Games, HP_AR_Games FROM hots_accounts'
     );
     return stmt.all();
   }

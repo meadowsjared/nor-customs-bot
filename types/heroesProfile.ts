@@ -1,8 +1,10 @@
 export interface HPData {
   qmMmr: number | string;
   slMmr: number | string;
+  arMmr: number | string;
   qmGames: number | string;
   slGames: number | string;
+  arGames: number | string;
   region: number;
   blizz_id: string;
 }
