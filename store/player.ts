@@ -152,6 +152,8 @@ export async function savePlayer(
     VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT(discord_id) DO UPDATE SET
       discord_name=excluded.discord_name,
+      discord_global_name=excluded.discord_global_name,
+      discord_display_name=excluded.discord_display_name,
       role=excluded.role,
       active=excluded.active
   `);
