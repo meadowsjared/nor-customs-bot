@@ -52,6 +52,7 @@ import {
 import { saveChannel, getChannels, saveLobbyMessage, getLobbyMessages, deleteLobbyMessages } from '../store/channels';
 import { DiscordUserNames, Player } from '../types/player';
 import { client } from '../index';
+import { getReplayFolderPath, setReplayFolderPath } from '../store/hotsReplays';
 /**
  * Generates the current lobby status message with active players
  * @returns The formatted lobby status message
@@ -2007,6 +2008,40 @@ export async function handleAdminSetActiveCommand(
     });
   }
   // return;
+}
+
+export async function handleSetReplayFolderCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+) {
+  if (!(await userIsAdmin(interaction))) {
+    return;
+  }
+  if (!interaction.isChatInputCommand()) {
+    await safeReply(interaction, {
+      content: 'This command can only be used as a slash command.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  const folderPath = interaction.options.getString(CommandIds.REPLAY_FOLDER_PATH, true);
+  setReplayFolderPath(folderPath);
+  await safeReply(interaction, {
+    content: `Replay folder path set to:\n\`${folderPath}\``,
+    flags: MessageFlags.Ephemeral,
+  });
+}
+
+export async function handleGetReplayFolderCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+) {
+  if (!(await userIsAdmin(interaction))) {
+    return;
+  }
+  const folderPath = getReplayFolderPath();
+  await safeReply(interaction, {
+    content: `Current replay folder path is:\n\`${folderPath}\``,
+    flags: MessageFlags.Ephemeral,
+  });
 }
 
 /**

@@ -67,6 +67,9 @@ export const enum CommandIds {
   ROLE_HEALER_ACTIVE = 'H_active',
   ROLE_FLEX_ACTIVE = 'F_active',
   RENAME_HOTS_ACCOUNT = 'rename-hots-account',
+  SET_REPLAY_FOLDER = 'set-replay-folder',
+  REPLAY_FOLDER_PATH = 'replay-folder-path',
+  GET_REPLAY_FOLDER = 'get-replay-folder',
 }
 
 export const roleMap: Record<string, string> = {
