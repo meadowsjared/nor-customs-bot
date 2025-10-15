@@ -375,8 +375,8 @@ const shutdown = async () => {
       { name: 'Shutting down...', type: 0 }, // type 0 = Playing
     ], // type 0 = Playing
   });
-  await new Promise(resolve => setTimeout(resolve, 1000)); // Wait for presence update
   console.log('Bot disconnected');
+  await new Promise(resolve => setTimeout(resolve, 1000)); // Wait for presence update
 
   client.destroy(); // Disconnects from Discord
   process.exit(0);
