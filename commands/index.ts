@@ -61,7 +61,7 @@ function generateLobbyStatusMessage(pPreviousPlayersList?: string): string {
   const previousPlayersList =
     pPreviousPlayersList ?? getLobbyMessages([CommandIds.NEW_GAME])?.[0]?.previousPlayersList ?? '';
   const activePlayers = getActivePlayers();
-  activePlayers.sort((a, b) => a.lastActive.getTime() - b.lastActive.getTime());
+  activePlayers.sort((a, b) => b.lastJoined.getTime() - a.lastJoined.getTime());
   const lobbyPlayers = activePlayers.map(
     (p, index) =>
       `${index + 1}: @${p.usernames.discordDisplayName}: (${p.usernames.accounts

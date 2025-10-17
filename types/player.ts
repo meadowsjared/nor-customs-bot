@@ -102,6 +102,7 @@ export interface Player {
   draftRank: number;
   mmr: number | null;
   lastActive: Date;
+  lastJoined: Date;
 }
 
 export interface PlayerWithAccounts extends Player {
@@ -149,4 +150,5 @@ export interface FlatPlayer {
   team: number;
   draft_rank: number | null;
   last_active: string; // ISO date string
+  last_joined: string; // ISO date string
 }

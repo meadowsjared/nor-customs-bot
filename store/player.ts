@@ -36,7 +36,7 @@ const initSchema = db.transaction(() => {
       active INTEGER NOT NULL,
       team INTEGER CHECK(team IN (1, 2, 3)),
       draft_rank INTEGER,
-      joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      last_joined TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
@@ -208,6 +208,7 @@ function getPlayerFromRow(row: FlatPlayer, accounts: HotsAccountRow[]): Player {
       0
     ),
     lastActive: new Date(row.last_active),
+    lastJoined: new Date(row.last_joined),
   };
 }
 
