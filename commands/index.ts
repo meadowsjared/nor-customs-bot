@@ -386,7 +386,7 @@ async function generateTeamsMessage(
   isDraft = false
 ): Promise<void> {
   if (interaction.isButton()) {
-    safeReply(interaction, {
+    await safeReply(interaction, {
       content: 'Interaction is not a command or button interaction',
       flags: MessageFlags.Ephemeral,
     });
