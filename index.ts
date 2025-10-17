@@ -47,6 +47,7 @@ import {
   handleSwapTeamsCommand,
   handleSetReplayFolderCommand,
   handleGetReplayFolderCommand,
+  handleListReplaysCommand,
 } from './commands';
 import { slashCommands } from './commands/definitions';
 
@@ -242,6 +243,10 @@ client.on('interactionCreate', async interaction => {
     case CommandIds.GET_REPLAY_FOLDER:
       // Handle get replay folder command
       handleGetReplayFolderCommand(interaction);
+      break;
+    case CommandIds.LIST_REPLAYS:
+      // Handle list replays command
+      handleListReplaysCommand(interaction);
       break;
     case CommandIds.ADMIN:
       if (!interaction.isChatInputCommand()) {

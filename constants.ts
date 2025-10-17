@@ -70,6 +70,7 @@ export const enum CommandIds {
   SET_REPLAY_FOLDER = 'set-replay-folder',
   REPLAY_FOLDER_PATH = 'replay-folder-path',
   GET_REPLAY_FOLDER = 'get-replay-folder',
+  LIST_REPLAYS = 'list-replays',
 }
 
 export const roleMap: Record<string, string> = {

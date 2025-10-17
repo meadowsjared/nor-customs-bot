@@ -430,4 +430,8 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     name: CommandIds.GET_REPLAY_FOLDER,
     description: 'Get your HotS replay folder path',
   },
+  {
+    name: CommandIds.LIST_REPLAYS,
+    description: 'List recent HotS replays',
+  },
 ];

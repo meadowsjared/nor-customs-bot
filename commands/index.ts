@@ -1,3 +1,4 @@
+import fs from 'fs';
 import {
   ActionRowBuilder,
   ButtonBuilder,
@@ -52,7 +53,8 @@ import {
 import { saveChannel, getChannels, saveLobbyMessage, getLobbyMessages, deleteLobbyMessages } from '../store/channels';
 import { DiscordUserNames, Player } from '../types/player';
 import { client } from '../index';
-import { getReplayFolderPath, setReplayFolderPath } from '../store/hotsReplays';
+import { getReplayFolderPath, parseReplay, setReplayFolderPath } from '../store/hotsReplays';
+import path from 'path';
 /**
  * Generates the current lobby status message with active players
  * @returns The formatted lobby status message
@@ -68,6 +70,7 @@ function generateLobbyStatusMessage(pPreviousPlayersList?: string): string {
         ?.find(a => a.isPrimary)
         ?.hotsBattleTag.replace(/#.*$/, '')}) \`${getPlayerRolesFormatted(p.role)}\``
   );
+  console.log('Lobby Players:', lobbyPlayers);
 
   // combine the lobbyPlayers and previousPlayersList, into one string, labeling each section, but skip a section if there are no players in that section
   const playerListWithLabels = [];
@@ -526,7 +529,7 @@ export async function handleSwapTeamsCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
 ) {
   if (interaction.isButton()) {
-    safeReply(interaction, {
+    await safeReply(interaction, {
       content: 'Interaction is not a command or button interaction',
       flags: MessageFlags.Ephemeral,
     });
@@ -2043,6 +2046,91 @@ export async function handleGetReplayFolderCommand(
     content: `Current replay folder path is:\n\`${folderPath}\``,
     flags: MessageFlags.Ephemeral,
   });
+}
+
+export async function handleListReplaysCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+) {
+  if (!(await userIsAdmin(interaction))) {
+    return;
+  }
+  if (!interaction.isChatInputCommand()) {
+    await safeReply(interaction, {
+      content: 'This command can only be used as a slash command.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  const folderPath = getReplayFolderPath();
+  if (!folderPath) {
+    await safeReply(interaction, {
+      content: `Replay folder path is not set. Please set it using the \`/${CommandIds.SET_REPLAY_FOLDER}\` command.`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  // list all the files in the replay folder
+  let files: string[] = [];
+  try {
+    files = fs.readdirSync(folderPath);
+  } catch (error) {
+    console.error('Error reading replay folder:', error);
+    await safeReply(interaction, {
+      content: `Error reading replay folder. Please make sure the folder path is correct.\n\`${folderPath}\``,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  if (files.length === 0) {
+    await safeReply(interaction, {
+      content: `No replay files found in the folder:\n\`${folderPath}\``,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  // filter the files to only include .StormReplay files
+  files = files.filter(file => file.endsWith('.StormReplay'));
+  if (files.length === 0) {
+    await safeReply(interaction, {
+      content: `No .StormReplay files found in the folder:\n\`${folderPath}\``,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  // sort the files by date
+  files.sort((a, b) => {
+    const aStat = fs.statSync(path.join(folderPath, a));
+    const bStat = fs.statSync(path.join(folderPath, b));
+    return bStat.mtime.getTime() - aStat.mtime.getTime();
+  });
+
+  const maxContentLength = 1800; // Leave some buffer for the header text
+  // split the content into multiple messages if it's too long
+  const maxMessages = 3;
+
+  let currentChunk = `Found the following .StormReplay files in the folder:\n\`${folderPath}\`\n\n`;
+  const filesToShow = files.slice(0, maxMessages);
+  // process each file
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  for (const [index, file] of filesToShow.entries()) {
+    if (currentChunk.length + file.length + 1 <= maxContentLength) {
+      currentChunk += `${index + 1}. ${file}\n`;
+      const replayData = await parseReplay(path.join(folderPath, file));
+      if (replayData) {
+        currentChunk += `  - Map: ${replayData.map}, Type: ${replayData.type}, Date: ${new Date(
+          replayData.date
+        ).getUTCDate()}\n  - Winner: ${replayData.winner}, Duration: ${Math.floor(replayData.length / 60)}m ${
+          replayData.length % 60
+        }s, takedowns: ${replayData.team0Takedowns} - ${
+          replayData.team1Takedowns
+        }\n  - Players: ${replayData.team0Players.join(', ')} vs\n ${replayData.team1Players.join(', ')}`;
+      }
+      await interaction.editReply({
+        content: currentChunk,
+      });
+      // return; // stop after one, for testing
+    }
+  }
 }
 
 /**
