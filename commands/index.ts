@@ -70,7 +70,6 @@ function generateLobbyStatusMessage(pPreviousPlayersList?: string): string {
         ?.find(a => a.isPrimary)
         ?.hotsBattleTag.replace(/#.*$/, '')}) \`${getPlayerRolesFormatted(p.role)}\``
   );
-  console.log('Lobby Players:', lobbyPlayers);
 
   // combine the lobbyPlayers and previousPlayersList, into one string, labeling each section, but skip a section if there are no players in that section
   const playerListWithLabels = [];
