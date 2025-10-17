@@ -61,7 +61,7 @@ function generateLobbyStatusMessage(pPreviousPlayersList?: string): string {
   const previousPlayersList =
     pPreviousPlayersList ?? getLobbyMessages([CommandIds.NEW_GAME])?.[0]?.previousPlayersList ?? '';
   const activePlayers = getActivePlayers();
-  activePlayers.sort((a, b) => b.lastJoined.getTime() - a.lastJoined.getTime());
+  activePlayers.sort((a, b) => a.lastActive.getTime() - b.lastActive.getTime()); // sort by last_active ascending
   const lobbyPlayers = activePlayers.map(
     (p, index) =>
       `${index + 1}: @${p.usernames.discordDisplayName}: (${p.usernames.accounts
@@ -184,6 +184,7 @@ export async function safeReply(
     try {
       return await interaction.reply(options);
     } catch (error) {
+      console.error('Error replying to interaction, attempting followUp:', error);
       return await interaction.followUp(options);
     }
   }

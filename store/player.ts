@@ -36,7 +36,6 @@ const initSchema = db.transaction(() => {
       active INTEGER NOT NULL,
       team INTEGER CHECK(team IN (1, 2, 3)),
       draft_rank INTEGER,
-      last_joined TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
@@ -208,7 +207,6 @@ function getPlayerFromRow(row: FlatPlayer, accounts: HotsAccountRow[]): Player {
       0
     ),
     lastActive: new Date(row.last_active),
-    lastJoined: new Date(row.last_joined),
   };
 }
 
@@ -534,9 +532,7 @@ export function getPlayerByDiscordId(discordId: string): Player | undefined {
   if (!row) {
     return undefined; // Player not found
   }
-  const accountsStmt = db.prepare<string[], HotsAccountRow>(
-    'SELECT id, discord_id, hots_battle_tag, is_primary FROM hots_accounts WHERE discord_id = ?'
-  );
+  const accountsStmt = db.prepare<string[], HotsAccountRow>('SELECT * FROM hots_accounts WHERE discord_id = ?');
   const accounts = accountsStmt.all(discordId);
 
   return getPlayerFromRow(row, accounts);
