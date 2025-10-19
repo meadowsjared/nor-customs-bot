@@ -50,7 +50,14 @@ import {
   changeTeams,
   getStoredInteraction,
 } from '../store/player';
-import { saveChannel, getChannels, saveLobbyMessage, getLobbyMessages, deleteLobbyMessages } from '../store/channels';
+import {
+  saveChannel,
+  getChannels,
+  saveLobbyMessage,
+  getLobbyMessages,
+  deleteLobbyMessages,
+  deleteLobbyMessagesById,
+} from '../store/channels';
 import { DiscordUserNames, Player } from '../types/player';
 import { client } from '../index';
 import { getReplayFolderPath, parseReplay, setReplayFolderPath } from '../store/hotsReplays';
@@ -1847,6 +1854,7 @@ async function deleteMessage(
       flags: MessageFlags.Ephemeral,
     });
     await interaction.deleteReply();
+    deleteLobbyMessagesById([messageId]); // if the message was a lobby message, remove it from the stored messages
   } catch (error) {
     console.error('Error deleting message:', error);
     await safeReply(interaction, {
