@@ -194,7 +194,6 @@ export async function safeReply(
       return await interaction.reply(options);
     } catch (error) {
       console.error('Error replying to interaction, attempting followUp:', error);
-      return await interaction.followUp(options);
     }
   }
 }
