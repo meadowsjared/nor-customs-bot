@@ -123,6 +123,19 @@ export function deleteLobbyMessages(messageTypes: string[]): void {
 }
 
 /**
+ * Deletes lobby messages with the specified message IDs from the local store.
+ * @param messageIds An array of message IDs to delete
+ */
+export function deleteLobbyMessagesById(messageIds: string[]): void {
+  if (messageIds.length === 0) {
+    return;
+  }
+  const placeholders = messageIds.map(() => '?').join(', ');
+  const stmt = db.prepare(`DELETE FROM lobby_messages WHERE messageId IN (${placeholders})`);
+  stmt.run(...messageIds);
+}
+
+/**
  * Retrieves all channels from the local store.
  * @returns A Map of channel IDs to ChannelLocal objects.
  */
