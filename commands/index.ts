@@ -991,13 +991,13 @@ export async function handleRejoinCommand(
   }
   const { player, updated } = setPlayerActive(interaction.user.id, true); // Mark player as active in the database
   if (player) {
-    if (updated === false) {
+    if (updated === true) {
       // Update the lobby message instead of announcing
       await updateLobbyMessage(interaction);
     }
     const joinVerb = newUser ? 'joined' : 'rejoined';
     const content =
-      (updated === true ? `You are already in` : `You have ${joinVerb}`) +
+      (updated === false ? `You are already in` : `You have ${joinVerb}`) +
       ` the lobby as: \`${player.usernames.accounts
         ?.find(a => a.isPrimary)
         ?.hotsBattleTag.replace(/#.*$/, '')}\`, \`${getPlayerRolesFormatted(
