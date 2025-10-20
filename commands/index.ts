@@ -80,9 +80,9 @@ function generateLobbyStatusMessage(pPreviousPlayersList?: string): string {
 
   // combine the lobbyPlayers and previousPlayersList, into one string, labeling each section, but skip a section if there are no players in that section
   const playerListWithLabels = [];
-  if (previousPlayersList) playerListWithLabels.push(`**Previous Players**:\n${previousPlayersList}`);
+  if (previousPlayersList) playerListWithLabels.push(`__**Previous Players**__:\n${previousPlayersList}`);
   playerListWithLabels.push(
-    `**Players in the lobby**: (${lobbyPlayers.length})\n${lobbyPlayers.join('\n') || 'The lobby is empty.'}`
+    `__**Players in the lobby**__: (${lobbyPlayers.length})\n${lobbyPlayers.join('\n') || 'The lobby is empty.'}`
   );
   if (playerListWithLabels.length === 0) {
     playerListWithLabels.push(`**No Active Players**`);
