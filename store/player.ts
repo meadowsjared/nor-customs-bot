@@ -15,7 +15,8 @@ import {
 import { safeReply } from '../commands';
 import { CommandIds } from '../constants';
 import { getHeroesProfileData } from './heroesProfile';
-import { ColumnDefinition, HOTS_ACCOUNTS_COLUMNS } from '../types/csvSpreadsheet';
+import { HOTS_ACCOUNTS_COLUMNS } from '../types/csvSpreadsheet';
+import { generateCreateTableSQL } from '../utils/sql';
 
 const db = new Database('./store/nor_customs.db');
 
@@ -39,31 +40,6 @@ const initSchema = db.transaction(() => {
       last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
-
-  // Helper function to generate CREATE TABLE SQL from column definitions
-  function generateCreateTableSQL(tableName: string, columns: ColumnDefinition[]): string {
-    const columnDefinitions = columns
-      .map(col => {
-        let definition = `${col.name} ${col.type}`;
-
-        if (col.primaryKey) definition += ' PRIMARY KEY';
-        if (col.autoIncrement) definition += ' AUTOINCREMENT';
-        if (col.nullable === false) definition += ' NOT NULL';
-        if (col.unique) definition += ' UNIQUE';
-        if (col.defaultValue !== undefined) {
-          if (typeof col.defaultValue === 'string' && col.defaultValue !== 'CURRENT_TIMESTAMP') {
-            definition += ` DEFAULT '${col.defaultValue}'`;
-          } else {
-            definition += ` DEFAULT ${col.defaultValue}`;
-          }
-        }
-
-        return definition;
-      })
-      .join(',\n      ');
-
-    return `CREATE TABLE IF NOT EXISTS ${tableName} (\n      ${columnDefinitions}\n    )`;
-  }
 
   const createHotsAccountsSQL = generateCreateTableSQL('hots_accounts', HOTS_ACCOUNTS_COLUMNS);
   db.exec(createHotsAccountsSQL);

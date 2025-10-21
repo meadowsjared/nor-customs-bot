@@ -1,8 +1,9 @@
 import Database from 'better-sqlite3';
 import { readFileSync } from 'fs';
 import { parse } from 'csv-parse/sync';
-import { ColumnDefinition, CSVRecord, HOTS_ACCOUNTS_COLUMNS, SQLiteColumnType } from '../types/csvSpreadsheet';
+import { CSVColumnDefinition, CSVRecord, HOTS_ACCOUNTS_COLUMNS } from '../types/csvSpreadsheet';
 import { HotsAccountRow } from '../types/player';
+import { SQLiteColumnType } from './sql';
 
 class CSVImporter {
   private readonly db: Database.Database;
@@ -148,7 +149,7 @@ class CSVImporter {
     return value === 'TRUE' ? 1 : 0;
   }
 
-  public parseValueForColumn(record: CSVRecord, column: ColumnDefinition) {
+  public parseValueForColumn(record: CSVRecord, column: CSVColumnDefinition) {
     const csvColumnName = column.csvColumnName;
     if (column.name !== 'updated_at' && !csvColumnName) {
       console.warn(`No CSV mapping found for DB column: ${column.name}`);

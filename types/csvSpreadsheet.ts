@@ -1,3 +1,5 @@
+import { ColumnDefinition, SQLiteColumnType } from '../utils/sql';
+
 export interface CSVRecord {
   Lookup: string; // This is their Discord ID
   Player: string; // In-Game Name
@@ -109,29 +111,11 @@ export interface CSVRecord {
   'Dance Deaths': number;
 }
 
-export enum SQLiteColumnType {
-  TEXT = 'TEXT',
-  INTEGER = 'INTEGER',
-  REAL = 'REAL',
-  DATETIME = 'DATETIME',
-}
-
-export interface ColumnDefinition {
-  name: string;
-  type: SQLiteColumnType;
+export interface CSVColumnDefinition extends ColumnDefinition {
   csvColumnName?: keyof CSVRecord;
-  nullable?: false;
-  defaultValue?: string | number;
-  unique?: boolean;
-  primaryKey?: true;
-  autoIncrement?: true;
-  isBoolean?: true;
-  isPercentage?: true;
-  /** true if this column should not be imported from the Nor-Customs CSV file */
-  skipImport?: true;
 }
 
-export const HOTS_ACCOUNTS_COLUMNS: ColumnDefinition[] = [
+export const HOTS_ACCOUNTS_COLUMNS: CSVColumnDefinition[] = [
   { name: 'id', type: SQLiteColumnType.INTEGER, primaryKey: true, autoIncrement: true, skipImport: true },
   { name: 'discord_id', type: SQLiteColumnType.TEXT, nullable: false, skipImport: true },
   {
