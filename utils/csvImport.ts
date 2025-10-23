@@ -164,7 +164,7 @@ class CSVImporter {
     }
 
     // Parse based on SQLite column type and special cases
-    switch (column.type) {
+    switch (column.dbType) {
       case SQLiteColumnType.INTEGER:
         // Check if this is actually a boolean stored as integer
         if (column.isBoolean) {
@@ -219,12 +219,8 @@ class CSVImporter {
     // Process each matching record
     for (const record of matchingRecords) {
       try {
-        const result = updateStmt.run(
-          ...HOTS_ACCOUNTS_COLUMNS.filter(col => col.skipImport !== true).map(col =>
-            this.parseValueForColumn(record, col)
-          ),
-          record.Lookup
-        );
+        const columns = HOTS_ACCOUNTS_COLUMNS.filter(col => col.skipImport !== true);
+        const result = updateStmt.run(...columns.map(col => this.parseValueForColumn(record, col)), record.Lookup);
 
         if (result.changes > 0) {
           updatedCount++;

@@ -1,8 +1,8 @@
 // Helper function to generate CREATE TABLE SQL from column definitions
-export function generateCreateTableSQL(tableName: string, columns: ColumnDefinition[]): string {
+export function generateCreateTableSQL(tableName: string, columns: readonly ColumnDefinition[]): string {
   const columnDefinitions = columns
     .map(col => {
-      let definition = `${col.name} ${col.type}`;
+      let definition = `${col.name} ${col.dbType}`;
 
       if (col.primaryKey) definition += ' PRIMARY KEY';
       if (col.autoIncrement) definition += ' AUTOINCREMENT';
@@ -25,7 +25,7 @@ export function generateCreateTableSQL(tableName: string, columns: ColumnDefinit
 
 export interface ColumnDefinition {
   name: string;
-  type: SQLiteColumnType;
+  dbType: SQLiteColumnType;
   nullable?: false;
   defaultValue?: string | number;
   unique?: boolean;
@@ -43,3 +43,14 @@ export enum SQLiteColumnType {
   REAL = 'REAL',
   DATETIME = 'DATETIME',
 }
+
+type PrimitiveFromDbType<T extends SQLiteColumnType> = T extends SQLiteColumnType.INTEGER | SQLiteColumnType.REAL
+  ? number
+  : T extends SQLiteColumnType.TEXT | SQLiteColumnType.DATETIME
+  ? string
+  : never;
+
+// Generic type to create an interface from a schema array
+export type InterfaceFromSchema<T extends readonly ColumnDefinition[]> = {
+  [Item in T[number] as Item extends { skipImport: true } ? never : Item['name']]: PrimitiveFromDbType<Item['dbType']>;
+};
