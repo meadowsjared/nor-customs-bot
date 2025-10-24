@@ -35,7 +35,7 @@ export async function getHeroesProfileData(battleTag: string): Promise<HPData | 
       body: JSON.stringify({ battletag: battleTag, region, blizz_id }),
     });
     if (!response.ok) {
-      console.error(`Error fetching data: ${response.statusText}`);
+      console.error(`Error fetching data: ${response.status}`);
       return undefined;
     }
 
@@ -76,7 +76,7 @@ async function getBestHpAccount(battleTag: string): Promise<HPPlayerData | undef
   });
 
   if (!response.ok) {
-    console.error(`Error fetching data: ${response.statusText}`);
+    console.error(`Error fetching data: ${response.status}`);
     return undefined;
   }
 
