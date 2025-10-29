@@ -110,3 +110,11 @@ DROP TABLE hots_accounts_old;
 
 # get all players with a team or draft rank, ordered by team and draft rank:
 SELECT * FROM players WHERE team IS NOT NULL OR draft_rank IS NOT NULL ORDER BY team, draft_rank;
+
+Found 4 accounts in CSV but missing from database:
+ 1: IlIlIlIlIlIl#21459          IlIlIlIlIlIl
+ 2: Kitty#14207                 Kitty
+ 3: Player#1143555              Player
+ 4: SgtHammerOTP#1108           SgtHammerOTP
+
+📊 Result: 4 accounts found in CSV but missing from database.
