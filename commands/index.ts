@@ -2123,13 +2123,14 @@ export async function handleListReplaysCommand(
       currentChunk += `${index + 1}. ${file}\n`;
       const replayData = await parseReplay(path.join(folderPath, file));
       if (replayData) {
+        currentChunk += `  - Replay ID: ${replayData.replayId}\n`;
         currentChunk += `  - Map: ${replayData.map}, Type: ${replayData.type}, Date: ${new Date(
           replayData.date
         ).getUTCDate()}\n  - Winner: ${replayData.winner}, Duration: ${Math.floor(replayData.length / 60)}m ${
           replayData.length % 60
-        }s, takedowns: ${replayData.team0Takedowns} - ${
-          replayData.team1Takedowns
-        }\n  - Players: ${replayData.team0Players.join(', ')} vs\n ${replayData.team1Players.join(', ')}`;
+        }s, takedowns: ${replayData.team0Takedowns} - ${replayData.team1Takedowns}\n  - Players:\n${
+          replayData.team0Players
+        } vs\n${replayData.team1Players}\n`;
       }
       await interaction.editReply({
         content: currentChunk,
