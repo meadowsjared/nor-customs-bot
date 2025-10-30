@@ -31,6 +31,7 @@
     "discord.js": "^14.23.2",
     "dotenv": "^17.2.3",
     "hots-parser": "^7.55.7",
+    "puppeteer": "^24.27.0",
     "ts-node": "^10.9.2",
     "tsx": "^4.20.6"
   },

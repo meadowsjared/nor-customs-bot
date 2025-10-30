@@ -17,6 +17,7 @@ import { CommandIds } from '../constants';
 import { getHeroesProfileData } from './heroesProfile';
 import { HOTS_ACCOUNTS_COLUMNS } from '../types/csvSpreadsheet';
 import { generateCreateTableSQL } from '../utils/sql';
+import { getHeroesProfileDataPuppeteer } from './heroesProfilePuppeteer';
 
 const db = new Database('./store/nor_customs.db');
 
@@ -274,7 +275,8 @@ export async function handleAddHotsAccount(
   //     '🔍 Fetching Heroes Profile data... This may take 30-60 seconds.\n<a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004>',
   // });
   // get their heroes profile data
-  const profileData = await getHeroesProfileData(hotsBattleTag);
+  // const profileData = await getHeroesProfileData(hotsBattleTag);
+  const profileData = await getHeroesProfileDataPuppeteer(hotsBattleTag);
   if (!profileData) {
     await safeReply(interaction, {
       content: `Failed to retrieve Heroes profile data for \`${hotsBattleTag}\`.\nAre you sure you typed it right?`,
