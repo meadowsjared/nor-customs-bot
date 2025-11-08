@@ -1188,7 +1188,7 @@ export async function handleAdminAddHotsAccountButton(interaction: ButtonInterac
 
   const player = getPlayerByDiscordId(discordId);
   if (player) {
-    handleAddHotsAccount(modalInteraction, discordId, hotsBattleTag); // Update the player's battle tag in the database
+    await handleAddHotsAccount(modalInteraction, discordId, hotsBattleTag); // Update the player's battle tag in the database
   }
 }
 
