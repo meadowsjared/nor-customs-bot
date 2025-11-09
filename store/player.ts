@@ -327,29 +327,40 @@ export async function handleAddHotsAccount(
     });
     return false;
   }
-
-  const hotsAccountStmt = db.prepare(
-    'INSERT INTO hots_accounts (discord_id, hots_battle_tag, is_primary, HP_Region, HP_Blizz_ID, HP_QM_MMR, HP_SL_MMR, HP_AR_MMR, HP_QM_Games, HP_SL_Games, HP_AR_Games) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-  );
-  hotsAccountStmt.run(
-    discordId,
-    hotsBattleTag,
-    player.usernames.accounts && player.usernames.accounts.length === 0 ? 1 : 0,
-    profileData.region,
-    profileData.blizz_id,
-    profileData.qmMmr,
-    profileData.slMmr,
-    profileData.arMmr,
-    profileData.qmGames,
-    profileData.slGames,
-    profileData.arGames
-  );
-  await safeReply(interaction, {
-    content: `${
-      discordId === interaction?.user.id ? 'Your' : '<@' + discordId + ">'s"
-    } HotS account has been added: \`${hotsBattleTag}\``,
-    flags: MessageFlags.Ephemeral,
-  });
+  try {
+    const hotsAccountStmt = db.prepare(
+      'INSERT INTO hots_accounts (discord_id, hots_battle_tag, is_primary, HP_Region, HP_Blizz_ID, HP_QM_MMR, HP_SL_MMR, HP_AR_MMR, HP_QM_Games, HP_SL_Games, HP_AR_Games) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    );
+    hotsAccountStmt.run(
+      discordId,
+      hotsBattleTag,
+      player.usernames.accounts && player.usernames.accounts.length === 0 ? 1 : 0,
+      profileData.region,
+      profileData.blizz_id,
+      profileData.qmMmr,
+      profileData.slMmr,
+      profileData.arMmr,
+      profileData.qmGames,
+      profileData.slGames,
+      profileData.arGames
+    );
+    await safeReply(interaction, {
+      content: `${
+        discordId === interaction?.user.id ? 'Your' : '<@' + discordId + ">'s"
+      } HotS account has been added: \`${hotsBattleTag}\``,
+      flags: MessageFlags.Ephemeral,
+    });
+  } catch (error) {
+    console.error('Error adding HotS account:', error);
+    await safeReply(interaction, {
+      content: `Failed to add HotS account \`${hotsBattleTag}\`.\nPlease try again later.`,
+      flags: MessageFlags.Ephemeral,
+    });
+    await safeReply(interaction, {
+      content: `<@${discordId}> Failed to add HotS account \`${hotsBattleTag}\``,
+    });
+    return false;
+  }
   return player;
 }
 
