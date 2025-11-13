@@ -1493,33 +1493,19 @@ async function handleUserNameModalSubmit(
   return { hotsBattleTag, modalInteraction };
 }
 
-function createEditRoleButtonDisabled(
-  interaction: chatOrButtonOrModal,
-  commandId: string,
-  emoji: string
-): ButtonBuilder {
-  return new ButtonBuilder()
-    .setCustomId(`${commandId}_${interaction.user.id}`)
-    .setLabel(emoji)
-    .setStyle(ButtonStyle.Secondary);
+function createEditRoleButtonDisabled(discordId: string, commandId: string, emoji: string): ButtonBuilder {
+  return new ButtonBuilder().setCustomId(`${commandId}_${discordId}`).setLabel(emoji).setStyle(ButtonStyle.Secondary);
 }
 
-function createEditRoleButtonEnabled(
-  interaction: chatOrButtonOrModal,
-  commandId: string,
-  emoji: string
-): ButtonBuilder {
-  return new ButtonBuilder()
-    .setCustomId(`${commandId}_${interaction.user.id}`)
-    .setEmoji(emoji)
-    .setStyle(ButtonStyle.Primary);
+function createEditRoleButtonEnabled(discordId: string, commandId: string, emoji: string): ButtonBuilder {
+  return new ButtonBuilder().setCustomId(`${commandId}_${discordId}`).setEmoji(emoji).setStyle(ButtonStyle.Primary);
 }
 
-function getEditRoleRow(interaction: chatOrButtonOrModal, action: string): ActionRowBuilder<ButtonBuilder> {
+function getEditRoleRow(discordId: string, action: string): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     ...Object.entries(roleMap).map(([key, label]) => {
       return new ButtonBuilder()
-        .setCustomId(`${action}_${interaction.user.id}_${key}`) // Use the action
+        .setCustomId(`${action}_${discordId}_${key}`) // Use the action
         .setLabel(label)
         .setStyle(ButtonStyle.Primary);
     })
@@ -1552,31 +1538,16 @@ export async function handleEditRoleCommand(interaction: chatOrButtonOrModal, se
   const roles = ', current role: ' + getPlayerRolesFormatted(player.role);
   // create a button that will set this interaction to add mode
   const activeSuffix = setActive ? '_' + CommandIds.ACTIVE : '';
-  const row2 = getEditRoleRow(interaction, CommandIds.ROLE_EDIT_REPLACE + activeSuffix);
+  const row2 = getEditRoleRow(interaction.user.id, CommandIds.ROLE_EDIT_REPLACE + activeSuffix);
   const content = (setActive ? 'You must click a role to join the lobby\n' : '') + 'Replace Mode' + roles; // Default content for the reply
-  if (interaction.replied) {
-    await interaction.followUp({
-      content,
-      flags: MessageFlags.Ephemeral,
-      components: [
-        new ActionRowBuilder<ButtonBuilder>().addComponents(
-          createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_ADD + activeSuffix, '➕'),
-          createEditRoleButtonEnabled(interaction, CommandIds.ROLE_EDIT_REPLACE + activeSuffix, '🔄'),
-          createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_REMOVE + activeSuffix, '➖')
-        ),
-        row2,
-      ],
-    });
-    return;
-  }
   await safeReply(interaction, {
     content,
     flags: MessageFlags.Ephemeral,
     components: [
       new ActionRowBuilder<ButtonBuilder>().addComponents(
-        createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_ADD + activeSuffix, '➕'),
-        createEditRoleButtonEnabled(interaction, CommandIds.ROLE_EDIT_REPLACE + activeSuffix, '🔄'),
-        createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_REMOVE + activeSuffix, '➖')
+        createEditRoleButtonDisabled(interaction.user.id, CommandIds.ROLE_EDIT_ADD + activeSuffix, '➕'),
+        createEditRoleButtonEnabled(interaction.user.id, CommandIds.ROLE_EDIT_REPLACE + activeSuffix, '🔄'),
+        createEditRoleButtonDisabled(interaction.user.id, CommandIds.ROLE_EDIT_REMOVE + activeSuffix, '➖')
       ),
       row2,
     ],
@@ -1609,12 +1580,12 @@ export async function handleEditRoleButtonCommand(
   }
   const roles = ', current role: ' + getPlayerRolesFormatted(player.role); // Get the formatted roles of the player
 
-  const row2 = getEditRoleRow(interaction, action);
+  const row2 = getEditRoleRow(discordId, action);
   // Handle the role editing logic based on the action
   let setActiveNext: boolean;
   if (setActive === true && player.active === false && role !== undefined) {
     // If the action is set to active, we need to handle it differently
-    setPlayerActive(interaction.user.id, true); // Set the player as active
+    setPlayerActive(discordId, true); // Set the player as active
     setActiveNext = false; // Reset the active state for the next interaction
   } else {
     setActiveNext = setActive; // Keep the active state as is
@@ -1623,13 +1594,13 @@ export async function handleEditRoleButtonCommand(
   const activePrefix = setActive ? 'You must click a role to join the lobby\n' : ''; // Default content for the reply
   switch (action) {
     case CommandIds.ROLE_EDIT_ADD:
-      showAddButtons(interaction, player, role, roles, activePrefix, row2, activeSuffix);
+      showAddButtons(interaction, discordId, player, role, roles, activePrefix, row2, activeSuffix);
       break;
     case CommandIds.ROLE_EDIT_REMOVE:
-      showRemoveButtons(interaction, player, role, roles, activePrefix, row2, activeSuffix);
+      showRemoveButtons(interaction, discordId, player, role, roles, activePrefix, row2, activeSuffix);
       break;
     case CommandIds.ROLE_EDIT_REPLACE:
-      showReplaceButtons(interaction, player, role, roles, activePrefix, row2, activeSuffix);
+      showReplaceButtons(interaction, discordId, player, role, roles, activePrefix, row2, activeSuffix);
       break;
   }
   if (setActive === true && player.active === false && role !== undefined) {
@@ -1645,6 +1616,7 @@ export async function handleEditRoleButtonCommand(
 
 function showAddButtons(
   interaction: ButtonInteraction<CacheType>,
+  discordId: string,
   player: Player,
   role: string | undefined,
   roles: string,
@@ -1655,16 +1627,17 @@ function showAddButtons(
   if (role && !player.role.includes(role)) {
     // If the role is specified and does not exist in the player's roles, add it
     const newRoles = player.role + role; // Append the new role
-    setPlayerRole(interaction.user.id, newRoles); // Update the player's role in the database
+    setPlayerRole(discordId, newRoles); // Update the player's role in the database
     roles = ', current role: ' + getPlayerRolesFormatted(newRoles);
   }
   interaction.update({
-    content: activePrefix + 'Add Mode' + roles,
+    content:
+      (interaction.user.id === discordId ? '' : `**User:** <@${discordId}>\n`) + activePrefix + 'Add Mode' + roles,
     components: [
       new ActionRowBuilder<ButtonBuilder>().addComponents(
-        createEditRoleButtonEnabled(interaction, CommandIds.ROLE_EDIT_ADD + activeSuffix, '➕'),
-        createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_REPLACE + activeSuffix, '🔄'),
-        createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_REMOVE + activeSuffix, '➖')
+        createEditRoleButtonEnabled(discordId, CommandIds.ROLE_EDIT_ADD + activeSuffix, '➕'),
+        createEditRoleButtonDisabled(discordId, CommandIds.ROLE_EDIT_REPLACE + activeSuffix, '🔄'),
+        createEditRoleButtonDisabled(discordId, CommandIds.ROLE_EDIT_REMOVE + activeSuffix, '➖')
       ),
       row2,
     ],
@@ -1673,6 +1646,7 @@ function showAddButtons(
 
 function showRemoveButtons(
   interaction: ButtonInteraction<CacheType>,
+  discordId: string,
   player: Player,
   role: string | undefined,
   roles: string,
@@ -1686,16 +1660,17 @@ function showRemoveButtons(
       .split('')
       .filter(r => r !== role)
       .join('');
-    setPlayerRole(interaction.user.id, newRoles); // Update the player's role in the database
+    setPlayerRole(discordId, newRoles); // Update the player's role in the database
     roles = ', current role: ' + getPlayerRolesFormatted(newRoles);
   }
   interaction.update({
-    content: activePrefix + 'Remove Mode' + roles,
+    content:
+      (interaction.user.id === discordId ? '' : `**User:** <@${discordId}>\n`) + activePrefix + 'Remove Mode' + roles,
     components: [
       new ActionRowBuilder<ButtonBuilder>().addComponents(
-        createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_ADD + activeSuffix, '➕'),
-        createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_REPLACE + activeSuffix, '🔄'),
-        createEditRoleButtonEnabled(interaction, CommandIds.ROLE_EDIT_REMOVE + activeSuffix, '➖')
+        createEditRoleButtonDisabled(discordId, CommandIds.ROLE_EDIT_ADD + activeSuffix, '➕'),
+        createEditRoleButtonDisabled(discordId, CommandIds.ROLE_EDIT_REPLACE + activeSuffix, '🔄'),
+        createEditRoleButtonEnabled(discordId, CommandIds.ROLE_EDIT_REMOVE + activeSuffix, '➖')
       ),
       row2,
     ],
@@ -1704,6 +1679,7 @@ function showRemoveButtons(
 
 function showReplaceButtons(
   interaction: ButtonInteraction<CacheType>,
+  discordId: string,
   player: Player,
   role: string | undefined,
   roles: string,
@@ -1712,16 +1688,17 @@ function showReplaceButtons(
   activeSuffix: string
 ) {
   if (role) {
-    setPlayerRole(interaction.user.id, role);
+    setPlayerRole(discordId, role);
     roles = ', current role: ' + getPlayerRolesFormatted(role);
   }
   interaction.update({
-    content: activePrefix + 'Replace Mode' + roles,
+    content:
+      (interaction.user.id === discordId ? '' : `**User:** <@${discordId}>\n`) + activePrefix + 'Replace Mode' + roles,
     components: [
       new ActionRowBuilder<ButtonBuilder>().addComponents(
-        createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_ADD + activeSuffix, '➕'),
-        createEditRoleButtonEnabled(interaction, CommandIds.ROLE_EDIT_REPLACE + activeSuffix, '🔄'),
-        createEditRoleButtonDisabled(interaction, CommandIds.ROLE_EDIT_REMOVE + activeSuffix, '➖')
+        createEditRoleButtonDisabled(discordId, CommandIds.ROLE_EDIT_ADD + activeSuffix, '➕'),
+        createEditRoleButtonEnabled(discordId, CommandIds.ROLE_EDIT_REPLACE + activeSuffix, '🔄'),
+        createEditRoleButtonDisabled(discordId, CommandIds.ROLE_EDIT_REMOVE + activeSuffix, '➖')
       ),
       row2,
     ],
@@ -1894,18 +1871,18 @@ function getMemberFromInteraction(
 export function handleAdminSetRoleCommand(interaction: ChatInputCommandInteraction<CacheType>): void;
 export function handleAdminSetRoleCommand(
   interaction: ButtonInteraction<CacheType>,
-  pId: string,
+  discordId: string,
   pRole: keyof typeof roleMap
 ): void;
 export async function handleAdminSetRoleCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
-  pId?: string,
+  discordId?: string,
   pRole?: keyof typeof roleMap
 ) {
   if (!userIsAdmin(interaction)) {
     return;
   }
-  const member = getMemberFromInteraction(interaction, pId);
+  const member = getMemberFromInteraction(interaction, discordId);
   if (!member || 'user' in member === false) {
     await safeReply(interaction, {
       content: 'Please provide a valid Discord member to set their name.',
