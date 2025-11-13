@@ -310,7 +310,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
             name: CommandIds.ROLE,
             description: "The player's new role.",
             type: ApplicationCommandOptionType.String,
-            required: true,
+            required: false,
             choices: Object.entries(roleMap).map(([key, label]) => ({
               name: label,
               value: key,

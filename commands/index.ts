@@ -1152,24 +1152,46 @@ async function handleLookupCommandSub(
 }
 
 /**
- * Handles the admin command interaction, shows buttons to manage roles and players
+ * Handles the edit role command interaction, shows buttons to edit the user's role
  * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
+ * @param discordId The Discord ID of the user to edit the role for.
  */
-export async function handleAdminShowRoleButtons(interaction: ButtonInteraction<CacheType>, pId: string) {
-  const rolesRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    ...Object.entries(roleMap).map(([key, label]) => {
-      return new ButtonBuilder()
-        .setCustomId(`${CommandIds.ROLE_ADMIN}_${pId}_${key}`)
-        .setLabel(label)
-        .setStyle(ButtonStyle.Primary);
-    })
-  );
-
-  const components = [rolesRow];
+export async function handleAdminShowRoleButtons(
+  interaction: ButtonInteraction<CacheType> | ChatInputCommandInteraction<CacheType>,
+  discordId: string
+) {
+  const player = getPlayerByDiscordId(discordId); // Get player by Discord ID
+  if (!player) {
+    if (interaction.replied) {
+      await interaction.followUp({
+        content: 'You are not in the lobby. Click the button below to join.',
+        flags: MessageFlags.Ephemeral,
+        components: [new ActionRowBuilder<ButtonBuilder>().addComponents(joinBtn)],
+      });
+      return;
+    }
+    await safeReply(interaction, {
+      content: 'You are not in the lobby. Click the button below to join.',
+      flags: MessageFlags.Ephemeral,
+      components: [new ActionRowBuilder<ButtonBuilder>().addComponents(joinBtn)],
+    });
+    return;
+  }
+  const roles = ', current role: ' + getPlayerRolesFormatted(player.role);
+  // create a button that will set this interaction to add mode
+  const row2 = getEditRoleRow(discordId, CommandIds.ROLE_EDIT_REPLACE);
+  const content = (interaction.user.id === discordId ? '' : `**User:** <@${discordId}>\n`) + 'Replace Mode' + roles; // Default content for the reply
   await safeReply(interaction, {
-    content: 'Please select their new role using the buttons below.',
-    components,
+    content,
     flags: MessageFlags.Ephemeral,
+    components: [
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        createEditRoleButtonDisabled(discordId, CommandIds.ROLE_EDIT_ADD, '➕'),
+        createEditRoleButtonEnabled(discordId, CommandIds.ROLE_EDIT_REPLACE, '🔄'),
+        createEditRoleButtonDisabled(discordId, CommandIds.ROLE_EDIT_REMOVE, '➖')
+      ),
+      row2,
+    ],
   });
 }
 
@@ -1890,9 +1912,23 @@ export async function handleAdminSetRoleCommand(
     });
     return;
   }
-  const role = interaction.isChatInputCommand()
-    ? interaction.options.getString(CommandIds.ROLE, true)
-    : pRole ?? CommandIds.ROLE_FLEX;
+  const role = pRole
+    ? pRole
+    : interaction.isChatInputCommand() && interaction.options.getString(CommandIds.ROLE, false);
+  if (interaction.isChatInputCommand() && !role) {
+    const member = interaction.options.getMember(CommandIds.DISCORD_ID);
+    if (member && 'user' in member) {
+      await handleAdminShowRoleButtons(interaction, member.user.id);
+      return;
+    }
+  }
+  if (!role) {
+    await safeReply(interaction, {
+      content: 'Please provide a valid role to set for the member.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
   const id = member.user.id;
   const player = setPlayerRole(id, role);
   if (!player) {
