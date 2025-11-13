@@ -328,14 +328,12 @@ async function handleDefaultCommand(
       handleEditRoleButtonCommand(interaction, parts[2], parts[0], undefined, true);
     } else if (parts[2] in roleMap) {
       // Handle role edit button commands with user ID
-      console.log('Handling role edit button command with parts 3:', parts);
       handleEditRoleButtonCommand(interaction, parts[1], parts[0], parts[2]);
     }
     return;
   }
   if (parts.length === 4 && isRoleCommandId(parts[0])) {
     // Handle role edit button commands with user ID and active state
-    console.log('Handling role edit button command with parts 4:', parts);
     handleEditRoleButtonCommand(interaction, parts[2], parts[0], parts[3], parts[1] === CommandIds.ACTIVE);
     return;
   }
