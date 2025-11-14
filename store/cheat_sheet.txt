@@ -1,3 +1,5 @@
+https://discord.com/developers/applications/1376465976551542845/information
+
 connect:
 sqlite3 ./store/nor_customs.db
 
