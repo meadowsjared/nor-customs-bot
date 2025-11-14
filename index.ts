@@ -206,8 +206,7 @@ client.on('interactionCreate', async interaction => {
       handleAddHotsAccountCommand(interaction);
       break;
     case CommandIds.ROLE:
-    case CommandIds.EDIT_ROLES:
-      // Handle edit roles command
+      // Handle role command
       handleEditRoleCommand(interaction); // Pass true to edit roles
       break;
     case CommandIds.TWITCH:

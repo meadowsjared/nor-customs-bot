@@ -64,22 +64,6 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
   {
     name: CommandIds.ROLE,
     description: 'Set your role',
-    options: [
-      {
-        name: CommandIds.ROLE,
-        type: ApplicationCommandOptionType.String,
-        description: 'Your role in the game',
-        required: true,
-        choices: Object.entries(roleMap).map(([key, label]) => ({
-          name: label,
-          value: key,
-        })),
-      },
-    ],
-  },
-  {
-    name: CommandIds.EDIT_ROLES,
-    description: 'Add/replace/remove your roles',
   },
   {
     name: CommandIds.DELETE_MESSAGE,
