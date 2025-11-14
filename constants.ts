@@ -40,7 +40,6 @@ export const enum CommandIds {
   DISCORD_DISPLAY_NAME = 'discord-display-name',
   DISCORD_NAME = 'discord-name',
   ROLE = 'role',
-  EDIT_ROLES = 'edit-roles',
   ROLE_EDIT_ADD = 'role-edit-add',
   ROLE_EDIT_REMOVE = 'role-edit-remove',
   ROLE_EDIT_REPLACE = 'role-edit-replace',
