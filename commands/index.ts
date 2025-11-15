@@ -851,13 +851,15 @@ export async function handleGuideCommand(
   const exampleEmbed = new EmbedBuilder()
     .setColor(0x0099ff)
     .setTitle("Nor's Hots Customs — Lobby Guide")
-    // .setDescription(
-    //   'This is a custom lobby for Heroes of the Storm. Use the commands below to join, leave, or manage your role in the lobby.'
-    // )
+    /*
+    .setDescription(
+      'This is a custom lobby for Heroes of the Storm. Use the commands below to join, leave, or manage your role in the lobby.'
+    )
     // this shows up in the upper right corner of the embed
-    // .setThumbnail(
-    //   'https://static-cdn.jtvnw.net/jtv_user_pictures/f9bdb9b4-911b-4f2d-8e04-f0bde098a4d9-profile_image-70x70.png'
-    // )
+    .setThumbnail(
+      'https://static-cdn.jtvnw.net/jtv_user_pictures/f9bdb9b4-911b-4f2d-8e04-f0bde098a4d9-profile_image-70x70.png'
+    )
+    */
     .setDescription(
       [
         'Commands:',
@@ -870,13 +872,13 @@ export async function handleGuideCommand(
       ].join('\n')
     )
     .addFields({ name: 'Roles', value: '🛡️ Tank, ⚔️ Assassin, 💪 Bruiser, 💉 Healer, 🔄 Flex' })
-    // .addFields(
-    //   { name: '`/join`', value: 'Join the lobby with your Heroes of the Storm battle tag and role.' },
-    //   { name: '`/leave`', value: 'Leave the lobby.' },
-    //   { name: '`/rejoin`', value: 'Rejoin the lobby with your previous battle tag and role.' },
-    //   { name: '`/add-account`', value: 'Add a HotS account.' },
-    //   { name: '`/role`', value: 'Change your role in the lobby.' }
-    // )
+    /* .addFields(
+      { name: '`/join`', value: 'Join the lobby with your Heroes of the Storm battle tag and role.' },
+      { name: '`/leave`', value: 'Leave the lobby.' },
+      { name: '`/rejoin`', value: 'Rejoin the lobby with your previous battle tag and role.' },
+      { name: '`/add-account`', value: 'Add a HotS account.' },
+      { name: '`/role`', value: 'Change your role in the lobby.' }
+    )*/
     .setFooter({ text: 'Enjoy playing!' })
     .setImage(
       'https://static-cdn.jtvnw.net/jtv_user_pictures/f9bdb9b4-911b-4f2d-8e04-f0bde098a4d9-profile_image-70x70.png'
