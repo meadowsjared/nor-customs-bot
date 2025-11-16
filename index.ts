@@ -336,9 +336,9 @@ async function handleDefaultCommand(
     }
     return;
   }
-  if (parts.length === 4 && isRoleCommandId(parts[0])) {
+  if (parts.length === 5 && isRoleCommandId(parts[0])) {
     // Handle role edit button commands with user ID and active state
-    handleEditRoleButtonCommand(interaction, parts[2], parts[0], parts[3], parts[1] === CommandIds.ACTIVE);
+    handleEditRoleButtonCommand(interaction, parts[3], parts[0], parts[4], parts[1] === CommandIds.ACTIVE, parts[2]);
     return;
   }
   if (parts.length === 6 && parts[0] === CommandIds.ADMIN && parts[1] === CommandIds.PRIMARY) {

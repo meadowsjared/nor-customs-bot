@@ -74,9 +74,16 @@ function generateLobbyStatusMessage(pPreviousPlayersList?: string): string {
   activePlayers.sort((a, b) => a.lastActive.getTime() - b.lastActive.getTime()); // sort by last_active ascending
   const lobbyPlayers = activePlayers.map(
     (p, index) =>
-      `${index + 1}: @${p.usernames.discordDisplayName}: (${p.usernames.accounts
-        ?.find(a => a.isPrimary)
-        ?.hotsBattleTag.replace(/#.*$/, '')}) \`${getPlayerRolesFormatted(p.role)}\``
+      `${index + 1}: @${p.usernames.discordDisplayName}: (${(
+        p.usernames.accounts?.find(a => a.isPrimary)?.hotsBattleTag ?? `loading...`
+      ).replace(/#.*$/, '')}) \`${getPlayerRolesFormatted(p.role)}\`${
+        p.usernames.accounts?.length === 1 &&
+        p.usernames.accounts[0].hpSlGames === null &&
+        p.usernames.accounts[0].hpQmGames === null &&
+        p.usernames.accounts[0].hpArGames === null
+          ? ' loading MMR...'
+          : ''
+      }`
   );
 
   // combine the lobbyPlayers and previousPlayersList, into one string, labeling each section, but skip a section if there are no players in that section
@@ -1051,7 +1058,7 @@ async function showJoinModal(
     },
     hotsBattleTag
   ); // Save player data to the database with default role Flex
-  await handleEditRoleCommand(modalInteraction, true); // Show the edit role buttons
+  await handleEditRoleCommand(modalInteraction, true, hotsBattleTag); // Show the edit role buttons
 }
 
 export async function handleLookupByDiscordIdCommand(
@@ -1570,7 +1577,11 @@ function getEditRoleRow(discordId: string, action: string): ActionRowBuilder<But
  * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
  * @returns {Promise<void>}
  */
-export async function handleEditRoleCommand(interaction: chatOrButtonOrModal, setActive = false): Promise<void> {
+export async function handleEditRoleCommand(
+  interaction: chatOrButtonOrModal,
+  setActive = false,
+  hotsBattleTag?: string
+): Promise<void> {
   const player = getPlayerByDiscordId(interaction.user.id); // Get player by Discord ID
   if (!player) {
     if (interaction.replied) {
@@ -1590,7 +1601,7 @@ export async function handleEditRoleCommand(interaction: chatOrButtonOrModal, se
   }
   const roles = ', current role: ' + getPlayerRolesFormatted(player.role);
   // create a button that will set this interaction to add mode
-  const activeSuffix = setActive ? '_' + CommandIds.ACTIVE : '';
+  const activeSuffix = (setActive ? '_' + CommandIds.ACTIVE : '') + (hotsBattleTag ? '_' + hotsBattleTag : '');
   const row2 = getEditRoleRow(interaction.user.id, CommandIds.ROLE_EDIT_REPLACE + activeSuffix);
   const content = (setActive ? 'You must click a role to join the lobby\n' : '') + 'Replace Mode' + roles; // Default content for the reply
   await safeReply(interaction, {
@@ -1612,7 +1623,8 @@ export async function handleEditRoleButtonCommand(
   discordId: string,
   action: string,
   role?: keyof typeof roleMap,
-  setActive = false
+  setActive = false,
+  hotsBattleTag?: string
 ) {
   if (!interaction.isButton()) {
     await safeReply(interaction, {
@@ -1638,7 +1650,7 @@ export async function handleEditRoleButtonCommand(
   let setActiveNext: boolean;
   if (setActive === true && player.active === false && role !== undefined) {
     // If the action is set to active, we need to handle it differently
-    setPlayerActive(discordId, true); // Set the player as active
+    setPlayerActive(discordId, true, hotsBattleTag); // Set the player as active
     setActiveNext = false; // Reset the active state for the next interaction
   } else {
     setActiveNext = setActive; // Keep the active state as is

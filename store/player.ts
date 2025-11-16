@@ -329,7 +329,7 @@ export async function handleAddHotsAccount(
   }
   try {
     const hotsAccountStmt = db.prepare(
-      'INSERT INTO hots_accounts (discord_id, hots_battle_tag, is_primary, HP_Region, HP_Blizz_ID, HP_QM_MMR, HP_SL_MMR, HP_AR_MMR, HP_QM_Games, HP_SL_Games, HP_AR_Games) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      'REPLACE INTO hots_accounts (discord_id, hots_battle_tag, is_primary, HP_Region, HP_Blizz_ID, HP_QM_MMR, HP_SL_MMR, HP_AR_MMR, HP_QM_Games, HP_SL_Games, HP_AR_Games) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     );
     hotsAccountStmt.run(
       discordId,
@@ -618,7 +618,11 @@ export function setPlayerDiscordNames(discordId: string, discordData: DiscordUse
  * @returns ({ updated: boolean; player?: Player }) An object indicating whether the player was updated and the updated player object if applicable.
  * If the player was not found, updated will be false and player will be undefined.
  */
-export function setPlayerActive(discordId: string, active: boolean): { updated: boolean; player?: Player } {
+export function setPlayerActive(
+  discordId: string,
+  active: boolean,
+  hotsBattleTag?: string
+): { updated: boolean; player?: Player } {
   const player = getPlayerByDiscordId(discordId);
   if (!player) {
     return { updated: false, player }; // Player not found
@@ -626,10 +630,20 @@ export function setPlayerActive(discordId: string, active: boolean): { updated: 
   if (player.active === active) {
     return { updated: false, player }; // No change needed
   }
-  const stmt = db.prepare(
-    `UPDATE players SET active = ?${active ? ', last_active = CURRENT_TIMESTAMP' : ''} WHERE discord_id = ?`
-  );
-  stmt.run(active ? 1 : 0, discordId);
+  // create a transaction to update the player and add the hots account if needed
+  const transaction = db.transaction(() => {
+    if (player.usernames.accounts?.length === 0 && hotsBattleTag) {
+      const hotsAccountStmt = db.prepare(
+        'REPLACE INTO hots_accounts (discord_id, hots_battle_tag, is_primary) VALUES (?, ?, ?)'
+      );
+      hotsAccountStmt.run(discordId, hotsBattleTag, 1);
+    }
+    const stmt = db.prepare(
+      `UPDATE players SET active = ?${active ? ', last_active = CURRENT_TIMESTAMP' : ''} WHERE discord_id = ?`
+    );
+    stmt.run(active ? 1 : 0, discordId);
+  });
+  transaction();
   player.active = active;
   return { updated: true, player };
 }
