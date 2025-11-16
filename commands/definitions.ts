@@ -256,6 +256,19 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     ],
   },
   {
+    name: CommandIds.DELETE_PLAYER,
+    description: "Delete a player's information",
+    defaultMemberPermissions: minimumAdminPermissions,
+    options: [
+      {
+        name: CommandIds.DISCORD_ID,
+        type: ApplicationCommandOptionType.User,
+        description: 'The user to delete.',
+        required: true,
+      },
+    ],
+  },
+  {
     name: CommandIds.ADMIN,
     description: 'Admin commands to manage players.',
     defaultMemberPermissions: minimumAdminPermissions,

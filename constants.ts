@@ -52,6 +52,7 @@ export const enum CommandIds {
   PLAYERS_RAW = 'players-raw',
   TWITCH = 'twitch',
   LOOKUP = 'lookup',
+  DELETE_PLAYER = 'delete-player',
   ADMIN = 'admin',
   MOVE = 'move',
   DELETE_MESSAGE = 'delete-message',

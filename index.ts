@@ -48,6 +48,7 @@ import {
   handleSetReplayFolderCommand,
   handleGetReplayFolderCommand,
   handleListReplaysCommand,
+  handleDeletePlayerCommand,
 } from './commands';
 import { slashCommands } from './commands/definitions';
 
@@ -219,6 +220,10 @@ client.on('interactionCreate', async interaction => {
     case CommandIds.LOOKUP:
       // Handle lookup command
       handleLookupCommand(interaction); // Pass true to perform a lookup
+      break;
+    case CommandIds.DELETE_PLAYER:
+      // Handle delete player command
+      handleDeletePlayerCommand(interaction);
       break;
     case CommandIds.MOVE:
       // Handle move command

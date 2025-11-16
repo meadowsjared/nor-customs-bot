@@ -367,6 +367,20 @@ export async function handleAddHotsAccount(
   return player;
 }
 
+export async function deletePlayer(
+  discordId: string
+): Promise<{ playersDeleted: number; hotsAccountsDeleted: number }> {
+  // first delete the player's hots accounts
+
+  const deleteAccountsStmt = db.prepare('DELETE FROM hots_accounts WHERE discord_id = ?');
+  const deletedAccounts = deleteAccountsStmt.run(discordId).changes;
+  // get the number of hots accounts deleted
+  const deletePlayerStmt = db.prepare('DELETE FROM players WHERE discord_id = ?');
+  const deletedPlayer = deletePlayerStmt.run(discordId).changes;
+
+  return { playersDeleted: deletedPlayer, hotsAccountsDeleted: deletedAccounts };
+}
+
 export async function setPrimaryAccount(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
   discordId: string,
