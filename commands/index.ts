@@ -417,7 +417,9 @@ async function generateTeamsMessage(
       p =>
         `\`${p.index + 1}: ${getPlayerMMR(p.player)}\` ${safePing(
           `<@${p.player.discordId}>`
-        )} ${p.player.usernames.accounts?.find(account => account.isPrimary)?.hotsBattleTag.replace(/#.*$/, '')}`
+        )} ${p.player.usernames.accounts
+          ?.find(account => account.isPrimary)
+          ?.hotsBattleTag.replace(/#.*$/, '')} \`${getPlayerRolesFormatted(p.player.role)}\``
     )
     .join('\n');
   const team2List = team2
@@ -425,7 +427,9 @@ async function generateTeamsMessage(
       p =>
         `\`${p.index + 1}: ${getPlayerMMR(p.player)}\` ${safePing(
           `<@${p.player.discordId}>`
-        )} ${p.player.usernames.accounts?.find(account => account.isPrimary)?.hotsBattleTag.replace(/#.*$/, '')}`
+        )} ${p.player.usernames.accounts
+          ?.find(account => account.isPrimary)
+          ?.hotsBattleTag.replace(/#.*$/, '')} \`${getPlayerRolesFormatted(p.player.role)}\``
     )
     .join('\n');
   const spectators = activePlayers.filter(
