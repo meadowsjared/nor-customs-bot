@@ -83,6 +83,13 @@ function generateLobbyStatusMessage(pPreviousPlayersList?: string): string {
         p.usernames.accounts[0].hpArGames === null
           ? ' loading MMR...'
           : ''
+      }${
+        p.usernames.accounts?.length === 1 &&
+        p.usernames.accounts[0].hpSlGames === -1 &&
+        p.usernames.accounts[0].hpQmGames === -1 &&
+        p.usernames.accounts[0].hpArGames === -1
+          ? ' MMR error!... :scream:'
+          : ''
       }`
   );
 
