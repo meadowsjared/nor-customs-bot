@@ -105,7 +105,7 @@ function generatePreviousPlayersList(): string {
  * Updates the lobby announcement message with current player status
  * @param interaction The interaction object for guild access
  */
-async function updateLobbyMessage(interaction: chatOrButtonOrModal) {
+export async function updateLobbyMessage(interaction: chatOrButtonOrModal) {
   const lobbyMessages = getLobbyMessages([CommandIds.NEW_GAME]);
   if (!lobbyMessages || lobbyMessages.length === 0) {
     return; // No lobby message to update

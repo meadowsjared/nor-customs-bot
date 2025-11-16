@@ -12,7 +12,7 @@ import {
   MessageFlags,
   ModalSubmitInteraction,
 } from 'discord.js';
-import { safeReply } from '../commands';
+import { safeReply, updateLobbyMessage } from '../commands';
 import { CommandIds } from '../constants';
 import { getHeroesProfileData } from './heroesProfile';
 import { HOTS_ACCOUNTS_COLUMNS } from '../types/csvSpreadsheet';
@@ -344,6 +344,9 @@ export async function handleAddHotsAccount(
       profileData.slGames,
       profileData.arGames
     );
+    if (interaction) {
+      await updateLobbyMessage(interaction);
+    }
     await safeReply(interaction, {
       content: `${
         discordId === interaction?.user.id ? 'Your' : '<@' + discordId + ">'s"
