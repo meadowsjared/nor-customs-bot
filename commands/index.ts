@@ -150,10 +150,12 @@ export async function handleNewGameCommand(
     saveLobbyMessage(CommandIds.NEW_GAME, sentMessage.id, sentMessage.channelId, previousPlayersList);
   }
 
-  await safeReply(interaction, {
+  const sentReply = await safeReply(interaction, {
     content: 'Game announced!', // empty content to avoid sending a message in the channel, since we already announced it'
     flags: MessageFlags.Ephemeral,
   });
+  // delete sentReply
+  await sentReply?.delete();
 }
 
 /**
