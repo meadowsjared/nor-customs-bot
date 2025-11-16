@@ -60,12 +60,12 @@ async function scrapePlayerStats(browser: Browser, url: string, battleTag: strin
     noDataSelector,
   };
 
-  let qmMmr = 'None';
-  let slMmr = 'None';
-  let arMmr = 'None';
-  let slGames = 'None';
-  let qmGames = 'None';
-  let arGames = 'None';
+  let qmMmr: number | null = null;
+  let slMmr: number | null = null;
+  let arMmr: number | null = null;
+  let slGames: number | null = null;
+  let qmGames: number | null = null;
+  let arGames: number | null = null;
   let qmWins = 0;
   let qmLosses = 0;
   let slWins = 0;
@@ -129,7 +129,7 @@ async function scrapePlayerStats(browser: Browser, url: string, battleTag: strin
 
       // call the get games function
       const qmResult = await getGames(playerName, page, selectors, 'qm', playerName);
-      qmGames = qmResult.games.toString();
+      qmGames = qmResult.games;
       qmWins = qmResult.wins;
       qmLosses = qmResult.losses;
 
@@ -137,13 +137,13 @@ async function scrapePlayerStats(browser: Browser, url: string, battleTag: strin
 
       // call the get games function
       const slResults = await getGames(playerName, page, selectors, 'sl', playerName);
-      slGames = slResults.games.toString();
+      slGames = slResults.games;
       slWins = slResults.wins;
       slLosses = slResults.losses;
       console.log(`SL: ${playerName}: SL Games: ${slGames} = ${slWins} + ${slLosses}`);
 
       const arResults = await getGames(playerName, page, selectors, 'ar', playerName);
-      arGames = arResults.games.toString();
+      arGames = arResults.games;
       console.log(`AR: ${playerName}: AR Games: ${arGames} = ${arResults.wins} + ${arResults.losses}`);
 
       await page.close();
@@ -161,12 +161,12 @@ async function scrapePlayerStats(browser: Browser, url: string, battleTag: strin
         return {
           region,
           blizz_id,
-          qmMmr: qmMmr !== 'None' ? qmMmr : 'Error',
-          slMmr: slMmr !== 'None' ? slMmr : 'Error',
-          qmGames: qmGames !== 'None' ? qmGames : 'Error',
-          slGames: slGames !== 'None' ? slGames : 'Error',
-          arMmr: arMmr !== 'None' ? arMmr : 'Error',
-          arGames: arGames !== 'None' ? arGames : 'Error',
+          qmMmr,
+          slMmr,
+          arMmr,
+          qmGames: qmGames === null ? -1 : qmGames,
+          slGames: slGames === null ? -1 : slGames,
+          arGames: arGames === null ? -1 : arGames,
         };
       } else {
         console.log(`${playerName}: Retrying... (Attempt ${attempts}/${maxAttempts})`);
@@ -177,12 +177,12 @@ async function scrapePlayerStats(browser: Browser, url: string, battleTag: strin
   return {
     region,
     blizz_id,
-    qmMmr: qmMmr !== 'None' ? qmMmr : 'Error',
-    slMmr: slMmr !== 'None' ? slMmr : 'Error',
-    qmGames: qmGames !== 'None' ? qmGames : 'Error',
-    slGames: slGames !== 'None' ? slGames : 'Error',
-    arMmr: arMmr !== 'None' ? arMmr : 'Error',
-    arGames: arGames !== 'None' ? arGames : 'Error',
+    qmMmr,
+    slMmr,
+    arMmr,
+    qmGames,
+    slGames,
+    arGames,
   };
 }
 
@@ -204,7 +204,7 @@ function getRegionBlizzIDFromUrl(url: string): { region: number; blizz_id: strin
  * @param {string} rowName - The name of the row to find.
  * @returns {Promise<string>} - A promise that resolves to the MMR value as a string.
  */
-async function getMMR(page: Page, playerName: string, rowName: string): Promise<string> {
+async function getMMR(page: Page, playerName: string, rowName: string): Promise<number | null> {
   return await page.evaluate(
     ({ playerName, rowName }) => {
       try {
@@ -212,7 +212,7 @@ async function getMMR(page: Page, playerName: string, rowName: string): Promise<
         const h4Match = h4s.find(h4 => h4.textContent?.includes(rowName));
         if (!h4Match) {
           console.log(`Quick Match NOT found for ${playerName}`);
-          return '';
+          return null;
         }
         // Find the 4th sibling of the h4 element
         let sibling: Element = h4Match;
@@ -221,20 +221,20 @@ async function getMMR(page: Page, playerName: string, rowName: string): Promise<
             sibling = sibling.nextElementSibling;
           } else {
             console.log(`Sibling NOT found for ${playerName}`);
-            return '';
+            return null;
           }
         }
         const secondChild = sibling?.children?.[0]?.children?.[1];
         if (secondChild) {
           // Second child found for ${playerName}
-          return secondChild.innerHTML.replace(/,/g, '');
+          return parseInt(secondChild.innerHTML.replace(/,/g, ''));
         } else {
           console.log(`Second child NOT found for ${playerName}`);
-          return '';
+          return null;
         }
       } catch (error: any) {
         console.error(`Error waiting for ${rowName} selector:\n${error.message}`);
-        return '';
+        return null;
       }
     },
     { playerName, rowName }
@@ -325,12 +325,12 @@ export async function getHeroesProfileDataPuppeteer(battleTag: string): Promise<
       return {
         region: 0,
         blizz_id: '',
-        qmMmr: 'Error',
-        slMmr: 'Error',
-        qmGames: 'Error',
-        slGames: 'Error',
-        arMmr: 'Error',
-        arGames: 'Error',
+        qmMmr: null,
+        slMmr: null,
+        arMmr: null,
+        qmGames: -1,
+        slGames: -1,
+        arGames: -1,
       };
     }
 
