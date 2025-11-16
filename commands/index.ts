@@ -1629,12 +1629,8 @@ export async function handleEditRoleButtonCommand(
   }
   if (setActive === true && player.active === false && role !== undefined) {
     // If setActive is true, we need to set the player as active
-    announce(
-      interaction,
-      `${safePing(`<@${interaction.user.id}>`)} (${player.usernames.accounts
-        ?.find(a => a.isPrimary)
-        ?.hotsBattleTag.replace(/#.*$/, '')}) has joined the lobby as \`${getPlayerRolesFormatted(player.role)}\``
-    );
+    // update the lobby message instead of announcing
+    await updateLobbyMessage(interaction);
   }
 }
 
