@@ -1654,11 +1654,7 @@ export async function handleEditRoleButtonCommand(
       showReplaceButtons(interaction, discordId, player, role, roles, activePrefix, row2, activeSuffix);
       break;
   }
-  if (setActive === true && player.active === false && role !== undefined) {
-    // If setActive is true, we need to set the player as active
-    // update the lobby message instead of announcing
-    await updateLobbyMessage(interaction);
-  }
+  await updateLobbyMessage(interaction);
 }
 
 function showAddButtons(
