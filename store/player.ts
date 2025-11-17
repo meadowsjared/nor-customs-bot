@@ -371,12 +371,17 @@ export async function deletePlayer(
   discordId: string
 ): Promise<{ playersDeleted: number; hotsAccountsDeleted: number }> {
   // first delete the player's hots accounts
+  let deletedPlayer = 0;
+  let deletedAccounts = 0;
 
-  const deleteAccountsStmt = db.prepare('DELETE FROM hots_accounts WHERE discord_id = ?');
-  const deletedAccounts = deleteAccountsStmt.run(discordId).changes;
-  // get the number of hots accounts deleted
-  const deletePlayerStmt = db.prepare('DELETE FROM players WHERE discord_id = ?');
-  const deletedPlayer = deletePlayerStmt.run(discordId).changes;
+  const transaction = db.transaction(() => {
+    const deleteAccountsStmt = db.prepare('DELETE FROM hots_accounts WHERE discord_id = ?');
+    deletedAccounts = deleteAccountsStmt.run(discordId).changes;
+    // get the number of hots accounts deleted
+    const deletePlayerStmt = db.prepare('DELETE FROM players WHERE discord_id = ?');
+    deletedPlayer = deletePlayerStmt.run(discordId).changes;
+  });
+  transaction();
 
   return { playersDeleted: deletedPlayer, hotsAccountsDeleted: deletedAccounts };
 }
