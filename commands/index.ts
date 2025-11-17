@@ -972,9 +972,9 @@ export async function handleLeaveCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
 ) {
   const { player } = setPlayerActive(interaction.user.id, false); // Mark player as inactive in the database
+  await updateLobbyMessage(interaction);
   if (player) {
     // Update the lobby message instead of announcing
-    await updateLobbyMessage(interaction);
     await safeReply(interaction, {
       content: `You left the lobby`,
       flags: MessageFlags.Ephemeral,
