@@ -316,6 +316,9 @@ async function handleDefaultCommand(
       case CommandIds.ADD_ACCOUNT:
         handleAdminAddHotsAccountButton(interaction, parts[1]);
         return;
+      case CommandIds.JOIN_WITH_BATTLE_TAG:
+        handleJoinCommand(interaction, parts[1]);
+        return;
     }
   }
   if (parts.length === 3 && parts[0] === CommandIds.ROLE_ADMIN) {

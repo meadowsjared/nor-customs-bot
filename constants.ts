@@ -33,6 +33,7 @@ export const enum CommandIds {
   GUIDE = 'guide',
   JOIN = 'join',
   REJOIN = 'rejoin',
+  JOIN_WITH_BATTLE_TAG = 'join-with-battle-tag',
   BATTLE_TAG = 'battle-tag',
   ADD_ACCOUNT = 'add-account',
   PRIMARY = 'primary',

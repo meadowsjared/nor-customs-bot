@@ -317,6 +317,12 @@ export async function handleAddHotsAccount(
       discordId,
       hotsBattleTag
     );
+    if (profileData.qmGames === -1 && profileData.slGames === -1 && profileData.arGames === -1) {
+      interaction?.editReply({
+        content: `No battletag found for \`${hotsBattleTag}\`. Please check the battle tag and try again.`,
+      });
+      return false;
+    }
     await interaction?.editReply({
       content: `${userIsSelf ? 'You' : '<@' + discordId + '>'} already ${
         userIsSelf ? 'have' : 'has'
@@ -347,6 +353,22 @@ export async function handleAddHotsAccount(
     if (interaction) {
       await updateLobbyMessage(interaction);
     }
+    if (profileData.qmGames === -1 && profileData.slGames === -1 && profileData.arGames === -1) {
+      deletePlayerHotsAccounts(discordId);
+      const joinBtn = new ButtonBuilder()
+        .setCustomId(`${CommandIds.JOIN_WITH_BATTLE_TAG}_${hotsBattleTag}`)
+        .setLabel('Try Again')
+        .setStyle(ButtonStyle.Primary);
+      await safeReply(interaction, {
+        content: `heroesprofile could not find data for \`${hotsBattleTag}\`\nare you sure this is the right battle tag for ${
+          discordId === interaction?.user.id ? 'your' : '<@' + discordId + ">'s"
+        } account?`,
+        flags: MessageFlags.Ephemeral,
+        components: [new ActionRowBuilder<ButtonBuilder>().addComponents(joinBtn)],
+      });
+
+      return false;
+    }
     await safeReply(interaction, {
       content: `${
         discordId === interaction?.user.id ? 'Your' : '<@' + discordId + ">'s"
@@ -375,8 +397,7 @@ export async function deletePlayer(
   let deletedAccounts = 0;
 
   const transaction = db.transaction(() => {
-    const deleteAccountsStmt = db.prepare('DELETE FROM hots_accounts WHERE discord_id = ?');
-    deletedAccounts = deleteAccountsStmt.run(discordId).changes;
+    deletedAccounts = deletePlayerHotsAccounts(discordId);
     // get the number of hots accounts deleted
     const deletePlayerStmt = db.prepare('DELETE FROM players WHERE discord_id = ?');
     deletedPlayer = deletePlayerStmt.run(discordId).changes;
@@ -384,6 +405,12 @@ export async function deletePlayer(
   transaction();
 
   return { playersDeleted: deletedPlayer, hotsAccountsDeleted: deletedAccounts };
+}
+
+export function deletePlayerHotsAccounts(discordId: string): number {
+  const stmt = db.prepare('DELETE FROM hots_accounts WHERE discord_id = ?');
+  const result = stmt.run(discordId);
+  return result.changes;
 }
 
 export async function setPrimaryAccount(

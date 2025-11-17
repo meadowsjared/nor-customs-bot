@@ -1003,13 +1003,14 @@ export async function handleClearCommand(
  */
 export async function handleRejoinCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
-  newUser = false
+  newUser = false,
+  pBattleTag?: string
 ) {
   // first check it the user has a hotsBattleTag in the database
   const existingPlayer = getPlayerByDiscordId(interaction.user.id);
   if (!existingPlayer?.usernames.accounts?.find(a => a.isPrimary)) {
     // if they don't have a hotsBattleTag, show the modal to collect it
-    await showJoinModal(interaction);
+    await showJoinModal(interaction, pBattleTag);
     return;
   }
   const { player, updated } = setPlayerActive(interaction.user.id, true); // Mark player as active in the database
@@ -1044,32 +1045,44 @@ export async function handleRejoinCommand(
  * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
  * @returns { Promise<void> }
  */
-async function showJoinModal(
-  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+export async function showJoinModal(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+  pBattleTag?: string
 ): Promise<void> {
-  const { hotsBattleTag, modalInteraction } = await handleUserNameModalSubmit(interaction);
+  const { hotsBattleTag, modalInteraction } = await handleUserNameModalSubmit(interaction, undefined, pBattleTag);
   if (!modalInteraction || !hotsBattleTag) {
     // If modal interaction is undefined, it means the user did not respond in time
     console.log('error: User did not respond to the modal in time');
     return;
   }
-  const discordData = fetchDiscordNames(modalInteraction);
-  savePlayer(
-    interaction,
-    modalInteraction.user.id,
-    {
-      discordId: modalInteraction.user.id,
-      usernames: { ...discordData },
-      role: CommandIds.ROLE_FLEX, // Default role is Flex
-      active: false,
-      team: undefined,
-      draftRank: NaN,
-      mmr: 0,
-      lastActive: new Date(),
-    },
-    hotsBattleTag
-  ); // Save player data to the database with default role Flex
-  await handleEditRoleCommand(modalInteraction, true, hotsBattleTag); // Show the edit role buttons
+  if (pBattleTag === undefined) {
+    const discordData = fetchDiscordNames(modalInteraction);
+    savePlayer(
+      interaction,
+      modalInteraction.user.id,
+      {
+        discordId: modalInteraction.user.id,
+        usernames: { ...discordData },
+        role: CommandIds.ROLE_FLEX, // Default role is Flex
+        active: false,
+        team: undefined,
+        draftRank: NaN,
+        mmr: 0,
+        lastActive: new Date(),
+      },
+      hotsBattleTag
+    ); // Save player data to the database with default role Flex
+  }
+  if (pBattleTag === undefined) {
+    await handleEditRoleCommand(modalInteraction, true, hotsBattleTag); // Show the edit role buttons
+  } else {
+    const reply = await safeReply(modalInteraction, {
+      content: `Looking up \`${hotsBattleTag}\` please wait...`,
+      flags: MessageFlags.Ephemeral,
+    });
+    await reply?.delete();
+    await handleAddHotsAccount(modalInteraction, modalInteraction.user.id, hotsBattleTag);
+  }
 }
 
 export async function handleLookupByDiscordIdCommand(
@@ -1268,10 +1281,11 @@ export async function handleAdminAddHotsAccountButton(interaction: ButtonInterac
  * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
  */
 export async function handleJoinCommand(
-  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+  pBattleTag?: string
 ) {
   if (interaction.isButton()) {
-    await handleRejoinCommand(interaction, true);
+    await handleRejoinCommand(interaction, true, pBattleTag);
     return; // If it's a button interaction, we handle rejoin directly
   }
   const role = interaction.options.getString(CommandIds.ROLE, true);
@@ -1508,7 +1522,8 @@ async function handleAddHotsAccountCommandSub(
  */
 async function handleUserNameModalSubmit(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
-  discordId?: string
+  discordId?: string,
+  pBattleTag?: string
 ): Promise<{
   hotsBattleTag: string | undefined;
   modalInteraction: ModalSubmitInteraction<CacheType> | undefined;
@@ -1523,7 +1538,8 @@ async function handleUserNameModalSubmit(
     .setRequired(true)
     .setPlaceholder('Your Heroes of the Storm battle tag')
     .setValue(
-      previousPlayer?.usernames.accounts?.find(a => a.isPrimary)?.hotsBattleTag ??
+      pBattleTag ??
+        previousPlayer?.usernames.accounts?.find(a => a.isPrimary)?.hotsBattleTag ??
         previousPlayer?.usernames.accounts?.[0]?.hotsBattleTag ??
         interaction.user.displayName ??
         ''
