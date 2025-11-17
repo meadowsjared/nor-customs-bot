@@ -413,6 +413,12 @@ export function deletePlayerHotsAccounts(discordId: string): number {
   return result.changes;
 }
 
+export function deleteHotsAccount(hotsBattleTag: string) {
+  const stmt = db.prepare('DELETE FROM hots_accounts WHERE hots_battle_tag = ?');
+  const result = stmt.run(hotsBattleTag);
+  return result.changes;
+}
+
 export async function setPrimaryAccount(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
   discordId: string,

@@ -269,6 +269,19 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     ],
   },
   {
+    name: CommandIds.DELETE_HOTS_ACCOUNT,
+    description: "Delete a player's Heroes of the Storm account",
+    defaultMemberPermissions: minimumAdminPermissions,
+    options: [
+      {
+        name: CommandIds.BATTLE_TAG,
+        type: ApplicationCommandOptionType.String,
+        description: 'The battle tag of the account to delete (including the # and number).',
+        required: true,
+      },
+    ],
+  },
+  {
     name: CommandIds.ADMIN,
     description: 'Admin commands to manage players.',
     defaultMemberPermissions: minimumAdminPermissions,

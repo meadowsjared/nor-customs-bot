@@ -50,6 +50,7 @@ import {
   changeTeams,
   getStoredInteraction,
   deletePlayer,
+  deleteHotsAccount,
 } from '../store/player';
 import {
   saveChannel,
@@ -1209,6 +1210,22 @@ export async function handleDeletePlayerCommand(
     content: `Deleted ${playersDeleted} player${
       playersDeleted === 1 ? '' : 's'
     } and ${hotsAccountsDeleted} HotS account${hotsAccountsDeleted === 1 ? '' : 's'} for Discord ID: <@${discordId}>.`,
+    flags: MessageFlags.Ephemeral,
+  });
+}
+
+export async function handleDeleteHotsAccountCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+) {
+  if (interaction.isButton()) {
+    console.error('Interaction is not a command or button interaction');
+    return;
+  }
+  const hotsBattleTag = interaction.options.getString(CommandIds.BATTLE_TAG, true);
+  console.log('hotsBattleTag:', hotsBattleTag);
+  deleteHotsAccount(hotsBattleTag);
+  await safeReply(interaction, {
+    content: `Deleted HotS account: \`${hotsBattleTag}\`.`,
     flags: MessageFlags.Ephemeral,
   });
 }
