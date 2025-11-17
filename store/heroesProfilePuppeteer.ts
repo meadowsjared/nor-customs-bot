@@ -78,6 +78,21 @@ async function scrapePlayerStats(browser: Browser, url: string, battleTag: strin
     try {
       attempts++;
       await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 }); // Wait until network is idle
+      const errorSelector = '#app > div:nth-child(8) > div > div > div:nth-child(2)';
+      const errorMessage = await page.$eval(errorSelector, el => el.textContent).catch(() => null);
+      if (errorMessage?.startsWith('No battletag found for ')) {
+        console.error(`No battletag found for ${battleTag}`);
+        return {
+          region: 0,
+          blizz_id: '',
+          qmMmr: null,
+          slMmr: null,
+          arMmr: null,
+          qmGames: -1,
+          slGames: -1,
+          arGames: -1,
+        };
+      }
       // wait for the page to load
       await page.waitForSelector('h2', { timeout: 10000 });
       // get the current URL after any redirects
