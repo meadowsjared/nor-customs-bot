@@ -1289,7 +1289,7 @@ export async function handleJoinCommand(
   };
   await savePlayer(interaction, interaction.user.id, newPlayer, hotsBattleTag); // Save player data to the database
   // announce in the channel who has joined
-  await handleUserJoined(interaction, hotsBattleTag, role);
+  await handleUserJoined(interaction);
 }
 
 /**
@@ -1299,23 +1299,11 @@ export async function handleJoinCommand(
  * @param role The role of the user who joined, based on the roleMap keys.
  * @param skipReply (optional) Whether to skip the reply and just follow up with the components.
  */
-async function handleUserJoined(
-  interaction: chatOrButtonOrModal,
-  hotsBattleTag: string,
-  role: string,
-  skipReply = false
-) {
+async function handleUserJoined(interaction: chatOrButtonOrModal) {
   // Update the lobby message instead of announcing
   await updateLobbyMessage(interaction);
 
   const components = [new ActionRowBuilder<ButtonBuilder>().addComponents(leaveBtn, addAccountBtn, roleBtn)];
-  if (skipReply) {
-    await interaction.followUp({
-      components,
-      flags: MessageFlags.Ephemeral,
-    });
-    return;
-  }
   await safeReply(interaction, {
     components,
     flags: MessageFlags.Ephemeral,
