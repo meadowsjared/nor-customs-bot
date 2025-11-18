@@ -1053,7 +1053,6 @@ export async function showJoinModal(
   const { hotsBattleTag, modalInteraction } = await handleUserNameModalSubmit(interaction, undefined, pBattleTag);
   if (!modalInteraction || !hotsBattleTag) {
     // If modal interaction is undefined, it means the user did not respond in time
-    console.log('error: User did not respond to the modal in time');
     return;
   }
   if (pBattleTag === undefined) {
@@ -1222,7 +1221,6 @@ export async function handleDeleteHotsAccountCommand(
     return;
   }
   const hotsBattleTag = interaction.options.getString(CommandIds.BATTLE_TAG, true);
-  console.log('hotsBattleTag:', hotsBattleTag);
   deleteHotsAccount(hotsBattleTag);
   await safeReply(interaction, {
     content: `Deleted HotS account: \`${hotsBattleTag}\`.`,
@@ -1436,7 +1434,6 @@ export async function handleAdminPrimaryCommand(
     if (!battleTagParam && battleTag) {
       if (!player.usernames.accounts.some(account => account.hotsBattleTag === battleTag)) {
         // set that account as primary
-        console.log('Setting primary account directly to', battleTag);
         await safeReply(interaction, {
           content: `The specified battle tag \`${battleTag}\` is not associated with the user <@${discordId}>.`,
           flags: MessageFlags.Ephemeral,
@@ -1857,7 +1854,6 @@ export async function handleMoveCommand(interaction: ChatInputCommandInteraction
       await memberToMove.voice.setChannel(channel);
     } catch (error) {
       console.error('Error moving member:', error);
-      console.log('resuming...');
       await safeReply(interaction, {
         content: `Failed to move <@${member.user.id}> to <@${channel.id}>`,
         flags: MessageFlags.Ephemeral,
