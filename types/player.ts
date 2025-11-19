@@ -88,7 +88,7 @@ export interface Player {
    * The role of the player in the game
    * T = Tank, A = Assassin, B = Bruiser, H = Healer, F = Flex
    */
-  role: string;
+  role?: string;
   /**
    * Whether the player is currently active in the lobby
    */

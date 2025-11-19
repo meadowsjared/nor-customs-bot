@@ -1063,7 +1063,6 @@ export async function showJoinModal(
       {
         discordId: modalInteraction.user.id,
         usernames: { ...discordData },
-        role: CommandIds.ROLE_FLEX, // Default role is Flex
         active: false,
         team: undefined,
         draftRank: NaN,
@@ -1162,7 +1161,6 @@ async function handleLookupCommandSub(
         usernames: {
           ...discordData,
         },
-        role: CommandIds.ROLE_FLEX, // Default role is Flex
         active: false,
         team: undefined,
         draftRank: NaN,
@@ -1710,9 +1708,9 @@ function showAddButtons(
   row2: ActionRowBuilder<ButtonBuilder>,
   activeSuffix: string
 ) {
-  if (role && !player.role.includes(role)) {
+  if (role && !player.role?.includes(role)) {
     // If the role is specified and does not exist in the player's roles, add it
-    const newRoles = player.role + role; // Append the new role
+    const newRoles = (player.role ?? '') + role; // Append the new role
     setPlayerRole(discordId, newRoles); // Update the player's role in the database
     roles = ', current role: ' + getPlayerRolesFormatted(newRoles);
   }
@@ -1740,9 +1738,9 @@ function showRemoveButtons(
   row2: ActionRowBuilder<ButtonBuilder>,
   activeSuffix: string
 ) {
-  if (role && player.role.includes(role)) {
+  if (role && player.role?.includes(role)) {
     // If the role is specified and exists in the player's roles, remove it
-    const newRoles = player.role
+    const newRoles = (player.role ?? '')
       .split('')
       .filter(r => r !== role)
       .join('');
@@ -1796,7 +1794,10 @@ function showReplaceButtons(
  * @param player The player object to get the roles from.
  * @returns A string of the player's roles, formatted as a list.
  */
-function getPlayerRolesFormatted(role: string): string {
+function getPlayerRolesFormatted(role?: string): string {
+  if (!role) {
+    return '';
+  }
   return role
     .split('')
     .map(r => roleMap[r])
