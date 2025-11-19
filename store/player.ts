@@ -318,9 +318,7 @@ export async function handleAddHotsAccount(
       hotsBattleTag
     );
     if (profileData.qmGames === -1 && profileData.slGames === -1 && profileData.arGames === -1) {
-      interaction?.editReply({
-        content: `No battletag found for \`${hotsBattleTag}\`. Please check the battle tag and try again.`,
-      });
+      await handleAccountNotFound(interaction, discordId, hotsBattleTag);
       return false;
     }
     await interaction?.editReply({
@@ -354,19 +352,7 @@ export async function handleAddHotsAccount(
       await updateLobbyMessage(interaction);
     }
     if (profileData.qmGames === -1 && profileData.slGames === -1 && profileData.arGames === -1) {
-      deletePlayerHotsAccounts(discordId);
-      const joinBtn = new ButtonBuilder()
-        .setCustomId(`${CommandIds.JOIN_WITH_BATTLE_TAG}_${hotsBattleTag}`)
-        .setLabel('Try Again')
-        .setStyle(ButtonStyle.Primary);
-      await safeReply(interaction, {
-        content: `heroesprofile could not find data for \`${hotsBattleTag}\`\nare you sure this is the right battle tag for ${
-          discordId === interaction?.user.id ? 'your' : '<@' + discordId + ">'s"
-        } account?`,
-        flags: MessageFlags.Ephemeral,
-        components: [new ActionRowBuilder<ButtonBuilder>().addComponents(joinBtn)],
-      });
-
+      await handleAccountNotFound(interaction, discordId, hotsBattleTag);
       return false;
     }
     await safeReply(interaction, {
@@ -387,6 +373,29 @@ export async function handleAddHotsAccount(
     return false;
   }
   return player;
+}
+
+async function handleAccountNotFound(
+  interaction:
+    | ChatInputCommandInteraction<CacheType>
+    | ButtonInteraction<CacheType>
+    | ModalSubmitInteraction<CacheType>
+    | undefined,
+  discordId: string,
+  hotsBattleTag: string
+) {
+  deletePlayerHotsAccounts(discordId);
+  const joinBtn = new ButtonBuilder()
+    .setCustomId(`${CommandIds.JOIN_WITH_BATTLE_TAG}_${hotsBattleTag}`)
+    .setLabel('Try Again')
+    .setStyle(ButtonStyle.Primary);
+  await safeReply(interaction, {
+    content: `heroesprofile could not find data for \`${hotsBattleTag}\`\nare you sure this is the right battle tag for ${
+      discordId === interaction?.user.id ? 'your' : '<@' + discordId + ">'s"
+    } account?`,
+    flags: MessageFlags.Ephemeral,
+    components: [new ActionRowBuilder<ButtonBuilder>().addComponents(joinBtn)],
+  });
 }
 
 export async function deletePlayer(
