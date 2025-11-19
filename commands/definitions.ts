@@ -282,6 +282,11 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     ],
   },
   {
+    name: 'refresh_lobby',
+    description: 'Refresh the lobby announcement message',
+    defaultMemberPermissions: minimumAdminPermissions,
+  },
+  {
     name: CommandIds.ADMIN,
     description: 'Admin commands to manage players.',
     defaultMemberPermissions: minimumAdminPermissions,

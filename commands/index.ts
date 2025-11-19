@@ -1226,6 +1226,17 @@ export async function handleDeleteHotsAccountCommand(
   });
 }
 
+export async function handleRefreshLobbyMessage(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+) {
+  await updateLobbyMessage(interaction);
+  const reply = await safeReply(interaction, {
+    content: 'Lobby messages refreshed.',
+    flags: MessageFlags.Ephemeral,
+  });
+  await reply?.delete();
+}
+
 /**
  * Handles the edit role command interaction, shows buttons to edit the user's role
  * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.

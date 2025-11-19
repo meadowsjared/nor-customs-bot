@@ -50,6 +50,7 @@ import {
   handleListReplaysCommand,
   handleDeletePlayerCommand,
   handleDeleteHotsAccountCommand,
+  handleRefreshLobbyMessage,
 } from './commands';
 import { slashCommands } from './commands/definitions';
 
@@ -229,6 +230,9 @@ client.on('interactionCreate', async interaction => {
     case CommandIds.DELETE_HOTS_ACCOUNT:
       // Handle delete HotS account command
       handleDeleteHotsAccountCommand(interaction);
+      break;
+    case 'refresh_lobby':
+      handleRefreshLobbyMessage(interaction);
       break;
     case CommandIds.MOVE:
       // Handle move command
