@@ -1071,8 +1071,6 @@ export async function showJoinModal(
       },
       hotsBattleTag
     ); // Save player data to the database with default role Flex
-  }
-  if (pBattleTag === undefined) {
     await handleEditRoleCommand(modalInteraction, true, hotsBattleTag); // Show the edit role buttons
   } else {
     const reply = await safeReply(modalInteraction, {
