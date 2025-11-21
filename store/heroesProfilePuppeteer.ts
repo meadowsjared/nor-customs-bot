@@ -11,14 +11,14 @@ const origError = console.error;
 console.log = (...args: any[]) => {
   const msg = args.map(a => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ');
   origLog(...args);
-  appendFileSync('latest.log', msg + '\n');
+  appendFileSync('out.log', msg + '\n');
 };
 
 // Override console.error
 console.error = (...args: any[]) => {
   const msg = args.map(a => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ');
   origError(...args);
-  appendFileSync('latest.log', '[ERROR] ' + msg + '\n');
+  appendFileSync('out.log', '[ERROR] ' + msg + '\n');
 };
 
 async function scrapePlayerStats(browser: Browser, url: string, battleTag: string): Promise<HPData> {

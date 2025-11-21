@@ -7,7 +7,7 @@ sqlite3_analyzer.exe
 sqlite3_rsync.exe
 sqldiff.exe
 dist/**
-log.latest
+out.log
+logs/
 .pid
 /screenshots
-latest.log
