@@ -1027,10 +1027,8 @@ export async function handleRejoinCommand(
   }
   const { player, updated } = setPlayerActive(interaction.user.id, true); // Mark player as active in the database
   if (player) {
-    if (updated === true) {
-      // Update the lobby message instead of announcing
-      await updateLobbyMessage(interaction);
-    }
+    // always update the lobby message instead of announcing
+    await updateLobbyMessage(interaction);
     const joinVerb = newUser ? 'joined' : 'rejoined';
     const content =
       (updated === false ? `You are already in` : `You have ${joinVerb}`) +
