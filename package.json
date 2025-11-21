@@ -11,7 +11,7 @@
     "import:csv": "bun tsx utils/csvImport.ts import-csv",
     "csv:help": "bun tsx utils/csvImport.ts --help",
     "start": "bash -c 'mkdir -p logs; if [ -f out.log ]; then ampm=$(date +%p | tr A-Z a-z); mv out.log \"logs/out-$(date +%Y-%m-%d-%I.%M.%S) ${ampm}.log\"; fi; printf \"starting \"; version=\"nor-customs bot v$(node -p \"require('\"'\"'./package.json'\"'\"').version\")\"; printf \"%s\\n\" \"${version}\"; (printf \"%s\\n\" \"${version}\n\"; nohup bun dev) > out.log 2>/dev/null & echo $! > .pid'",
-    "stop": "bash -c 'printf \"current version:\n\"; printf \"nor-customs bot v$(node -p \"require('\"'\"'./package.json'\"'\"').version\")\n\";printf \"\nout.log:\n\"; cat out.log && printf \"\n\" && if [ -f .pid ]; then kill $(cat .pid) && rm .pid; fi; taskkill /F /IM bun.exe || pkill -f \"bun\"'",
+    "stop": "bash -c 'printf \"current version:\n\"; printf \"nor-customs bot v$(node -p \"require('\"'\"'./package.json'\"'\"').version\")\n\";printf \"\nout.log:\n\"; cat out.log && printf \"\n\" && if [ -f .pid ]; then kill $(cat .pid) && rm .pid; fi; if command -v taskkill >/dev/null 2>&1; then taskkill /F /IM bun.exe; else pkill -f \"bun\"; fi'",
     "status": "bash -c 'printf \"current version:\n\"; printf \"nor-customs bot v$(node -p \"require('\"'\"'./package.json'\"'\"').version\")\n\";printf \"\nout.log:\n\"; cat out.log && printf \"\n\" && if [ -f .pid ] && ps -p $(cat .pid) > /dev/null 2>&1; then printf \"Bot is running (PID: $(cat .pid))\n\"; else printf \"Bot is not running\n\"; fi'",
     "logs": "tail -f out.log",
     "logs:all": "less +F out.log",
