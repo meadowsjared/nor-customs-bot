@@ -1556,19 +1556,22 @@ async function handleUserNameModalSubmit(
   const previousPlayer = getPlayerByDiscordId(discordId ?? interaction.user.id);
 
   // create a modal with a text field to collect the battle tag
+  let suggestedBattleTag =
+    pBattleTag ??
+    previousPlayer?.usernames.accounts?.find(a => a.isPrimary)?.hotsBattleTag ??
+    previousPlayer?.usernames.accounts?.[0]?.hotsBattleTag ??
+    interaction.user.displayName ??
+    '';
+  if (!suggestedBattleTag.includes('#')) {
+    suggestedBattleTag += '#';
+  }
   const battleTagInput = new TextInputBuilder()
     .setCustomId(CommandIds.BATTLE_TAG)
     .setLabel('Battle Tag (e.g. Name#1234)')
     .setStyle(TextInputStyle.Short)
     .setRequired(true)
     .setPlaceholder('Your Heroes of the Storm battle tag')
-    .setValue(
-      (pBattleTag ??
-        previousPlayer?.usernames.accounts?.find(a => a.isPrimary)?.hotsBattleTag ??
-        previousPlayer?.usernames.accounts?.[0]?.hotsBattleTag ??
-        interaction.user.displayName ??
-        '') + '#'
-    ); // Use previous battle tag if available
+    .setValue(suggestedBattleTag); // Use previous battle tag if available
   // Add the input to an action row
   const actionRow = new ActionRowBuilder<TextInputBuilder>().addComponents(battleTagInput);
 
