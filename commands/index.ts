@@ -209,7 +209,11 @@ export async function safeReply(
     return await interaction.followUp(options);
   } else {
     try {
-      return await interaction.reply(options);
+      if (interaction.isRepliable()) {
+        return await interaction.reply(options);
+      } else {
+        console.error('Interaction is not repliable');
+      }
     } catch (error) {
       console.error('Error replying to interaction, attempting followUp:', error);
     }
