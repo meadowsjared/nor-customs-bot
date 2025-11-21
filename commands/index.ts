@@ -1059,8 +1059,11 @@ export async function showJoinModal(
     // If modal interaction is undefined, it means the user did not respond in time
     return;
   }
-  if (pBattleTag === undefined) {
-    const discordData = fetchDiscordNames(modalInteraction);
+  let roleSelectMenuDisplayed = false;
+  let hpCalled = false;
+  const discordData = fetchDiscordNames(modalInteraction);
+  const player = getPlayerByDiscordId(modalInteraction.user.id);
+  if (!player) {
     savePlayer(
       interaction,
       modalInteraction.user.id,
@@ -1075,13 +1078,24 @@ export async function showJoinModal(
       },
       hotsBattleTag
     ); // Save player data to the database with default role Flex
+    hpCalled = true;
+  }
+  if (!player?.role) {
+    // only show the edit role buttons if the player doesn't have a role yet
     await handleEditRoleCommand(modalInteraction, true, hotsBattleTag); // Show the edit role buttons
-  } else {
+    roleSelectMenuDisplayed = true;
+  }
+  if (!roleSelectMenuDisplayed) {
+    setPlayerActive(modalInteraction.user.id, true, hotsBattleTag);
+    await updateLobbyMessage(modalInteraction);
     const reply = await safeReply(modalInteraction, {
       content: `Looking up \`${hotsBattleTag}\` please wait...`,
       flags: MessageFlags.Ephemeral,
     });
+    await new Promise(resolve => setTimeout(resolve, 8000));
     await reply?.delete();
+  }
+  if (!hpCalled && !player?.usernames.accounts?.find(a => a.hotsBattleTag === hotsBattleTag)) {
     await handleAddHotsAccount(modalInteraction, modalInteraction.user.id, hotsBattleTag);
   }
 }
@@ -1204,6 +1218,7 @@ export async function handleDeletePlayerCommand(
   }
   const discordId = member.user.id;
   const { playersDeleted, hotsAccountsDeleted } = await deletePlayer(discordId);
+  await updateLobbyMessage(interaction);
   // reply with the number of players and accounts deleted
   await safeReply(interaction, {
     content: `Deleted ${playersDeleted} player${
@@ -1812,7 +1827,7 @@ function showReplaceButtons(
  */
 function getPlayerRolesFormatted(role?: string): string {
   if (!role) {
-    return '';
+    return 'role not set';
   }
   return role
     .split('')

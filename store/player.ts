@@ -224,6 +224,9 @@ export async function handleAddHotsAccount(
   discordId: string,
   hotsBattleTag: string
 ): Promise<false | Player> {
+  let hotsAccountAlreadyExists = false;
+  let hasAccount = false;
+  let userIsSelf = false;
   const battleTagRegex = /^.+#\d+$/;
   if (!battleTagRegex.test(hotsBattleTag)) {
     await safeReply(interaction, {
@@ -286,11 +289,14 @@ export async function handleAddHotsAccount(
   }
 
   // check if the player already has this hots account
-  const hasAccount = player.usernames.accounts?.some(
-    account => account.hotsBattleTag.toLowerCase() === hotsBattleTag.toLowerCase()
-  );
+  hasAccount =
+    player.usernames.accounts?.some(
+      account =>
+        account.hotsBattleTag.toLowerCase() === hotsBattleTag.toLowerCase() &&
+        ((account.hpQmGames ?? -1) > -1 || (account.hpSlGames ?? -1) > -1 || (account.hpArGames ?? -1) > -1)
+    ) ?? false;
   if (hasAccount) {
-    const userIsSelf = discordId === interaction?.user.id;
+    userIsSelf = discordId === interaction?.user.id;
     //update their heroes profile data anyway
     const updateProfileStmt = db.prepare(
       `UPDATE hots_accounts SET
@@ -321,15 +327,7 @@ export async function handleAddHotsAccount(
       await handleAccountNotFound(interaction, discordId, hotsBattleTag);
       return false;
     }
-    await interaction?.editReply({
-      content: `${userIsSelf ? 'You' : '<@' + discordId + '>'} already ${
-        userIsSelf ? 'have' : 'has'
-      } this HotS account linked: \`${
-        player.usernames.accounts?.find(account => account.hotsBattleTag.toLowerCase() === hotsBattleTag.toLowerCase())
-          ?.hotsBattleTag
-      }\`\n\nHowever, ${userIsSelf ? 'your' : '<@' + discordId + '>' + "'s"} Heroes profile data has been updated.`,
-    });
-    return false;
+    hotsAccountAlreadyExists = true;
   }
   try {
     const hotsAccountStmt = db.prepare(
@@ -338,7 +336,7 @@ export async function handleAddHotsAccount(
     hotsAccountStmt.run(
       discordId,
       hotsBattleTag,
-      player.usernames.accounts && player.usernames.accounts.length === 0 ? 1 : 0,
+      player.usernames.accounts && player.usernames.accounts.length <= 1 ? 1 : 0,
       profileData.region,
       profileData.blizz_id,
       profileData.qmMmr,
@@ -348,19 +346,38 @@ export async function handleAddHotsAccount(
       profileData.slGames,
       profileData.arGames
     );
-    if (interaction) {
-      await updateLobbyMessage(interaction);
-    }
     if (profileData.qmGames === -1 && profileData.slGames === -1 && profileData.arGames === -1) {
       await handleAccountNotFound(interaction, discordId, hotsBattleTag);
       return false;
     }
-    await safeReply(interaction, {
-      content: `${
-        discordId === interaction?.user.id ? 'Your' : '<@' + discordId + ">'s"
-      } HotS account has been added: \`${hotsBattleTag}\``,
-      flags: MessageFlags.Ephemeral,
-    });
+    if (interaction) {
+      await updateLobbyMessage(interaction);
+    }
+    if (hotsAccountAlreadyExists) {
+      const content = `${userIsSelf ? 'You' : '<@' + discordId + '>'} already ${
+        userIsSelf ? 'have' : 'has'
+      } this HotS account linked: \`${
+        player.usernames.accounts?.find(account => account.hotsBattleTag.toLowerCase() === hotsBattleTag.toLowerCase())
+          ?.hotsBattleTag
+      }\`\n\nHowever, ${userIsSelf ? 'your' : '<@' + discordId + '>' + "'s"} Heroes profile data has been updated.`;
+      try {
+        await interaction?.editReply({
+          content,
+        });
+      } catch (error) {
+        await safeReply(interaction, {
+          content,
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+    } else {
+      await safeReply(interaction, {
+        content: `${
+          discordId === interaction?.user.id ? 'Your' : '<@' + discordId + ">'s"
+        } HotS account has been added: \`${hotsBattleTag}\``,
+        flags: MessageFlags.Ephemeral,
+      });
+    }
   } catch (error) {
     console.error('Error adding HotS account:', error);
     await safeReply(interaction, {
@@ -385,6 +402,7 @@ async function handleAccountNotFound(
   hotsBattleTag: string
 ) {
   deletePlayerHotsAccounts(discordId);
+  interaction && (await updateLobbyMessage(interaction));
   const joinBtn = new ButtonBuilder()
     .setCustomId(`${CommandIds.JOIN_WITH_BATTLE_TAG}_${hotsBattleTag}`)
     .setLabel('Try Again')
@@ -675,15 +693,15 @@ export function setPlayerActive(
     return { updated: false, player }; // Player not found
   }
   if (player.active === active) {
+    if (player.usernames.accounts?.length === 0 && hotsBattleTag) {
+      addDummyHotsAccount(discordId, hotsBattleTag);
+    }
     return { updated: false, player }; // No change needed
   }
   // create a transaction to update the player and add the hots account if needed
   const transaction = db.transaction(() => {
-    if (player.usernames.accounts?.length === 0 && hotsBattleTag) {
-      const hotsAccountStmt = db.prepare(
-        'REPLACE INTO hots_accounts (discord_id, hots_battle_tag, is_primary) VALUES (?, ?, ?)'
-      );
-      hotsAccountStmt.run(discordId, hotsBattleTag, 1);
+    if (player.usernames.accounts?.length === 0 && hotsBattleTag && active) {
+      addDummyHotsAccount(discordId, hotsBattleTag);
     }
     const stmt = db.prepare(
       `UPDATE players SET active = ?${active ? ', last_active = CURRENT_TIMESTAMP' : ''} WHERE discord_id = ?`
@@ -693,6 +711,13 @@ export function setPlayerActive(
   transaction();
   player.active = active;
   return { updated: true, player };
+}
+
+function addDummyHotsAccount(discordId: string, hotsBattleTag: string) {
+  const hotsAccountStmt = db.prepare(
+    'REPLACE INTO hots_accounts (discord_id, hots_battle_tag, is_primary) VALUES (?, ?, ?)'
+  );
+  hotsAccountStmt.run(discordId, hotsBattleTag, 1);
 }
 
 /**
