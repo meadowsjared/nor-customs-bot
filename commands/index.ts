@@ -940,10 +940,13 @@ export async function handlePlayersCommand(
             ?.find(a => a.isPrimary)
             ?.hotsBattleTag.replace(/#.*$/, '')}) \`${getPlayerRolesFormatted(role)}\``;
         }
-        const user = interaction.guild?.members.cache.get(discordId)?.displayName;
-        return `@${user}: (${usernames.accounts
-          ?.find(a => a.isPrimary)
-          ?.hotsBattleTag.replace(/#.*$/, '')}) \`${getPlayerRolesFormatted(role)}\``;
+        const user = interaction.guild?.members.cache.get(discordId);
+        return onlyRaw
+          ? `<@${discordId}>`
+          : `@${user?.displayName}` +
+              `: (${usernames.accounts
+                ?.find(a => a.isPrimary)
+                ?.hotsBattleTag.replace(/#.*$/, '')}) \`${getPlayerRolesFormatted(role)}\``;
       })
       .join('\n') || 'No players in the lobby';
   const rawPlayerList = Object.values(players)
