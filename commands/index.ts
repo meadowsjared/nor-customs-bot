@@ -1559,11 +1559,11 @@ async function handleUserNameModalSubmit(
     .setRequired(true)
     .setPlaceholder('Your Heroes of the Storm battle tag')
     .setValue(
-      pBattleTag ??
+      (pBattleTag ??
         previousPlayer?.usernames.accounts?.find(a => a.isPrimary)?.hotsBattleTag ??
         previousPlayer?.usernames.accounts?.[0]?.hotsBattleTag ??
         interaction.user.displayName ??
-        ''
+        '') + '#'
     ); // Use previous battle tag if available
   // Add the input to an action row
   const actionRow = new ActionRowBuilder<TextInputBuilder>().addComponents(battleTagInput);
