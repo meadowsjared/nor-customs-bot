@@ -215,7 +215,7 @@ export async function safeReply(
         console.error('Interaction is not repliable');
       }
     } catch (error) {
-      console.error('Error replying to interaction, attempting followUp:', error);
+      return await interaction.followUp(options);
     }
   }
 }
