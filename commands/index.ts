@@ -956,7 +956,7 @@ export async function handlePlayersCommand(
         `${usernames.accounts?.find(a => a.isPrimary)?.hotsBattleTag.replace(/#.*$/, '')} ${role}`
     );
   await safeReply(interaction, {
-    content: `Players in the lobby: **${rawPlayerList.length}**\n${playerList}`,
+    content: `__**Players in the lobby**__: **${rawPlayerList.length}**\n${playerList}`,
     flags: onlyRaw ? MessageFlags.Ephemeral : undefined,
   });
   if (rawPlayerList.length > 0) {
