@@ -76,7 +76,7 @@ function generateLobbyStatusMessage(pPreviousPlayersList?: string): string {
   const lobbyPlayers = activePlayers.map(
     (p, index) =>
       `${index + 1}: @${p.usernames.discordDisplayName}: (${(
-        p.usernames.accounts?.find(a => a.isPrimary)?.hotsBattleTag ?? `loading...`
+        p.usernames.accounts?.find(a => a.isPrimary)?.hotsBattleTag ?? 'hots account missing! :scream:'
       ).replace(/#.*$/, '')}) \`${getPlayerRolesFormatted(p.role)}\`${
         p.usernames.accounts?.length === 1 &&
         p.usernames.accounts[0].hpSlGames === null &&
