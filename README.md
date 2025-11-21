@@ -6,12 +6,12 @@ cd /home/jmeadows/ghq/github.com/meadowsjared/nor-customs-bot
 bun start
 
   ### or run it directly:
-  nohup bun dev > log.latest 2>&1 &; disown
+  nohup bun dev > out.log 2>&1 &; disown
 
 # to check on the app:
 bun status
 
-cat log.latest
+cat out.log
 
 # to stop it:
 bun stop
