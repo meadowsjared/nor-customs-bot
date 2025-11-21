@@ -90,8 +90,8 @@ INSERT INTO players (discord_id, discord_name, discord_global_name, discord_disp
 INSERT INTO hots_accounts (discord_id, hots_battle_tag, is_primary, HP_QM_MMR, HP_SL_MMR, HP_AR_MMR, HP_QM_Games, HP_SL_Games, HP_AR_Games) VALUES ('927801814101942303', 'Auslesejager#1855', 1, 2433, 2165, 2100, 396, 68, 50);
 INSERT INTO hots_accounts (discord_id, hots_battle_tag, is_primary, HP_QM_MMR, HP_SL_MMR, HP_AR_MMR, HP_QM_Games, HP_SL_Games, HP_AR_Games) VALUES ('196114062369619968', 'KidCanuck#2293', 1, 0, 0, 0, 0, 0, 0);
 
-SELECT * FROM players WHERE discord_name LIKE '%Band%';
-SELECT hots_battle_tag, HP_QM_Games, HP_SL_Games, HP_AR_Games FROM hots_accounts WHERE discord_id='243668219712372736';
+SELECT * FROM players WHERE discord_display_name LIKE '%Band%';
+SELECT hots_battle_tag, HP_QM_Games, HP_SL_Games, HP_AR_Games, is_primary FROM hots_accounts WHERE discord_id='243668219712372736';
 
 #===================================================#
 # to recreate the hots_accounts table with the data #
