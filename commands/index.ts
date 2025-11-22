@@ -1112,7 +1112,7 @@ export async function handleLookupByDiscordIdCommand(
     console.error('Interaction is not a command or button interaction');
     return;
   }
-  const discordId = interaction.options.getString(CommandIds.DISCORD_ID, true);
+  const discordId = interaction.options.getString(CommandIds.DISCORD_ID, true).replace(/[<@>]/g, '');
   const displayName = interaction.options.getString(CommandIds.DISCORD_DISPLAY_NAME, true);
   const discordName = interaction.options.getString(CommandIds.DISCORD_NAME, true);
   const discordData: DiscordUserNames = {
@@ -1398,7 +1398,7 @@ export async function handleAdminAddHotsAccountByDiscordIdCommand(
     console.error('Interaction is not a command or button interaction');
     return;
   }
-  const discordId = interaction.options.getString(CommandIds.DISCORD_ID, true);
+  const discordId = interaction.options.getString(CommandIds.DISCORD_ID, true).replace(/[<@>]/g, '');
   const hotsBattleTag = interaction.options.getString(CommandIds.BATTLE_TAG);
   await handleAddHotsAccountCommandSub(interaction, discordId, hotsBattleTag);
 }
@@ -1504,7 +1504,7 @@ function getDiscordId(
   discordIdParam?: string
 ): string | undefined {
   if (discordIdParam) {
-    return discordIdParam;
+    return discordIdParam.replace(/[<@>]/g, '');
   }
   if (!interaction.isChatInputCommand()) {
     return undefined;
