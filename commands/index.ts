@@ -1201,7 +1201,7 @@ async function handleLookupCommandSub(
   ) {
     setPlayerName(interaction, discordId, hotsBattleTag); // Update the player's Heroes of the Storm name in the database
   } else if (hotsBattleTag) {
-    handleAddHotsAccountCommandSub(interaction, discordId, hotsBattleTag); // Add the new battle tag to the player's accounts in the database
+    await handleAddHotsAccountCommandSub(interaction, discordId, hotsBattleTag); // Add the new battle tag to the player's accounts in the database
   }
   // return;
 }
