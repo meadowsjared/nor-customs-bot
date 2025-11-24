@@ -111,7 +111,7 @@ function generateLobbyStatusMessage(pPreviousPlayersList?: string): string {
 
 /** generates the list of previous players */
 function generatePreviousPlayersList(): string {
-  const previousPlayers = getActivePlayers().map(p => safePing(`<@${p.discordId}>`));
+  const previousPlayers = getActivePlayers().map(p => `<@${p.discordId}>`);
   if (previousPlayers.length === 0) {
     return '**No Previous Players**';
   }
@@ -157,7 +157,7 @@ export async function handleNewGameCommand(
   const lobbyStatusMessage = generateLobbyStatusMessage(previousPlayersList);
 
   // announce in the channel that a new game has started and all players have been marked as inactive, so they need to hit the button if they are going to play
-  const sentMessage = await announce(interaction, lobbyStatusMessage, undefined, [
+  const sentMessage = await announce(interaction, lobbyStatusMessage, safePing(undefined), [
     new ActionRowBuilder<ButtonBuilder>().addComponents(imPlayingBtn),
   ]);
 
@@ -432,9 +432,7 @@ async function generateTeamsMessage(
   const team1List = team1
     .map(
       p =>
-        `\`${p.index + 1}: ${getPlayerMMR(p.player)}\` ${safePing(
-          `<@${p.player.discordId}>`
-        )} ${p.player.usernames.accounts
+        `\`${p.index + 1}: ${getPlayerMMR(p.player)}\` ${`<@${p.player.discordId}>`} ${p.player.usernames.accounts
           ?.find(account => account.isPrimary)
           ?.hotsBattleTag.replace(/#.*$/, '')} \`${getPlayerRolesFormatted(p.player.role)}\``
     )
@@ -442,9 +440,7 @@ async function generateTeamsMessage(
   const team2List = team2
     .map(
       p =>
-        `\`${p.index + 1}: ${getPlayerMMR(p.player)}\` ${safePing(
-          `<@${p.player.discordId}>`
-        )} ${p.player.usernames.accounts
+        `\`${p.index + 1}: ${getPlayerMMR(p.player)}\` ${`<@${p.player.discordId}>`} ${p.player.usernames.accounts
           ?.find(account => account.isPrimary)
           ?.hotsBattleTag.replace(/#.*$/, '')} \`${getPlayerRolesFormatted(p.player.role)}\``
     )
@@ -455,7 +451,7 @@ async function generateTeamsMessage(
   const spectatorList = spectators
     .map(
       p =>
-        `\`${p.draftRank + 1}: ${getPlayerMMR(p)}\` ${safePing(`<@${p.discordId}>`)} ${p.usernames.accounts
+        `\`${p.draftRank + 1}: ${getPlayerMMR(p)}\` ${`<@${p.discordId}>`} ${p.usernames.accounts
           ?.find(account => account.isPrimary)
           ?.hotsBattleTag.replace(/#.*$/, '')}`
     )
@@ -497,8 +493,9 @@ async function generateTeamsMessage(
   if (publish) {
     // if we're publishing it, then we know the ephemeral messages got deleted above, so just post a new message
     const message = await safeReply(interaction, {
-      content: safePing(`<@${norDiscordId}>`),
+      content: `<@${norDiscordId}>`,
       embeds,
+      flags: safePing(undefined),
     });
     if (message) {
       const fetchedMessage = await message.fetch();
@@ -509,9 +506,9 @@ async function generateTeamsMessage(
   if (isDraft) {
     // else then it's a ephemeral
     const message = await safeReply(interaction, {
-      content: safePing(`<@${norDiscordId}>`),
+      content: `<@${norDiscordId}>`,
       embeds,
-      flags: MessageFlags.Ephemeral,
+      flags: safePing(MessageFlags.Ephemeral),
     });
     if (message) {
       storeInteraction(message.id, interaction.channelId, interaction);
@@ -535,7 +532,7 @@ async function generateTeamsMessage(
           const prevInteraction = getStoredInteraction(msg.messageId, msg.channelId);
           if (!prevInteraction) return;
           await prevInteraction.editReply({
-            content: safePing(`<@${norDiscordId}>`),
+            content: `<@${norDiscordId}>`,
             embeds,
           });
           return;
@@ -544,7 +541,7 @@ async function generateTeamsMessage(
         const previousMessage = await channel.messages.fetch(msg.messageId);
         if (!previousMessage) return;
         const message = await previousMessage.edit({
-          content: safePing(`<@${norDiscordId}>`),
+          content: `<@${norDiscordId}>`,
           embeds,
         });
         // only save the message if we successfully edited it
@@ -681,9 +678,7 @@ export async function handleMoveToLobbyCommand(
 
   // Initial update after deferring, showing progress
   await interaction.editReply({
-    content: `Moving ${totalPlayers} players to the lobby channel: ${safePing(
-      `<@${lobby.channelId}>`
-    )}... (0/${totalPlayers} moved)`,
+    content: `Moving ${totalPlayers} players to the lobby channel: ${`<@${lobby.channelId}>`}... (0/${totalPlayers} moved)`,
   });
 
   /** Array to store players that failed to move */
@@ -723,12 +718,12 @@ export async function handleMoveToLobbyCommand(
       content: `Note: Failed to move ${totalPlayers - numberMoved} players:\n${failedToMove
         .map(
           player =>
-            `${safePing(`<@${player.discordId}>`)}: ${player.usernames.accounts
+            `${`<@${player.discordId}>`}: ${player.usernames.accounts
               ?.find(a => a.isPrimary)
               ?.hotsBattleTag.replace(/#.*$/, '')}`
         )
         .join('\n')}`,
-      flags: MessageFlags.Ephemeral,
+      flags: safePing(MessageFlags.Ephemeral),
     });
   }
 }
@@ -788,12 +783,12 @@ export async function handleMoveToTeamsCommand(
       content: `Failed to move the following players to their team channels:\n${failedToMove
         .map(
           player =>
-            `${safePing(`<@${player.discordId}>`)}: ${player.usernames.accounts
+            `${`<@${player.discordId}>`}: ${player.usernames.accounts
               ?.find(a => a.isPrimary)
               ?.hotsBattleTag.replace(/#.*$/, '')}`
         )
         .join('\n')}`,
-      flags: MessageFlags.Ephemeral,
+      flags: safePing(MessageFlags.Ephemeral),
     });
   }
 }
@@ -941,7 +936,7 @@ export async function handlePlayersCommand(
       .map(({ discordId, usernames, role }) => {
         if (pingLobby) {
           // if pingLobby is true, mention the user
-          return `${safePing(`<@${discordId}>`)}: (${usernames.accounts
+          return `${`<@${discordId}>`}: (${usernames.accounts
             ?.find(a => a.isPrimary)
             ?.hotsBattleTag.replace(/#.*$/, '')}) \`${getPlayerRolesFormatted(role)}\``;
         }
@@ -962,7 +957,7 @@ export async function handlePlayersCommand(
     );
   await safeReply(interaction, {
     content: `__**Players in the lobby**__: **${rawPlayerList.length}**\n${playerList}`,
-    flags: onlyRaw ? MessageFlags.Ephemeral : undefined,
+    flags: safePing(onlyRaw ? MessageFlags.Ephemeral : undefined),
   });
   if (rawPlayerList.length > 0) {
     // show a public message in the channel, if there are players in the lobby
@@ -1176,12 +1171,12 @@ async function handleLookupCommandSub(
         .join('\n') || 'No HotS accounts';
 
     await safeReply(interaction, {
-      content: `${safePing(`<@${discordId}>`)}\nDiscord ID: \`${discordId}\`\ndiscordName: \`${
+      content: `${`<@${discordId}>`}\nDiscord ID: \`${discordId}\`\ndiscordName: \`${
         discordData.discordName
       }\`\ndiscordGlobalName: \`${discordData.discordGlobalName}\`\nDisplay Name: \`${
         discordData.discordDisplayName
       }\`\n${message}\nHotS Accounts:\n${accounts}`,
-      flags: MessageFlags.Ephemeral,
+      flags: safePing(MessageFlags.Ephemeral),
     });
   }
   // save the player to the database if they are not already there
@@ -1871,7 +1866,7 @@ export async function handleTwitchCommand(
       'https://static-cdn.jtvnw.net/jtv_user_pictures/f9bdb9b4-911b-4f2d-8e04-f0bde098a4d9-profile_image-70x70.png'
     );
 
-  await safeReply(interaction, { embeds: [exampleEmbed] });
+  await safeReply(interaction, { embeds: [exampleEmbed], flags: safePing() });
 }
 
 /**

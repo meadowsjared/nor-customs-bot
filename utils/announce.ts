@@ -5,6 +5,7 @@ import {
   CacheType,
   ChatInputCommandInteraction,
   MessageCreateOptions,
+  MessageFlags,
   ModalSubmitInteraction,
 } from 'discord.js';
 import { botChannelName } from '../constants';
@@ -40,12 +41,16 @@ export async function announce(
 }
 
 /**
- * will either wrap the text in `` or return the text as is, depending on if we're testing
+ * Safely pings a user by returning the appropriate flags based on if we're debugging.
+ * In production, it returns the provided flags. In testing, it adds the SuppressNotifications flag to prevent actual pings.
+ * @param flags Optional flags to include with the message.
+ * @returns The modified flags for testing or the original flags for production.
  */
-export function safePing(text: string): string {
+export function safePing(flags?: MessageFlags) {
   const testing = process.env.DEBUG === 'true';
   if (testing) {
-    return `\`${text}\``;
+    return (flags ?? 0) + MessageFlags.SuppressNotifications;
+  } else {
+    return flags;
   }
-  return text;
 }
