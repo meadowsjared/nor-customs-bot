@@ -18,6 +18,7 @@ import { getHeroesProfileData } from './heroesProfile';
 import { HOTS_ACCOUNTS_COLUMNS } from '../types/csvSpreadsheet';
 import { generateCreateTableSQL } from '../utils/sql';
 import { getHeroesProfileDataPuppeteer } from './heroesProfilePuppeteer';
+import { validateBattleTag } from '../utils/heroesOfTheStorm';
 
 const db = new Database('./store/nor_customs.db');
 
@@ -227,10 +228,13 @@ export async function handleAddHotsAccount(
   let hotsAccountAlreadyExists = false;
   let hasAccount = false;
   let userIsSelf = false;
-  const battleTagRegex = /^.+#\d+$/;
-  if (!battleTagRegex.test(hotsBattleTag)) {
+  const validationResult = validateBattleTag(hotsBattleTag);
+  if (!validationResult.isValid) {
     await safeReply(interaction, {
-      content: `You must provide a valid Heroes of the Storm battle tag in the format \`Name#1234\`.\nYou provided: \`${hotsBattleTag}\``,
+      content: `You must provide a valid Heroes of the Storm battle tag in the format \`Name#1234\`.\nYou provided: \`${hotsBattleTag}\`
+${validationResult.errors.join('\n')}
+${validationResult.rules}
+      `,
       flags: MessageFlags.Ephemeral,
     });
     return false;

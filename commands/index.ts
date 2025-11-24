@@ -64,6 +64,7 @@ import { DiscordUserNames, Player } from '../types/player';
 import { client } from '../index';
 import { getReplayFolderPath, parseReplay, setReplayFolderPath } from '../store/hotsReplays';
 import path from 'path';
+import { validateBattleTag } from '../utils/heroesOfTheStorm';
 /**
  * Generates the current lobby status message with active players
  * @returns The formatted lobby status message
@@ -1064,6 +1065,17 @@ export async function showJoinModal(
     // If modal interaction is undefined, it means the user did not respond in time
     return;
   }
+  const validationResult = validateBattleTag(hotsBattleTag);
+  if (!validationResult.isValid) {
+    await safeReply(modalInteraction, {
+      content: `You must provide a valid Heroes of the Storm battle tag in the format \`Name#1234\`.\nYou provided: \`${hotsBattleTag}\`
+${validationResult.errors.join('\n')}
+${validationResult.rules}
+      `,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
   let roleSelectMenuDisplayed = false;
   let hpCalled = false;
   const discordData = fetchDiscordNames(modalInteraction);
@@ -1612,7 +1624,7 @@ async function handleUserNameModalSubmit(
     console.error('Error awaiting modal submit:', error);
     return { hotsBattleTag: undefined, modalInteraction: undefined }; // Return undefined if the modal interaction is not received
   }
-  const hotsBattleTag = modalInteraction.fields.getTextInputValue(CommandIds.BATTLE_TAG);
+  const hotsBattleTag = modalInteraction.fields.getTextInputValue(CommandIds.BATTLE_TAG).trim();
   return { hotsBattleTag, modalInteraction };
 }
 
