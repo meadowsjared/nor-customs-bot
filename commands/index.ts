@@ -897,7 +897,17 @@ export async function handleGuideCommand(
         '🎭 /role        — Change your role```',
       ].join('\n')
     )
-    .addFields({ name: 'Roles', value: '🛡️ Tank, ⚔️ Assassin, 💪 Bruiser, 💉 Healer, 🔄 Flex' })
+    .addFields({
+      name: 'Roles',
+      value: `🛡️ Tank, ⚔️ Assassin, 💪 Bruiser, 💉 Healer, 🔄 Flex`,
+    })
+    .addFields({
+      name: 'Note:',
+      value: `You can select multiple roles to indicate your preferences:
+\`🛡️ Tank, 💉 Healer\` — prefer tanking or healing
+\`💪 Bruiser, 🔄 Flex\` — prefer bruising but comfortable filling any role
+\`⚔️ Assassin, 🔄 Flex\` — prefer assassin but comfortable filling any role`,
+    })
     /* .addFields(
       { name: '`/join`', value: 'Join the lobby with your Heroes of the Storm battle tag and role.' },
       { name: '`/leave`', value: 'Leave the lobby.' },
@@ -909,7 +919,7 @@ export async function handleGuideCommand(
     .setImage(
       'https://static-cdn.jtvnw.net/jtv_user_pictures/f9bdb9b4-911b-4f2d-8e04-f0bde098a4d9-profile_image-70x70.png'
     );
-  await safeReply(interaction, { embeds: [exampleEmbed] });
+  await safeReply(interaction, { embeds: [exampleEmbed], flags: safePing() });
 }
 
 /**
