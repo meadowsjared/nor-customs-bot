@@ -216,6 +216,37 @@ export function getActivePlayers(): Player[] {
   return rows.map<Player>(row => getPlayerFromRow(row, accounts));
 }
 
+export function getAllPlayers(page: number, sort: 'mmr' | 'alphabetical', ascending: boolean): Player[] {
+  let stmt;
+  if (sort === 'mmr') {
+    stmt = db.prepare<[number], FlatPlayer>(
+      `SELECT p.* 
+       FROM players p
+       LEFT JOIN (
+         SELECT 
+           discord_id,
+           MAX(COALESCE(HP_QM_MMR, 0), COALESCE(HP_SL_MMR, 0), COALESCE(HP_AR_MMR, 0)) as mmr
+         FROM hots_accounts
+         GROUP BY discord_id
+       ) h ON p.discord_id = h.discord_id
+       ORDER BY h.mmr ${ascending ? 'DESC' : 'ASC'}, p.discord_display_name ASC
+       LIMIT 20 OFFSET ?`
+    );
+  } else {
+    stmt = db.prepare<[number], FlatPlayer>(
+      `SELECT * FROM players ORDER BY discord_display_name ${ascending ? ' ASC' : ' DESC'} LIMIT 20 OFFSET ?;`
+    );
+  }
+
+  // const stmt2 = db.prepare<[number], FlatPlayer>('SELECT * FROM players ORDER BY MMR LIMIT 20 OFFSET ?;');
+  const rows: FlatPlayer[] = stmt.all((page ?? 0) * 20);
+  const accountsStmt = db.prepare<[], HotsAccountRow>(
+    'SELECT discord_id, hots_battle_tag, is_primary, HP_QM_MMR, HP_SL_MMR, HP_AR_MMR, HP_QM_Games, HP_SL_Games, HP_AR_Games FROM hots_accounts;'
+  );
+  const accounts = accountsStmt.all();
+  return rows.map<Player>(row => getPlayerFromRow(row, accounts));
+}
+
 export async function handleAddHotsAccount(
   interaction:
     | ChatInputCommandInteraction<CacheType>

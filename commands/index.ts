@@ -51,6 +51,7 @@ import {
   getStoredInteraction,
   deletePlayer,
   deleteHotsAccount,
+  getAllPlayers,
 } from '../store/player';
 import {
   saveChannel,
@@ -975,6 +976,99 @@ export async function handlePlayersCommand(
     if (channel?.isTextBased()) {
       interaction.followUp({
         content: `\`${rawPlayerList.join(',') || 'No players in the lobby'}\``,
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+  }
+}
+
+/**
+ * Handles the /players_all command interaction, which lists all registered players with pagination and sorting options.
+ * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
+ * @param isButtonInteraction true if the interaction if from a button
+ * @param sort 'alphabetical' | 'mmr'
+ * @param ascending boolean whether to sort ascending or descending
+ * @param pageString string page number as a string
+ */
+export async function handlePlayersAllCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+  isButtonInteraction?: true,
+  sort: 'alphabetical' | 'mmr' = 'alphabetical',
+  ascending: boolean = sort === 'mmr' ? false : true,
+  pageString: string = '0'
+) {
+  let newInteraction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType> | undefined;
+  const playerId = interaction.user.id;
+  if (isButtonInteraction === undefined) {
+    newInteraction = interaction;
+    await interaction.deferReply({ flags: safePing(MessageFlags.Ephemeral) });
+    // store the reply for later
+    if (newInteraction) {
+      storeInteraction(`${playerId}_${CommandIds.PLAYERS_ALL}`, interaction.channelId, interaction);
+    }
+  } else {
+    if (interaction.isButton()) {
+      await interaction.deferUpdate();
+    }
+    newInteraction = getStoredInteraction(`${playerId}_${CommandIds.PLAYERS_ALL}`, interaction.channelId);
+  }
+  const pageNumber = parseInt(pageString, 10);
+  const players = getAllPlayers(pageNumber, sort, ascending);
+  const playerList = players
+    .map(
+      ({ discordId, usernames, role, mmr }) =>
+        `\`${mmr}\` <@${discordId}>: (${usernames.accounts
+          ?.find(a => a.isPrimary)
+          ?.hotsBattleTag.replace(/#.*$/, '')}) \`${getPlayerRolesFormatted(role)}\``
+    )
+    .join('\n');
+  // since the max length of a message is 2000 characters, we need to split the message into multiple messages if it exceeds the limit
+  const backButton = new ButtonBuilder()
+    .setCustomId(`${CommandIds.PLAYERS_ALL_PAGE}_${sort}_${ascending}_${pageNumber - 1}`)
+    .setEmoji('⬅️')
+    .setStyle(ButtonStyle.Secondary);
+  const refreshButton = new ButtonBuilder()
+    .setCustomId(`${CommandIds.PLAYERS_ALL_PAGE}_${sort}_${ascending}_${pageNumber}`)
+    .setEmoji('🔄')
+    .setStyle(ButtonStyle.Primary);
+  const forwardButton = new ButtonBuilder()
+    .setCustomId(`${CommandIds.PLAYERS_ALL_PAGE}_${sort}_${ascending}_${pageNumber + 1}`)
+    .setEmoji('➡️')
+    .setStyle(ButtonStyle.Secondary);
+  const buttons = [refreshButton];
+  if (pageNumber > 0) {
+    buttons.unshift(backButton);
+  }
+  if (players.length === 20) {
+    buttons.push(forwardButton);
+  }
+  // check if newInteraction is a button interaction, if so, edit the reply
+  if (newInteraction) {
+    const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(...buttons);
+    const sortAlphbetically = new ButtonBuilder()
+      .setCustomId(
+        `${CommandIds.PLAYERS_ALL_PAGE_SORT}_alphabetical_${
+          sort === 'alphabetical' ? !ascending : ascending
+        }_${pageNumber}`
+      )
+      .setEmoji('🔤')
+      .setLabel(`ABC${ascending ? '🔼' : '🔽'}`)
+      .setStyle(sort === 'alphabetical' ? ButtonStyle.Primary : ButtonStyle.Secondary);
+    const sortByMMR = new ButtonBuilder()
+      .setCustomId(`${CommandIds.PLAYERS_ALL_PAGE_SORT}_mmr_${sort === 'mmr' ? !ascending : ascending}_${pageNumber}`)
+      .setEmoji('📊')
+      .setLabel(`MMR${ascending ? '🔽' : '🔼'}`)
+      .setStyle(sort === 'mmr' ? ButtonStyle.Primary : ButtonStyle.Secondary);
+    const row2 = new ActionRowBuilder<ButtonBuilder>().addComponents(sortAlphbetically, sortByMMR);
+    try {
+      await newInteraction.editReply({
+        content: `__**All Players**__:\n${playerList}`,
+        components: [row1, row2],
+      });
+    } catch (error) {
+      await interaction.reply({
+        content: `__**All Players**__:\n${playerList}`,
+        components: [row1, row2],
         flags: MessageFlags.Ephemeral,
       });
     }

@@ -208,6 +208,11 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     defaultMemberPermissions: minimumAdminPermissions,
   },
   {
+    name: CommandIds.PLAYERS_ALL,
+    description: 'List all players in the database with their battle tags and roles',
+    defaultMemberPermissions: minimumAdminPermissions,
+  },
+  {
     name: CommandIds.TWITCH,
     description: "Show Norator's Twitch channel",
   },

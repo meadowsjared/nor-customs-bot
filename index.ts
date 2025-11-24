@@ -51,6 +51,7 @@ import {
   handleDeletePlayerCommand,
   handleDeleteHotsAccountCommand,
   handleRefreshLobbyMessage,
+  handlePlayersAllCommand,
 } from './commands';
 import { slashCommands } from './commands/definitions';
 
@@ -205,6 +206,10 @@ client.on('interactionCreate', async interaction => {
       // Handle players raw command
       handlePlayersCommand(interaction, true); // Pass true to get raw player data
       break;
+    case CommandIds.PLAYERS_ALL:
+      // Handle players all command
+      handlePlayersAllCommand(interaction); // Pass true to get all player data
+      break;
     case CommandIds.ADD_ACCOUNT:
       // Handle add HotS account command
       handleAddHotsAccountCommand(interaction);
@@ -348,6 +353,20 @@ async function handleDefaultCommand(
       handleEditRoleButtonCommand(interaction, parts[1], parts[0], parts[2]);
     }
     return;
+  }
+  if (parts.length === 4) {
+    switch (parts[0]) {
+      case CommandIds.PLAYERS_ALL_PAGE:
+      case CommandIds.PLAYERS_ALL_PAGE_SORT:
+        handlePlayersAllCommand(
+          interaction,
+          true,
+          parts[1] === 'mmr' ? 'mmr' : 'alphabetical',
+          parts[2] === 'true',
+          parts[3]
+        );
+        return;
+    }
   }
   if (parts.length === 5 && isRoleCommandId(parts[0])) {
     // Handle role edit button commands with user ID and active state
