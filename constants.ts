@@ -31,6 +31,7 @@ export const enum CommandIds {
   MOVE_TO_LOBBY = 'move_all_to_lobby',
   MOVE_TO_TEAMS = 'move_teams',
   GUIDE = 'guide',
+  HELP = 'help',
   JOIN = 'join',
   REJOIN = 'rejoin',
   JOIN_WITH_BATTLE_TAG = 'join-with-battle-tag',

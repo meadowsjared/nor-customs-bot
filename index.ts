@@ -176,6 +176,7 @@ client.on('interactionCreate', async interaction => {
       // Handle move to teams command
       handleMoveToTeamsCommand(interaction);
       break;
+    case CommandIds.HELP:
     case CommandIds.GUIDE:
       // Handle guide command
       handleGuideCommand(interaction);

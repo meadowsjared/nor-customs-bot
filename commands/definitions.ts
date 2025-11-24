@@ -186,6 +186,10 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     description: 'Show the guide for how to play',
   },
   {
+    name: CommandIds.HELP,
+    description: 'Show the help for how to play',
+  },
+  {
     name: CommandIds.REJOIN,
     description: 'Rejoin the lobby with your previous battle tag and role',
   },
