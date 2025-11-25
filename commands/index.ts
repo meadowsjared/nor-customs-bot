@@ -993,7 +993,7 @@ export async function handlePlayersCommand(
 export async function handlePlayersAllCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
   isButtonInteraction?: true,
-  sort: 'alphabetical' | 'mmr' = 'alphabetical',
+  sort: 'alphabetical' | 'mmr' = 'mmr',
   ascending: boolean = sort === 'mmr' ? false : true,
   pageString: string = '0'
 ) {
