@@ -227,7 +227,15 @@ export function getAllPlayers(page: number, sort: 'mmr' | 'alphabetical', ascend
        LEFT JOIN (
          SELECT 
            discord_id,
-           MAX(COALESCE(HP_QM_MMR, 0), COALESCE(HP_SL_MMR, 0), COALESCE(HP_AR_MMR, 0)) as mmr
+           MAX(
+             CASE 
+               WHEN COALESCE(HP_QM_MMR, 0) >= COALESCE(HP_SL_MMR, 0) AND COALESCE(HP_QM_MMR, 0) >= COALESCE(HP_AR_MMR, 0) 
+                 THEN COALESCE(HP_QM_MMR, 0)
+               WHEN COALESCE(HP_SL_MMR, 0) >= COALESCE(HP_AR_MMR, 0) 
+                 THEN COALESCE(HP_SL_MMR, 0)
+               ELSE COALESCE(HP_AR_MMR, 0)
+             END
+           ) as mmr
          FROM hots_accounts
          GROUP BY discord_id
        ) h ON p.discord_id = h.discord_id
