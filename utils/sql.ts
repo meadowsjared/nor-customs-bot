@@ -35,6 +35,7 @@ export interface ColumnDefinition {
   isPercentage?: true;
   /** true if this column should not be imported from the Nor-Customs CSV file */
   skipImport?: true;
+  importToPlayer?: true;
 }
 
 export enum SQLiteColumnType {

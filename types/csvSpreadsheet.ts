@@ -138,7 +138,7 @@ export const HOTS_ACCOUNTS_COLUMNS: CSVColumnDefinition[] = [
   { name: 'HP_QM_Games', csvColumnName: 'QM Games', dbType: SQLiteColumnType.INTEGER },
   { name: 'HP_SL_Games', csvColumnName: 'SL Games', dbType: SQLiteColumnType.INTEGER },
   { name: 'HP_AR_Games', csvColumnName: 'AR Games', dbType: SQLiteColumnType.INTEGER, skipImport: true },
-  { name: 'Adjustment', csvColumnName: 'Adjustment', dbType: SQLiteColumnType.INTEGER },
+  { name: 'adjustment', csvColumnName: 'Adjustment', dbType: SQLiteColumnType.INTEGER, importToPlayer: true },
   { name: 'SotS_Win_Pct', csvColumnName: 'Win %', dbType: SQLiteColumnType.REAL, isPercentage: true },
   { name: 'SotS_Games', csvColumnName: 'Games', dbType: SQLiteColumnType.INTEGER },
   { name: 'SotS_Takedowns', csvColumnName: 'Takedowns', dbType: SQLiteColumnType.REAL },
