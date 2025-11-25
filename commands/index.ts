@@ -1066,7 +1066,7 @@ export async function handlePlayersAllCommand(
         components: [row1, row2],
       });
     } catch (error) {
-      await interaction.reply({
+      await newInteraction.reply({
         content: `__**All Players**__:\n${playerList}`,
         components: [row1, row2],
         flags: MessageFlags.Ephemeral,
