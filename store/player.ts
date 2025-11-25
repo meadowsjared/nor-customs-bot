@@ -180,12 +180,13 @@ function getPlayerFromRow(row: FlatPlayer, accounts: HotsAccountRow[]): Player {
     team: row.team ?? undefined, // Ensure team is undefined if null
     draftRank: row.draft_rank ?? NaN,
     adjustment: row.adjustment,
-    mmr: accountsNew.reduce(
-      (max: number | null, account) =>
-        // find the highest MMR including both QM, SL, and AR
-        Math.max(max ?? 0, account.hpQmMMR ?? 0, account.hpSlMMR ?? 0, account.hpArMMR ?? 0) + (row.adjustment ?? 0),
-      0
-    ),
+    mmr:
+      (accountsNew.reduce(
+        (max: number | null, account) =>
+          // find the highest MMR including both QM, SL, and AR
+          Math.max(max ?? 0, account.hpQmMMR ?? 0, account.hpSlMMR ?? 0, account.hpArMMR ?? 0),
+        0
+      ) ?? 0) + (row.adjustment ?? 0),
     lastActive: new Date(row.last_active),
   };
 }
