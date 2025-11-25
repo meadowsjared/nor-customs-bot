@@ -8,8 +8,10 @@ export interface CSVRecord {
   'HP url': string; // URL to Heroes Profile
   'QM MMR': string; // Quick Match MMR
   'SL MMR': string; // Storm League MMR
+  'AR MMR': string; // Arena Rank MMR (NOT in the spreadsheet)
   'QM Games': string; // Number of Quick Match Games
   'SL Games': string; // Number of Storm League Games
+  'AR Games': string; // Number of Arena Rank Games (NOT in the spreadsheet)
   MMR: number; // Overall MMR
   Untracked: string; // TRUE or FALSE
   Role: string; // T, A, B, H, F
@@ -132,8 +134,10 @@ export const HOTS_ACCOUNTS_COLUMNS: CSVColumnDefinition[] = [
   { name: 'HP_Blizz_ID', dbType: SQLiteColumnType.INTEGER, skipImport: true },
   { name: 'HP_QM_MMR', csvColumnName: 'QM MMR', dbType: SQLiteColumnType.INTEGER },
   { name: 'HP_SL_MMR', csvColumnName: 'SL MMR', dbType: SQLiteColumnType.INTEGER },
+  { name: 'HP_AR_MMR', csvColumnName: 'AR MMR', dbType: SQLiteColumnType.INTEGER, skipImport: true },
   { name: 'HP_QM_Games', csvColumnName: 'QM Games', dbType: SQLiteColumnType.INTEGER },
   { name: 'HP_SL_Games', csvColumnName: 'SL Games', dbType: SQLiteColumnType.INTEGER },
+  { name: 'HP_AR_Games', csvColumnName: 'AR Games', dbType: SQLiteColumnType.INTEGER, skipImport: true },
   { name: 'SotS_Win_Pct', csvColumnName: 'Win %', dbType: SQLiteColumnType.REAL, isPercentage: true },
   { name: 'SotS_Games', csvColumnName: 'Games', dbType: SQLiteColumnType.INTEGER },
   { name: 'SotS_Takedowns', csvColumnName: 'Takedowns', dbType: SQLiteColumnType.REAL },
