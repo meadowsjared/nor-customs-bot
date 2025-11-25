@@ -1,6 +1,7 @@
 // Helper function to generate CREATE TABLE SQL from column definitions
 export function generateCreateTableSQL(tableName: string, columns: readonly ColumnDefinition[]): string {
   const columnDefinitions = columns
+    .filter(col => !col.importToPlayer)
     .map(col => {
       let definition = `${col.name} ${col.dbType}`;
 

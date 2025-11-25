@@ -100,6 +100,7 @@ export interface Player {
    */
   team: number | undefined;
   draftRank: number;
+  adjustment: number | null;
   mmr: number | null;
   lastActive: Date;
 }
@@ -147,6 +148,7 @@ export interface FlatPlayer {
    * This is used to determine which team the player is on
    */
   team: number;
+  adjustment: number | null;
   draft_rank: number | null;
   last_active: string; // ISO date string
 }

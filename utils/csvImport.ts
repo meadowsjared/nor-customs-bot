@@ -208,7 +208,13 @@ class CSVImporter {
     }
 
     // Prepare update statement
-    const updateStmt = this.db.prepare(`
+    const updatePlayerStmt = this.db.prepare(`
+      UPDATE players SET ${HOTS_ACCOUNTS_COLUMNS.filter(col => col.importToPlayer === true)
+        .map(col => `${col.name} = ?`)
+        .join(', ')} WHERE discord_id = ?
+    `);
+    // Prepare update statement
+    const updateHotsAccountStmt = this.db.prepare(`
       UPDATE hots_accounts SET ${HOTS_ACCOUNTS_COLUMNS.filter(col => col.skipImport !== true)
         .map(col => `${col.name} = ?`)
         .join(', ')}, updated_at = '2025-09-13 11:56:00' WHERE hots_battle_tag = ?
@@ -219,8 +225,21 @@ class CSVImporter {
     // Process each matching record
     for (const record of matchingRecords) {
       try {
+        const discordId = dbAccounts.find(acc => acc.hots_battle_tag === record.Lookup)?.discord_id;
         const columns = HOTS_ACCOUNTS_COLUMNS.filter(col => col.skipImport !== true);
-        const result = updateStmt.run(...columns.map(col => this.parseValueForColumn(record, col)), record.Lookup);
+        let playerResult;
+        if (discordId) {
+          playerResult = updatePlayerStmt.run(
+            ...HOTS_ACCOUNTS_COLUMNS.filter(col => col.importToPlayer === true).map(col =>
+              this.parseValueForColumn(record, col)
+            ),
+            discordId
+          );
+        }
+        const result = updateHotsAccountStmt.run(
+          ...columns.map(col => this.parseValueForColumn(record, col)),
+          record.Lookup
+        );
 
         if (result.changes > 0) {
           updatedCount++;

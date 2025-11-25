@@ -1189,6 +1189,7 @@ ${validationResult.rules}
         active: false,
         team: undefined,
         draftRank: NaN,
+        adjustment: null,
         mmr: 0,
         lastActive: new Date(),
       },
@@ -1279,7 +1280,7 @@ async function handleLookupCommandSub(
         discordData.discordName
       }\`\ndiscordGlobalName: \`${discordData.discordGlobalName}\`\nDisplay Name: \`${
         discordData.discordDisplayName
-      }\`\n${message}\nHotS Accounts:\n${accounts}`,
+      }\`\n${player?.adjustment ? `Adjustment: ${player.adjustment}\n` : ''}${message}\nHotS Accounts:\n${accounts}`,
       flags: safePing(MessageFlags.Ephemeral),
     });
   }
@@ -1296,6 +1297,7 @@ async function handleLookupCommandSub(
         active: false,
         team: undefined,
         draftRank: NaN,
+        adjustment: null,
         mmr: 0,
         lastActive: new Date(),
       },
@@ -1455,6 +1457,7 @@ export async function handleJoinCommand(
     active: true,
     team: undefined,
     draftRank: NaN,
+    adjustment: null,
     mmr: 0,
     lastActive: new Date(),
   };

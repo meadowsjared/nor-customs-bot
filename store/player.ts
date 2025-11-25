@@ -36,6 +36,7 @@ const initSchema = db.transaction(() => {
       discord_global_name TEXT NOT NULL,
       discord_display_name TEXT NOT NULL,
       role TEXT,
+      adjustment INTEGER,
       active INTEGER NOT NULL,
       team INTEGER CHECK(team IN (1, 2, 3)),
       draft_rank INTEGER,
@@ -178,10 +179,11 @@ function getPlayerFromRow(row: FlatPlayer, accounts: HotsAccountRow[]): Player {
     active: row.active === 1,
     team: row.team ?? undefined, // Ensure team is undefined if null
     draftRank: row.draft_rank ?? NaN,
+    adjustment: row.adjustment,
     mmr: accountsNew.reduce(
       (max: number | null, account) =>
         // find the highest MMR including both QM, SL, and AR
-        Math.max(max ?? 0, account.hpQmMMR ?? 0, account.hpSlMMR ?? 0, account.hpArMMR ?? 0),
+        Math.max(max ?? 0, account.hpQmMMR ?? 0, account.hpSlMMR ?? 0, account.hpArMMR ?? 0) + (row.adjustment ?? 0),
       0
     ),
     lastActive: new Date(row.last_active),
@@ -229,7 +231,9 @@ export function getAllPlayers(page: number, sort: 'mmr' | 'alphabetical', ascend
          FROM hots_accounts
          GROUP BY discord_id
        ) h ON p.discord_id = h.discord_id
-       ORDER BY h.mmr ${ascending ? 'DESC' : 'ASC'}, p.discord_display_name ASC
+       ORDER BY (COALESCE(h.mmr, 0) + COALESCE(p.adjustment, 0)) ${
+         ascending ? 'DESC' : 'ASC'
+       }, p.discord_display_name ASC
        LIMIT 20 OFFSET ?`
     );
   } else {
