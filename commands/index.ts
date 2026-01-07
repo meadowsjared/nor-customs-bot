@@ -1244,6 +1244,15 @@ export async function handleLookupCommand(
   }
   const member = interaction.options.getMember(CommandIds.DISCORD_ID);
   if (!member || 'user' in member === false) {
+    const discordId = interaction.options.get(CommandIds.DISCORD_ID)?.value;
+    // check if it's a string of numbers
+    if (typeof discordId === 'string') {
+      const player = getPlayerByDiscordId(discordId); // look up the player in the database by discord id
+      if (player) {
+        const discordData = fetchDiscordNames(interaction, discordId);
+        return await handleLookupCommandSub(interaction, discordId, discordData);
+      }
+    }
     await safeReply(interaction, {
       content: 'Please provide a valid Discord member to look up.',
       flags: MessageFlags.Ephemeral,
