@@ -2196,6 +2196,10 @@ export async function handleAdminSetRoleCommand(
     });
     return;
   }
+  // update the lobby message if the player is active
+  if (player.active) {
+    await updateLobbyMessage(interaction);
+  }
   await safeReply(interaction, {
     content: `Set <@${id}>'s role to \`${getPlayerRolesFormatted(role)}\``,
     flags: MessageFlags.Ephemeral,
