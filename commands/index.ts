@@ -1270,17 +1270,35 @@ async function handleLookupCommandSub(
           CommandIds.ROLE_FLEX
         )}\`.`;
     // show the player's hots_accounts.hotsBattleTag
+    const hotsAccounts =
+      player?.usernames.accounts?.sort((a, b) => {
+        const aMMR = Math.max(a.hpSlMMR || 0, a.hpArMMR || 0, a.hpQmMMR || 0);
+        const bMMR = Math.max(b.hpSlMMR || 0, b.hpArMMR || 0, b.hpQmMMR || 0);
+        return bMMR - aMMR;
+      }) || [];
     const accounts =
-      player?.usernames.accounts
-        ?.map((a, index) => `${index + 1}. ` + a.hotsBattleTag + (a.isPrimary ? ' (Primary)' : ''))
+      hotsAccounts
+        ?.map(
+          (a, index) =>
+            `${index + 1}. ${Math.max(a.hpSlMMR || 0, a.hpArMMR || 0, a.hpQmMMR || 0)} ${a.hotsBattleTag}` +
+            (a.isPrimary ? ' (Primary)' : '')
+        )
         .join('\n') || 'No HotS accounts';
+
+    // get the player's highest MMR from the max player?.usernames using hpSlMMR, hpArMMR, or hpQmMMR
+    const MMR = hotsAccounts.reduce((max, account) => {
+      const accountMMR = Math.max(account.hpSlMMR || 0, account.hpArMMR || 0, account.hpQmMMR || 0);
+      return accountMMR > max ? accountMMR : max;
+    }, 0);
 
     await safeReply(interaction, {
       content: `${`<@${discordId}>`}\nDiscord ID: \`${discordId}\`\ndiscordName: \`${
         discordData.discordName
       }\`\ndiscordGlobalName: \`${discordData.discordGlobalName}\`\nDisplay Name: \`${
         discordData.discordDisplayName
-      }\`\n${player?.adjustment ? `Adjustment: ${player.adjustment}\n` : ''}${message}\nHotS Accounts:\n${accounts}`,
+      }\`\n${
+        player?.adjustment ? `Adjustment: ${player.adjustment}\n` : ''
+      }${message}\nMMR: ${MMR}\nHotS Accounts:\n${accounts}`,
       flags: safePing(MessageFlags.Ephemeral),
     });
   }
