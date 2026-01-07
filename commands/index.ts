@@ -1654,6 +1654,15 @@ function getDiscordId(
   if (member && 'user' in member) {
     return member.user.id;
   }
+  if (interaction.options.get(CommandIds.DISCORD_ID)) {
+    const discordId = interaction.options.get(CommandIds.DISCORD_ID)?.value;
+    if (typeof discordId === 'string') {
+      const player = getPlayerByDiscordId(discordId); // look up the player in the database by discord id
+      if (player) {
+        return discordId.replace(/[<@>]/g, '');
+      }
+    }
+  }
   return undefined;
 }
 
