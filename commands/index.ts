@@ -2123,10 +2123,27 @@ function getMemberFromInteraction(
   pId?: string
 ) {
   if (interaction.isChatInputCommand()) {
-    return interaction.options.getMember(CommandIds.DISCORD_ID);
+    const member = interaction.options.getMember(CommandIds.DISCORD_ID);
+    const discordId = interaction.options.get(CommandIds.DISCORD_ID)?.value;
+    if (!member || 'user' in member === false) {
+      // check if the user is in the database
+      if (discordId && typeof discordId === 'string') {
+        const player = getPlayerByDiscordId(discordId);
+        if (!player) {
+          return null;
+        }
+        return discordId;
+      }
+      return null;
+    }
+    return member.user.id;
   }
   if (pId) {
-    return interaction.guild?.members.cache.get(pId) ?? null;
+    const player = getPlayerByDiscordId(pId);
+    if (!player) {
+      return null;
+    }
+    return pId;
   }
   return null;
 }
@@ -2146,7 +2163,7 @@ export async function handleAdminSetRoleCommand(
     return;
   }
   const member = getMemberFromInteraction(interaction, discordId);
-  if (!member || 'user' in member === false) {
+  if (member === null) {
     await safeReply(interaction, {
       content: 'Please provide a valid Discord member to set their name.',
       flags: MessageFlags.Ephemeral,
@@ -2170,16 +2187,17 @@ export async function handleAdminSetRoleCommand(
     });
     return;
   }
-  const id = member.user.id;
+  const id = member;
   const player = setPlayerRole(id, role);
-  if (!player) {
+  if (player === false) {
     await safeReply(interaction, {
       content: 'Player not found in the lobby. Please make sure they have joined first.',
       flags: MessageFlags.Ephemeral,
     });
+    return;
   }
   await safeReply(interaction, {
-    content: `Set ${member.user.displayName}'s role to \`${getPlayerRolesFormatted(role)}\``,
+    content: `Set <@${id}>'s role to \`${getPlayerRolesFormatted(role)}\``,
     flags: MessageFlags.Ephemeral,
   });
   // return;
@@ -2214,16 +2232,16 @@ export async function handleAdminSetActiveCommand(
     });
     return;
   }
-  const member = getMemberFromInteraction(interaction, pId);
-  if (!member || 'user' in member === false) {
+  const discordId = getMemberFromInteraction(interaction, pId);
+  if (discordId === null) {
     await safeReply(interaction, {
-      content: 'Please provide a valid Discord member to set their active status.',
+      content: 'Please provide a valid Discord member to set their active status.1',
       flags: MessageFlags.Ephemeral,
     });
     return;
   }
   const isActive = getActiveFromInteraction(interaction, pActive); // Get the active status from the interaction or use the provided value
-  const id = pId ?? member.user.id;
+  const id = discordId ?? pId;
   const { player, updated } = setPlayerActive(id, isActive); // Set player as active in the database
   if (!player) {
     await safeReply(interaction, {
@@ -2250,9 +2268,7 @@ export async function handleAdminSetActiveCommand(
       .setLabel('Admin Role')
       .setStyle(ButtonStyle.Secondary);
     await safeReply(interaction, {
-      content: `Set ${member.user.displayName}'s active status to \`${
-        isActive ? CommandIds.ACTIVE : CommandIds.INACTIVE
-      }\``,
+      content: `Set <@${id}>'s active status to \`${isActive ? CommandIds.ACTIVE : CommandIds.INACTIVE}\``,
       flags: MessageFlags.Ephemeral,
       components: [
         new ActionRowBuilder<ButtonBuilder>().addComponents(
