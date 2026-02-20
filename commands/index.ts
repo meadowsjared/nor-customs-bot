@@ -2227,10 +2227,10 @@ export async function handleAdminSetRoleCommand(
 
 function getActiveFromInteraction(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
-  pActive?: boolean,
+  pActive: boolean,
 ): boolean {
   if (interaction.isChatInputCommand()) {
-    return interaction.options.getBoolean(CommandIds.ACTIVE, true);
+    return interaction.options.getBoolean(CommandIds.ACTIVE, false) ?? pActive;
   }
   // If it's a button interaction, we assume the active status is true
   return pActive ?? true; // Default to true if not provided
@@ -2240,7 +2240,7 @@ export async function handleAdminSetActiveCommand(interaction: ChatInputCommandI
 export async function handleAdminSetActiveCommand(
   interaction: ButtonInteraction<CacheType>,
   pId: string,
-  pActive: boolean,
+  pActive?: boolean,
 ): Promise<void>;
 export async function handleAdminSetActiveCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
@@ -2261,6 +2261,12 @@ export async function handleAdminSetActiveCommand(
       flags: MessageFlags.Ephemeral,
     });
     return;
+  }
+  const storedPlayer = getPlayerByDiscordId(discordId);
+  if (storedPlayer && pActive === undefined) {
+    pActive = !storedPlayer.active; // Toggle the active status if not provided
+  } else {
+    pActive = pActive ?? true; // Default to true if not provided
   }
   const isActive = getActiveFromInteraction(interaction, pActive); // Get the active status from the interaction or use the provided value
   const id = discordId ?? pId;

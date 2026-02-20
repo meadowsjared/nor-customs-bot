@@ -357,7 +357,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
             name: CommandIds.ACTIVE,
             description: 'Set the player as active (true) or inactive (false).',
             type: ApplicationCommandOptionType.Boolean,
-            required: true,
+            required: false,
           },
         ],
       },
