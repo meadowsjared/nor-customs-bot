@@ -89,8 +89,10 @@ client.on('guildCreate', async guild => {
 
 client.once('clientReady', async () => {
   // Register command globally (or use guilds.cache.first().commands for per-guild)
+  // Clear old commands first to force Discord to update
+  await client.application?.commands.set([]);
   await client.application?.commands.set(slashCommands);
-  console.log('Slash command /join registered!');
+  console.log('Slash commands registered!');
 
   if (client.application) {
     console.log('--- Fetching Command IDs ---');
