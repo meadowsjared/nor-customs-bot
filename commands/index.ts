@@ -93,14 +93,14 @@ function generateLobbyStatusMessage(pPreviousPlayersList?: string): string {
         p.usernames.accounts[0].hpArGames === -1
           ? ' MMR error!... :scream:'
           : ''
-      }`
+      }`,
   );
 
   // combine the lobbyPlayers and previousPlayersList, into one string, labeling each section, but skip a section if there are no players in that section
   const playerListWithLabels = [];
   if (previousPlayersList) playerListWithLabels.push(`__**Previous Players**__:\n${previousPlayersList}`);
   playerListWithLabels.push(
-    `__**Players in the lobby**__: (${lobbyPlayers.length})\n${lobbyPlayers.join('\n') || 'The lobby is empty.'}`
+    `__**Players in the lobby**__: (${lobbyPlayers.length})\n${lobbyPlayers.join('\n') || 'The lobby is empty.'}`,
   );
   if (playerListWithLabels.length === 0) {
     playerListWithLabels.push(`**No Active Players**`);
@@ -147,7 +147,7 @@ export async function updateLobbyMessage(interaction: chatOrButtonOrModal) {
 }
 
 export async function handleNewGameCommand(
-  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ) {
   // combine the observers, team1, and team2, into one string, labeling each section, but skip a section if there are no players in that section
 
@@ -183,7 +183,7 @@ export async function handleNewGameCommand(
  */
 export async function safeReply(
   interaction: chatOrButtonOrModal | undefined,
-  options: string | MessagePayload | InteractionReplyOptions
+  options: string | MessagePayload | InteractionReplyOptions,
 ) {
   if (!interaction) {
     // post a new message
@@ -244,7 +244,7 @@ function getMessageContent(options: string | MessagePayload | InteractionReplyOp
  * This function also sets the teams in the database, for use with the handleMoveToTeamsCommand and handleMoveToLobbyCommand functions.
  **/
 export async function handleSetTeamsCommand(
-  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ) {
   type TeamName = 'team1' | 'team2';
   type Teams = {
@@ -286,7 +286,7 @@ export async function handleSetTeamsCommand(
 
     await safeReply(interaction, {
       content: `Duplicate player numbers provided: \`${uniqueDuplicates.join(
-        ', '
+        ', ',
       )}\`. Please provide each player number only once.`,
       flags: MessageFlags.Ephemeral,
     });
@@ -337,7 +337,7 @@ export async function handleSetTeamsCommand(
  * @returns Promise<void>
  */
 export async function handleDraftTeamsCommand(
-  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ) {
   if (interaction.isButton()) {
     console.error('Interaction is not a command or button interaction');
@@ -380,7 +380,7 @@ function getPlayerMMR(player: Player): number {
   return (
     player.usernames.accounts?.reduce(
       (bestMMR, account) => Math.max(bestMMR, account.hpQmMMR ?? 0, account.hpSlMMR ?? 0, account.hpArMMR ?? 0),
-      0
+      0,
     ) ?? 0
   );
 }
@@ -416,7 +416,7 @@ async function generateTeamsMessage(
   /**
    * if this is true, then we're creating a new team draft
    */
-  isDraft = false
+  isDraft = false,
 ): Promise<void> {
   if (interaction.isButton()) {
     await safeReply(interaction, {
@@ -435,7 +435,7 @@ async function generateTeamsMessage(
       p =>
         `\`${p.index + 1}: ${getPlayerMMR(p.player)}\` ${`<@${p.player.discordId}>`} ${p.player.usernames.accounts
           ?.find(account => account.isPrimary)
-          ?.hotsBattleTag.replace(/#.*$/, '')} \`${getPlayerRolesFormatted(p.player.role)}\``
+          ?.hotsBattleTag.replace(/#.*$/, '')} \`${getPlayerRolesFormatted(p.player.role)}\``,
     )
     .join('\n');
   const team2List = team2
@@ -443,18 +443,18 @@ async function generateTeamsMessage(
       p =>
         `\`${p.index + 1}: ${getPlayerMMR(p.player)}\` ${`<@${p.player.discordId}>`} ${p.player.usernames.accounts
           ?.find(account => account.isPrimary)
-          ?.hotsBattleTag.replace(/#.*$/, '')} \`${getPlayerRolesFormatted(p.player.role)}\``
+          ?.hotsBattleTag.replace(/#.*$/, '')} \`${getPlayerRolesFormatted(p.player.role)}\``,
     )
     .join('\n');
   const spectators = activePlayers.filter(
-    p => team1.every(t => t.player.discordId !== p.discordId) && team2.every(t => t.player.discordId !== p.discordId)
+    p => team1.every(t => t.player.discordId !== p.discordId) && team2.every(t => t.player.discordId !== p.discordId),
   );
   const spectatorList = spectators
     .map(
       p =>
         `\`${p.draftRank + 1}: ${getPlayerMMR(p)}\` ${`<@${p.discordId}>`} ${p.usernames.accounts
           ?.find(account => account.isPrimary)
-          ?.hotsBattleTag.replace(/#.*$/, '')}`
+          ?.hotsBattleTag.replace(/#.*$/, '')}`,
     )
     .join('\n');
 
@@ -560,7 +560,7 @@ async function generateTeamsMessage(
 }
 
 export async function handleSwapTeamsCommand(
-  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ) {
   if (interaction.isButton()) {
     await safeReply(interaction, {
@@ -623,7 +623,7 @@ export async function handleSwapTeamsCommand(
  * @returns Promise<void>
  */
 export async function handlePublishTeamsCommand(
-  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ) {
   if (interaction.isButton()) {
     console.error('Interaction is not a command or button interaction');
@@ -635,12 +635,12 @@ export async function handlePublishTeamsCommand(
     interaction,
     team1.map(p => ({ player: p, index: p.draftRank ?? 0 })),
     team2.map(p => ({ player: p, index: p.draftRank ?? 0 })),
-    true
+    true,
   );
 }
 
 export async function handleMoveToLobbyCommand(
-  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ) {
   // 1. Immediately defer the reply
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
@@ -721,7 +721,7 @@ export async function handleMoveToLobbyCommand(
           player =>
             `${`<@${player.discordId}>`}: ${player.usernames.accounts
               ?.find(a => a.isPrimary)
-              ?.hotsBattleTag.replace(/#.*$/, '')}`
+              ?.hotsBattleTag.replace(/#.*$/, '')}`,
         )
         .join('\n')}`,
       flags: safePing(MessageFlags.Ephemeral),
@@ -730,7 +730,7 @@ export async function handleMoveToLobbyCommand(
 }
 
 export async function handleMoveToTeamsCommand(
-  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const result = getChannels(['team1', 'team2']);
@@ -786,7 +786,7 @@ export async function handleMoveToTeamsCommand(
           player =>
             `${`<@${player.discordId}>`}: ${player.usernames.accounts
               ?.find(a => a.isPrimary)
-              ?.hotsBattleTag.replace(/#.*$/, '')}`
+              ?.hotsBattleTag.replace(/#.*$/, '')}`,
         )
         .join('\n')}`,
       flags: safePing(MessageFlags.Ephemeral),
@@ -798,7 +798,7 @@ async function moveTeamMembersToChannel(
   interaction: Interaction,
   team: Player[],
   channel: VoiceChannel,
-  failedToMove: Player[]
+  failedToMove: Player[],
 ) {
   let numberMoved = 0;
   const movePromises = team.map(async player => {
@@ -816,7 +816,7 @@ async function moveTeamMembersToChannel(
     } else {
       failedToMove.push(player);
       console.warn(
-        `Member ${player.discordId}, ${player.usernames.discordDisplayName} is not in a voice channel or does not exist.`
+        `Member ${player.discordId}, ${player.usernames.discordDisplayName} is not in a voice channel or does not exist.`,
       );
     }
   });
@@ -825,7 +825,7 @@ async function moveTeamMembersToChannel(
 }
 
 export async function handleSetChannelTeamIdCommand(
-  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ) {
   if (interaction.isButton()) {
     console.error('Interaction is not a command or button interaction');
@@ -848,7 +848,7 @@ export async function handleSetChannelTeamIdCommand(
 }
 
 export async function handleSetLobbyChannelCommand(
-  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ) {
   if (!interaction.isChatInputCommand() || interaction.isButton()) {
     console.error('Interaction is not a command or button interaction');
@@ -872,7 +872,7 @@ export async function handleSetLobbyChannelCommand(
 }
 
 export async function handleGuideCommand(
-  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ) {
   // inside a command, event listener, etc.
   const exampleEmbed = new EmbedBuilder()
@@ -896,7 +896,7 @@ export async function handleGuideCommand(
         '🔄 /rejoin      — Rejoin the lobby',
         '✏️ /add-account — Add a HotS account',
         '🎭 /role        — Change your role```',
-      ].join('\n')
+      ].join('\n'),
     )
     .addFields({
       name: 'Roles',
@@ -918,7 +918,7 @@ export async function handleGuideCommand(
     )*/
     .setFooter({ text: 'Enjoy playing!' })
     .setImage(
-      'https://static-cdn.jtvnw.net/jtv_user_pictures/f9bdb9b4-911b-4f2d-8e04-f0bde098a4d9-profile_image-70x70.png'
+      'https://static-cdn.jtvnw.net/jtv_user_pictures/f9bdb9b4-911b-4f2d-8e04-f0bde098a4d9-profile_image-70x70.png',
     );
   await safeReply(interaction, { embeds: [exampleEmbed], flags: safePing() });
 }
@@ -932,7 +932,7 @@ export async function handleGuideCommand(
 export async function handlePlayersCommand(
   interaction: Interaction<CacheType>,
   onlyRaw: boolean = false,
-  pingLobby: boolean = false
+  pingLobby: boolean = false,
 ) {
   // check if interaction can be replied to
   if (!interaction.isChatInputCommand() && !interaction.isButton()) {
@@ -964,7 +964,7 @@ export async function handlePlayersCommand(
     .filter(player => player.active)
     .map(
       ({ usernames, role }) =>
-        `${usernames.accounts?.find(a => a.isPrimary)?.hotsBattleTag.replace(/#.*$/, '')} ${role}`
+        `${usernames.accounts?.find(a => a.isPrimary)?.hotsBattleTag.replace(/#.*$/, '')} ${role}`,
     );
   await safeReply(interaction, {
     content: `__**Players in the lobby**__: **${rawPlayerList.length}**\n${playerList}`,
@@ -995,7 +995,7 @@ export async function handlePlayersAllCommand(
   isButtonInteraction?: true,
   sort: 'alphabetical' | 'mmr' = 'mmr',
   ascending: boolean = true,
-  pageString: string = '0'
+  pageString: string = '0',
 ) {
   let newInteraction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType> | undefined;
   const playerId = interaction.user.id;
@@ -1019,7 +1019,7 @@ export async function handlePlayersAllCommand(
       ({ discordId, usernames, role, mmr }) =>
         `\`${mmr}\` <@${discordId}>: (${usernames.accounts
           ?.find(a => a.isPrimary)
-          ?.hotsBattleTag.replace(/#.*$/, '')}) \`${getPlayerRolesFormatted(role)}\``
+          ?.hotsBattleTag.replace(/#.*$/, '')}) \`${getPlayerRolesFormatted(role)}\``,
     )
     .join('\n');
   // since the max length of a message is 2000 characters, we need to split the message into multiple messages if it exceeds the limit
@@ -1049,7 +1049,7 @@ export async function handlePlayersAllCommand(
       .setCustomId(
         `${CommandIds.PLAYERS_ALL_PAGE_SORT}_alphabetical_${
           sort === 'alphabetical' ? !ascending : ascending
-        }_${pageNumber}`
+        }_${pageNumber}`,
       )
       .setEmoji('🔤')
       .setLabel(`ABC${ascending ? '🔼' : '🔽'}`)
@@ -1081,7 +1081,7 @@ export async function handlePlayersAllCommand(
  * @returns
  */
 export async function handleLeaveCommand(
-  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ) {
   const { player } = setPlayerActive(interaction.user.id, false); // Mark player as inactive in the database
   await updateLobbyMessage(interaction);
@@ -1098,7 +1098,7 @@ export async function handleLeaveCommand(
 }
 
 export async function handleClearCommand(
-  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ) {
   markAllPlayersInactive(); // Mark all players as inactive in the database
   await updateLobbyMessage(interaction); // Update the lobby message to show no players
@@ -1116,7 +1116,7 @@ export async function handleClearCommand(
 export async function handleRejoinCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
   newUser = false,
-  pBattleTag?: string
+  pBattleTag?: string,
 ) {
   // first check it the user has a hotsBattleTag in the database
   const existingPlayer = getPlayerByDiscordId(interaction.user.id);
@@ -1135,7 +1135,7 @@ export async function handleRejoinCommand(
       ` the lobby as: \`${player.usernames.accounts
         ?.find(a => a.isPrimary)
         ?.hotsBattleTag.replace(/#.*$/, '')}\`, \`${getPlayerRolesFormatted(
-        player.role
+        player.role,
       )}\`\nUse /leave to leave the lobby, or use the buttons below.`;
     await safeReply(interaction, {
       content,
@@ -1157,7 +1157,7 @@ export async function handleRejoinCommand(
  */
 export async function showJoinModal(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
-  pBattleTag?: string
+  pBattleTag?: string,
 ): Promise<void> {
   const { hotsBattleTag, modalInteraction } = await handleUserNameModalSubmit(interaction, undefined, pBattleTag);
   if (!modalInteraction || !hotsBattleTag) {
@@ -1193,7 +1193,7 @@ ${validationResult.rules}
         mmr: 0,
         lastActive: new Date(),
       },
-      hotsBattleTag
+      hotsBattleTag,
     ); // Save player data to the database with default role Flex
     hpCalled = true;
   }
@@ -1218,7 +1218,7 @@ ${validationResult.rules}
 }
 
 export async function handleLookupByDiscordIdCommand(
-  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ) {
   if (interaction.isButton()) {
     console.error('Interaction is not a command or button interaction');
@@ -1236,7 +1236,7 @@ export async function handleLookupByDiscordIdCommand(
 }
 
 export async function handleLookupCommand(
-  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ) {
   if (interaction.isButton()) {
     console.error('Interaction is not a command or button interaction');
@@ -1268,7 +1268,7 @@ export async function handleLookupCommand(
 async function handleLookupCommandSub(
   interaction: ChatInputCommandInteraction<CacheType>,
   discordId: string,
-  discordData: DiscordUserNames
+  discordData: DiscordUserNames,
 ) {
   const hotsBattleTag = interaction.options.getString(CommandIds.BATTLE_TAG, false) ?? '';
   const player = getPlayerByDiscordId(discordId);
@@ -1276,7 +1276,7 @@ async function handleLookupCommandSub(
     const message = player
       ? `${hotsBattleTag || 'Player'} found in the lobby with role: \`${getPlayerRolesFormatted(player.role)}\``
       : `${hotsBattleTag || 'Player'} not found in the lobby, adding them with default role \`${getPlayerRolesFormatted(
-          CommandIds.ROLE_FLEX
+          CommandIds.ROLE_FLEX,
         )}\`.`;
     // show the player's hots_accounts.hotsBattleTag
     const hotsAccounts =
@@ -1290,7 +1290,7 @@ async function handleLookupCommandSub(
         ?.map(
           (a, index) =>
             `${index + 1}. ${Math.max(a.hpSlMMR || 0, a.hpArMMR || 0, a.hpQmMMR || 0)} ${a.hotsBattleTag}` +
-            (a.isPrimary ? ' (Primary)' : '')
+            (a.isPrimary ? ' (Primary)' : ''),
         )
         .join('\n') || 'No HotS accounts';
 
@@ -1328,7 +1328,7 @@ async function handleLookupCommandSub(
         mmr: 0,
         lastActive: new Date(),
       },
-      hotsBattleTag
+      hotsBattleTag,
     );
     return;
   }
@@ -1347,7 +1347,7 @@ async function handleLookupCommandSub(
 }
 
 export async function handleDeletePlayerCommand(
-  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ) {
   if (interaction.isButton()) {
     console.error('Interaction is not a command or button interaction');
@@ -1374,7 +1374,7 @@ export async function handleDeletePlayerCommand(
 }
 
 export async function handleDeleteHotsAccountCommand(
-  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ) {
   if (interaction.isButton()) {
     console.error('Interaction is not a command or button interaction');
@@ -1389,7 +1389,7 @@ export async function handleDeleteHotsAccountCommand(
 }
 
 export async function handleRefreshLobbyMessage(
-  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ) {
   await updateLobbyMessage(interaction);
   const reply = await safeReply(interaction, {
@@ -1406,7 +1406,7 @@ export async function handleRefreshLobbyMessage(
  */
 export async function handleAdminShowRoleButtons(
   interaction: ButtonInteraction<CacheType> | ChatInputCommandInteraction<CacheType>,
-  discordId: string
+  discordId: string,
 ) {
   const player = getPlayerByDiscordId(discordId); // Get player by Discord ID
   if (!player) {
@@ -1436,7 +1436,7 @@ export async function handleAdminShowRoleButtons(
       new ActionRowBuilder<ButtonBuilder>().addComponents(
         createEditRoleButtonDisabled(discordId, CommandIds.ROLE_EDIT_ADD, '➕'),
         createEditRoleButtonEnabled(discordId, CommandIds.ROLE_EDIT_REPLACE, '🔄'),
-        createEditRoleButtonDisabled(discordId, CommandIds.ROLE_EDIT_REMOVE, '➖')
+        createEditRoleButtonDisabled(discordId, CommandIds.ROLE_EDIT_REMOVE, '➖'),
       ),
       row2,
     ],
@@ -1468,7 +1468,7 @@ export async function handleAdminAddHotsAccountButton(interaction: ButtonInterac
  */
 export async function handleJoinCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
-  pBattleTag?: string
+  pBattleTag?: string,
 ) {
   if (interaction.isButton()) {
     await handleRejoinCommand(interaction, true, pBattleTag);
@@ -1512,7 +1512,7 @@ async function handleUserJoined(interaction: chatOrButtonOrModal) {
 }
 
 export async function handleAddHotsAccountCommand(
-  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ) {
   if (interaction.isButton()) {
     const { hotsBattleTag, modalInteraction } = await handleUserNameModalSubmit(interaction);
@@ -1533,7 +1533,7 @@ export async function handleAddHotsAccountCommand(
 }
 
 export async function handleAdminAddHotsAccountByDiscordIdCommand(
-  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ) {
   if (interaction.isButton()) {
     console.error('Interaction is not a command or button interaction');
@@ -1563,7 +1563,7 @@ export async function handleAdminPrimaryCommand(
   discordIdParam?: string,
   battleTagParam?: string,
   messageIdParam?: string,
-  channelIdParam?: string
+  channelIdParam?: string,
 ) {
   const discordId = getDiscordId(interaction, discordIdParam);
   if (!discordId) {
@@ -1599,7 +1599,7 @@ export async function handleAdminPrimaryCommand(
         discordId,
         player.usernames.accounts[0].hotsBattleTag,
         message.id,
-        channelId
+        channelId,
       );
       return;
     }
@@ -1618,7 +1618,7 @@ export async function handleAdminPrimaryCommand(
     const accountButtons = player.usernames.accounts.map(account => {
       return new ButtonBuilder()
         .setCustomId(
-          `${CommandIds.ADMIN}_${CommandIds.PRIMARY}_${discordId}_${account.hotsBattleTag}_${message.id}_${channelId}`
+          `${CommandIds.ADMIN}_${CommandIds.PRIMARY}_${discordId}_${account.hotsBattleTag}_${message.id}_${channelId}`,
         )
         .setLabel(account.hotsBattleTag)
         .setStyle(account.isPrimary ? ButtonStyle.Primary : ButtonStyle.Secondary);
@@ -1642,7 +1642,7 @@ export async function handleAdminPrimaryCommand(
 
 function getDiscordId(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
-  discordIdParam?: string
+  discordIdParam?: string,
 ): string | undefined {
   if (discordIdParam) {
     return discordIdParam.replace(/[<@>]/g, '');
@@ -1668,7 +1668,7 @@ function getDiscordId(
 
 function getBattleTag(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
-  battleTagParam?: string
+  battleTagParam?: string,
 ) {
   if (battleTagParam) {
     return battleTagParam;
@@ -1682,7 +1682,7 @@ function getBattleTag(
 async function handleAddHotsAccountCommandSub(
   interaction: ChatInputCommandInteraction<CacheType>,
   discordId: string,
-  hotsBattleTag: string | null
+  hotsBattleTag: string | null,
 ) {
   if (!hotsBattleTag) {
     // if they didn't provide a battle tag, then show them all the accounts they have associated with their discord id
@@ -1718,7 +1718,7 @@ async function handleAddHotsAccountCommandSub(
 async function handleUserNameModalSubmit(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
   discordId?: string,
-  pBattleTag?: string
+  pBattleTag?: string,
 ): Promise<{
   hotsBattleTag: string | undefined;
   modalInteraction: ModalSubmitInteraction<CacheType> | undefined;
@@ -1781,7 +1781,7 @@ function getEditRoleRow(discordId: string, action: string): ActionRowBuilder<But
         .setCustomId(`${action}_${discordId}_${key}`) // Use the action
         .setLabel(label)
         .setStyle(ButtonStyle.Primary);
-    })
+    }),
   );
 }
 
@@ -1793,7 +1793,7 @@ function getEditRoleRow(discordId: string, action: string): ActionRowBuilder<But
 export async function handleEditRoleCommand(
   interaction: chatOrButtonOrModal,
   setActive = false,
-  hotsBattleTag?: string
+  hotsBattleTag?: string,
 ): Promise<void> {
   const player = getPlayerByDiscordId(interaction.user.id); // Get player by Discord ID
   if (!player) {
@@ -1824,7 +1824,7 @@ export async function handleEditRoleCommand(
       new ActionRowBuilder<ButtonBuilder>().addComponents(
         createEditRoleButtonDisabled(interaction.user.id, CommandIds.ROLE_EDIT_ADD + activeSuffix, '➕'),
         createEditRoleButtonEnabled(interaction.user.id, CommandIds.ROLE_EDIT_REPLACE + activeSuffix, '🔄'),
-        createEditRoleButtonDisabled(interaction.user.id, CommandIds.ROLE_EDIT_REMOVE + activeSuffix, '➖')
+        createEditRoleButtonDisabled(interaction.user.id, CommandIds.ROLE_EDIT_REMOVE + activeSuffix, '➖'),
       ),
       row2,
     ],
@@ -1837,7 +1837,7 @@ export async function handleEditRoleButtonCommand(
   action: string,
   role?: keyof typeof roleMap,
   setActive = false,
-  hotsBattleTag?: string
+  hotsBattleTag?: string,
 ) {
   if (!interaction.isButton()) {
     await safeReply(interaction, {
@@ -1892,7 +1892,7 @@ function showAddButtons(
   roles: string,
   activePrefix: string,
   row2: ActionRowBuilder<ButtonBuilder>,
-  activeSuffix: string
+  activeSuffix: string,
 ) {
   if (role && !player.role?.includes(role)) {
     // If the role is specified and does not exist in the player's roles, add it
@@ -1907,7 +1907,7 @@ function showAddButtons(
       new ActionRowBuilder<ButtonBuilder>().addComponents(
         createEditRoleButtonEnabled(discordId, CommandIds.ROLE_EDIT_ADD + activeSuffix, '➕'),
         createEditRoleButtonDisabled(discordId, CommandIds.ROLE_EDIT_REPLACE + activeSuffix, '🔄'),
-        createEditRoleButtonDisabled(discordId, CommandIds.ROLE_EDIT_REMOVE + activeSuffix, '➖')
+        createEditRoleButtonDisabled(discordId, CommandIds.ROLE_EDIT_REMOVE + activeSuffix, '➖'),
       ),
       row2,
     ],
@@ -1922,7 +1922,7 @@ function showRemoveButtons(
   roles: string,
   activePrefix: string,
   row2: ActionRowBuilder<ButtonBuilder>,
-  activeSuffix: string
+  activeSuffix: string,
 ) {
   if (role && player.role?.includes(role)) {
     // If the role is specified and exists in the player's roles, remove it
@@ -1940,7 +1940,7 @@ function showRemoveButtons(
       new ActionRowBuilder<ButtonBuilder>().addComponents(
         createEditRoleButtonDisabled(discordId, CommandIds.ROLE_EDIT_ADD + activeSuffix, '➕'),
         createEditRoleButtonDisabled(discordId, CommandIds.ROLE_EDIT_REPLACE + activeSuffix, '🔄'),
-        createEditRoleButtonEnabled(discordId, CommandIds.ROLE_EDIT_REMOVE + activeSuffix, '➖')
+        createEditRoleButtonEnabled(discordId, CommandIds.ROLE_EDIT_REMOVE + activeSuffix, '➖'),
       ),
       row2,
     ],
@@ -1955,7 +1955,7 @@ function showReplaceButtons(
   roles: string,
   activePrefix: string,
   row2: ActionRowBuilder<ButtonBuilder>,
-  activeSuffix: string
+  activeSuffix: string,
 ) {
   if (role) {
     setPlayerRole(discordId, role);
@@ -1968,7 +1968,7 @@ function showReplaceButtons(
       new ActionRowBuilder<ButtonBuilder>().addComponents(
         createEditRoleButtonDisabled(discordId, CommandIds.ROLE_EDIT_ADD + activeSuffix, '➕'),
         createEditRoleButtonEnabled(discordId, CommandIds.ROLE_EDIT_REPLACE + activeSuffix, '🔄'),
-        createEditRoleButtonDisabled(discordId, CommandIds.ROLE_EDIT_REMOVE + activeSuffix, '➖')
+        createEditRoleButtonDisabled(discordId, CommandIds.ROLE_EDIT_REMOVE + activeSuffix, '➖'),
       ),
       row2,
     ],
@@ -1991,7 +1991,7 @@ function getPlayerRolesFormatted(role?: string): string {
 }
 
 export async function handleTwitchCommand(
-  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ) {
   // inside a command, event listener, etc.
   const exampleEmbed = new EmbedBuilder()
@@ -2006,7 +2006,7 @@ export async function handleTwitchCommand(
     })
     .setDescription('Join Norator on Twitch for Heroes of the Storm content!')
     .setThumbnail(
-      'https://static-cdn.jtvnw.net/jtv_user_pictures/f9bdb9b4-911b-4f2d-8e04-f0bde098a4d9-profile_image-70x70.png'
+      'https://static-cdn.jtvnw.net/jtv_user_pictures/f9bdb9b4-911b-4f2d-8e04-f0bde098a4d9-profile_image-70x70.png',
     );
 
   await safeReply(interaction, { embeds: [exampleEmbed], flags: safePing() });
@@ -2055,7 +2055,7 @@ export async function handleMoveCommand(interaction: ChatInputCommandInteraction
 }
 
 export async function handleDeleteMessageCommand(
-  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ) {
   if (!interaction.isChatInputCommand()) {
     await safeReply(interaction, {
@@ -2080,7 +2080,7 @@ export async function handleDeleteMessageCommand(
 async function deleteMessage(
   interaction: ChatInputCommandInteraction<CacheType>,
   channel: TextBasedChannel | null,
-  messageId: string
+  messageId: string,
 ) {
   if (!channel) {
     await safeReply(interaction, {
@@ -2129,7 +2129,7 @@ function getMemberFromInteraction(
     | ChatInputCommandInteraction<CacheType>
     | ButtonInteraction<CacheType>
     | ModalSubmitInteraction<CacheType>,
-  pId?: string
+  pId?: string,
 ) {
   if (interaction.isChatInputCommand()) {
     const member = interaction.options.getMember(CommandIds.DISCORD_ID);
@@ -2161,12 +2161,12 @@ export function handleAdminSetRoleCommand(interaction: ChatInputCommandInteracti
 export function handleAdminSetRoleCommand(
   interaction: ButtonInteraction<CacheType>,
   discordId: string,
-  pRole: keyof typeof roleMap
+  pRole: keyof typeof roleMap,
 ): void;
 export async function handleAdminSetRoleCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
   discordId?: string,
-  pRole?: keyof typeof roleMap
+  pRole?: keyof typeof roleMap,
 ) {
   if (!userIsAdmin(interaction)) {
     return;
@@ -2218,7 +2218,7 @@ export async function handleAdminSetRoleCommand(
 
 function getActiveFromInteraction(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
-  pActive?: boolean
+  pActive?: boolean,
 ): boolean {
   if (interaction.isChatInputCommand()) {
     return interaction.options.getBoolean(CommandIds.ACTIVE, true);
@@ -2231,12 +2231,12 @@ export async function handleAdminSetActiveCommand(interaction: ChatInputCommandI
 export async function handleAdminSetActiveCommand(
   interaction: ButtonInteraction<CacheType>,
   pId: string,
-  pActive: boolean
+  pActive: boolean,
 ): Promise<void>;
 export async function handleAdminSetActiveCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
   pId?: string,
-  pActive?: boolean
+  pActive?: boolean,
 ): Promise<void> {
   if (!(await userIsAdmin(interaction))) {
     await safeReply(interaction, {
@@ -2287,7 +2287,7 @@ export async function handleAdminSetActiveCommand(
         new ActionRowBuilder<ButtonBuilder>().addComponents(
           isActive ? adminLeaveBtn : adminJoinBtn,
           adminAddAccountBtn,
-          adminRoleBtn
+          adminRoleBtn,
         ),
       ],
     });
@@ -2304,7 +2304,7 @@ export async function handleAdminSetActiveCommand(
 }
 
 export async function handleSetReplayFolderCommand(
-  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ) {
   if (!(await userIsAdmin(interaction))) {
     return;
@@ -2325,7 +2325,7 @@ export async function handleSetReplayFolderCommand(
 }
 
 export async function handleGetReplayFolderCommand(
-  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ) {
   if (!(await userIsAdmin(interaction))) {
     return;
@@ -2338,7 +2338,7 @@ export async function handleGetReplayFolderCommand(
 }
 
 export async function handleListReplaysCommand(
-  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ) {
   if (!(await userIsAdmin(interaction))) {
     return;
@@ -2408,7 +2408,7 @@ export async function handleListReplaysCommand(
       if (replayData) {
         currentChunk += `  - Replay ID: ${replayData.replayId}\n`;
         currentChunk += `  - Map: ${replayData.map}, Type: ${replayData.type}, Date: ${new Date(
-          replayData.date
+          replayData.date,
         ).getUTCDate()}\n  - Winner: ${replayData.winner}, Duration: ${Math.floor(replayData.length / 60)}m ${
           replayData.length % 60
         }s, takedowns: ${replayData.team0Takedowns} - ${replayData.team1Takedowns}\n  - Players:\n${
