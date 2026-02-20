@@ -126,7 +126,7 @@ client.once('clientReady', async () => {
 });
 
 function getCommandName(
-  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ): string | null {
   if (interaction.isButton()) {
     return interaction.customId;
@@ -306,7 +306,7 @@ function handleAdminSubCommand(interaction: ChatInputCommandInteraction<CacheTyp
 
 async function handleDefaultCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
-  commandName: string | null = null
+  commandName: string | null = null,
 ) {
   // if the interaction is not a button, reply with an error
   if (!commandName?.includes('_') || interaction.isChatInputCommand()) {
@@ -363,7 +363,7 @@ async function handleDefaultCommand(
           true,
           parts[1] === 'mmr' ? 'mmr' : 'alphabetical',
           parts[2] === 'true',
-          parts[3]
+          parts[3],
         );
         return;
     }
@@ -391,7 +391,7 @@ function isRoleCommandId(commandName: string): commandName is CommandIds {
 
 async function handleUnknownCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
-  commandName: string
+  commandName: string,
 ) {
   await safeReply(interaction, {
     content: `Unknown command: ${commandName}. Please use a valid command.`,
