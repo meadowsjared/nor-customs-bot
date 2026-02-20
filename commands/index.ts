@@ -575,7 +575,14 @@ export async function handleSwapTeamsCommand(
   const playerBNumber = interaction.options.getInteger('player-b', true) - 1;
   const activePlayers = getActivePlayers();
   activePlayers.sort((a, b) => (b.mmr ?? 0) - (a.mmr ?? 0));
-  activePlayers.forEach((p, index) => (p.draftRank = index));
+  // we don't need to recalculate the draftRank here
+  // because it should be calculated when the draft command is run,
+  // and the swap command should only be used after a draft command,
+  // so the draftRank should already be set correctly.
+  // If we recalculate it here,
+  // it could cause issues if the MMR of the players has
+  // changed since the draft command was run.
+  // activePlayers.forEach((p, index) => (p.draftRank = index));
   // get the discord_id of the two players
   const playerA = activePlayers.find(p => (p.draftRank ?? NaN) === playerANumber);
   const playerB = activePlayers.find(p => (p.draftRank ?? NaN) === playerBNumber);
@@ -600,7 +607,9 @@ export async function handleSwapTeamsCommand(
   }
   if (playerA.team === playerB.team) {
     await safeReply(interaction, {
-      content: `Both players are on the same team. Cannot swap.`,
+      content: `Both players are on the same team. Cannot swap.
+Player A: \`team: ${playerA.team}\` \`${playerANumber + 1}: ${playerA.mmr}\` <@${playerA.discordId}>
+Player B: \`team: ${playerB.team}\` \`${playerBNumber + 1}: ${playerB.mmr}\` <@${playerB.discordId}>`,
       flags: MessageFlags.Ephemeral,
     });
     return;
