@@ -87,7 +87,7 @@ client.on('guildCreate', async guild => {
   console.log(`Joined new guild: ${guild.name} (ID: ${guild.id})`);
 });
 
-client.once('clientReady', async () => {
+client.once('ready', async () => {
   // Register command globally (or use guilds.cache.first().commands for per-guild)
   // Clear old commands first to force Discord to update
   await client.application?.commands.set([]);
