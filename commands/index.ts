@@ -2366,7 +2366,7 @@ async function getPlayersByVoiceChannelId(
   if (!channel || !(channel instanceof VoiceChannel)) {
     return [];
   }
-  const channelMembers = channel.members;
+  const channelMembers = channel.members.filter(member => member.voice.channelId === channelId); // filter out anybody not in our channelId
 
   // get the players from the database that match the discord ids of the channel members
   const players: Player[] = channelMembers.reduce<Player[]>((acc, member) => {
