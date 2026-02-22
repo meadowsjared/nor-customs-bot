@@ -2362,14 +2362,14 @@ async function getPlayersByVoiceChannelId(
   channelId: string,
 ): Promise<Player[]> {
   // fetch all the members of the guild to make sure we have the latest information about who is in which voice channel
-  await interaction.guild?.members.fetch();
+  const members = await interaction.guild?.members.fetch();
 
   // get all the users in the voice channel with the given channel id
   const channel = await interaction.guild?.channels.fetch(channelId, { force: true });
-  if (!channel || !(channel instanceof VoiceChannel)) {
+  if (!channel || !(channel instanceof VoiceChannel) || !members) {
     return [];
   }
-  const channelMembers = channel.members.filter(member => member.voice.channelId === channelId); // filter out anybody not in our channelId
+  const channelMembers = members.filter(member => member.voice.channelId === channelId); // filter out anybody not in our channelId
 
   // get the players from the database that match the discord ids of the channel members
   const players: Player[] = channelMembers.reduce<Player[]>((acc, member) => {
