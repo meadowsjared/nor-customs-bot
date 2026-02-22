@@ -1,4 +1,8 @@
 import dotenv from 'dotenv';
+import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
+
 dotenv.config();
 
 import {
@@ -11,6 +15,7 @@ import {
   CacheType,
   ButtonInteraction,
   MessageFlags,
+  ApplicationCommandDataResolvable,
 } from 'discord.js';
 import { botChannelName, CommandIds, roleMap } from './constants';
 import {
@@ -87,43 +92,39 @@ client.on('guildCreate', async guild => {
   console.log(`Joined new guild: ${guild.name} (ID: ${guild.id})`);
 });
 
-client.once('ready', async () => {
-  // Register command globally (or use guilds.cache.first().commands for per-guild)
-  // Clear old commands first to force Discord to update
-  await client.application?.commands.set([]);
-  await client.application?.commands.set(slashCommands);
-  console.log('Slash commands registered!');
-
-  if (client.application) {
-    console.log('--- Fetching Command IDs ---');
-    try {
-      const commands = await client.application.commands.fetch();
-      commands.forEach(command => {
-        console.log(`Command: ${command.name}, ID: ${command.id}`);
-      });
-    } catch (error) {
-      console.error('Error fetching application commands:', error);
-    }
-    console.log('--------------------------');
-  }
-
-  // Log all guilds the bot is in
-  client.guilds.cache.forEach(guild => {
-    console.log(`Guild: ${guild.name} (ID: ${guild.id})`);
-  });
-
+client.once('clientReady', async () => {
   // Set bot status/activity
   client.user?.setPresence({
     status: 'online', // 'online' | 'idle' | 'dnd' | 'invisible'
     activities: [
       {
-        name: 'Nor Customs',
+        name: "Nor's Customs",
         type: ActivityType.Watching,
         url: 'https://www.twitch.tv/norator',
         state: 'Heroes of the Storm',
       },
     ],
   });
+  // Log all guilds the bot is in
+  client.guilds.cache.forEach(async guild => {
+    guild.commands.set(slashCommands);
+    console.log(`Guild: ${guild.name} (ID: ${guild.id})`);
+  });
+
+  // list all commands in Nor's server for debugging
+  client.guilds.cache
+    .get('706998529582956654')
+    ?.commands.fetch()
+    .then(commands => {
+      console.log('--- Commands in Guild ---');
+      commands.forEach(command => {
+        console.log(`Command: ${command.name}, ID: ${command.id}`);
+      });
+    })
+    .catch(error => {
+      console.error('Error fetching guild commands:', error);
+    });
+
   console.log(`Bot is ready! Logged in as ${client.user?.tag}`);
 });
 
