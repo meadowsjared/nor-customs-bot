@@ -2362,7 +2362,7 @@ async function getPlayersByVoiceChannelId(
   channelId: string,
 ): Promise<Player[]> {
   // get all the users in the voice channel with the given channel id
-  const channel = await interaction.guild?.channels.fetch(channelId);
+  const channel = await interaction.guild?.channels.fetch(channelId, { force: true });
   if (!channel || !(channel instanceof VoiceChannel)) {
     return [];
   }
