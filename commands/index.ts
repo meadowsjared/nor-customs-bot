@@ -124,6 +124,8 @@ function generatePreviousPlayersList(): string {
  * @param interaction The interaction object for guild access
  */
 export async function updateLobbyMessage(interaction: chatOrButtonOrModal) {
+  await updateAdminActiveButtons(interaction);
+
   const lobbyMessages = getLobbyMessages([CommandIds.NEW_GAME]);
   if (!lobbyMessages || lobbyMessages.length === 0) {
     return; // No lobby message to update
@@ -2243,9 +2245,16 @@ export async function handleAdminSetActiveCommand(
   pActive?: boolean,
 ): Promise<void>;
 export async function handleAdminSetActiveCommand(
+  interaction: ButtonInteraction<CacheType>,
+  pId: string,
+  pActive?: boolean,
+  isAdminActiveButton?: boolean,
+): Promise<void>;
+export async function handleAdminSetActiveCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
   pId?: string,
   pActive?: boolean,
+  isAdminActiveButton = false,
 ): Promise<void> {
   if (!(await userIsAdmin(interaction))) {
     await safeReply(interaction, {
@@ -2256,10 +2265,7 @@ export async function handleAdminSetActiveCommand(
   }
   const discordId = getMemberFromInteraction(interaction, pId);
   if (discordId === null) {
-    await safeReply(interaction, {
-      content: 'Please provide a valid Discord member to set their active status.1',
-      flags: MessageFlags.Ephemeral,
-    });
+    await handleAdminShowPlayerActiveButtons(interaction);
     return;
   }
   const storedPlayer = getPlayerByDiscordId(discordId);
@@ -2295,17 +2301,31 @@ export async function handleAdminSetActiveCommand(
       .setCustomId(`${CommandIds.ROLE}_${id}`)
       .setLabel('Admin Role')
       .setStyle(ButtonStyle.Secondary);
-    await safeReply(interaction, {
-      content: `Set <@${id}>'s active status to \`${isActive ? CommandIds.ACTIVE : CommandIds.INACTIVE}\``,
-      flags: MessageFlags.Ephemeral,
-      components: [
-        new ActionRowBuilder<ButtonBuilder>().addComponents(
-          isActive ? adminLeaveBtn : adminJoinBtn,
-          adminAddAccountBtn,
-          adminRoleBtn,
-        ),
-      ],
-    });
+    if (isAdminActiveButton) {
+      // create a temporary reply, and then delete it
+      interaction
+        .deferReply({
+          flags: MessageFlags.Ephemeral,
+        })
+        .then(message => {
+          setTimeout(() => {
+            message.delete().catch(console.error);
+          }); // Delete the message after 5 seconds
+        })
+        .catch(console.error);
+    } else {
+      const message = await safeReply(interaction, {
+        content: `Set <@${id}>'s active status to \`${isActive ? CommandIds.ACTIVE : CommandIds.INACTIVE}\``,
+        flags: MessageFlags.Ephemeral,
+        components: [
+          new ActionRowBuilder<ButtonBuilder>().addComponents(
+            isActive ? adminLeaveBtn : adminJoinBtn,
+            adminAddAccountBtn,
+            adminRoleBtn,
+          ),
+        ],
+      });
+    }
     await updateLobbyMessage(interaction);
   } else {
     await safeReply(interaction, {
@@ -2316,6 +2336,122 @@ export async function handleAdminSetActiveCommand(
     });
   }
   // return;
+}
+
+async function handleAdminShowPlayerActiveButtons(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+) {
+  if ((await userIsAdmin(interaction)) === false) {
+    await safeReply(interaction, {
+      content: 'You do not have permission to use this command.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  await updateAdminActiveButtons(interaction, true);
+}
+
+/**
+ * Gets the players in the voice channel with the given channel id, then looks up those players in the database and returns them as an array.
+ * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
+ * @param channelId The id of the voice channel to get the players from.
+ * @returns An array of Player objects that are in the voice channel and found in the database.
+ */
+async function getPlayersByVoiceChannelId(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+  channelId: string,
+): Promise<Player[]> {
+  // get all the users in the voice channel with the given channel id
+  const channel = await interaction.guild?.channels.fetch(channelId);
+  if (!channel || !(channel instanceof VoiceChannel)) {
+    return [];
+  }
+  const channelMembers = channel.members;
+
+  // get the players from the database that match the discord ids of the channel members
+  const players: Player[] = channelMembers.reduce<Player[]>((acc, member) => {
+    const player = getPlayerByDiscordId(member.user.id);
+    if (player) {
+      acc.push(player);
+    }
+    return acc;
+  }, []);
+
+  return players;
+}
+
+export async function updateAdminActiveButtons(
+  interaction:
+    | ChatInputCommandInteraction<CacheType>
+    | ButtonInteraction<CacheType>
+    | ModalSubmitInteraction<CacheType>,
+  newMessage?: boolean,
+) {
+  if (interaction.isModalSubmit()) {
+    await safeReply(interaction, {
+      content: 'This command cannot be used in a modal.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  const commandExecutor = interaction.user.id;
+
+  // get the channel id that the commandExecutor is in
+  const channelId = (await interaction.guild?.members.fetch(commandExecutor))?.voice.channelId;
+  if (!channelId) {
+    await safeReply(interaction, {
+      content: 'You must be in a voice channel to use this command.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const players = await getPlayersByVoiceChannelId(interaction, channelId);
+  if (players.length === 0) {
+    await safeReply(interaction, {
+      content: 'No players found in the voice channel.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const buttons = players.map(player => {
+    const isActive = player.active;
+    return new ButtonBuilder()
+      .setCustomId(`${CommandIds.ADMIN}_${CommandIds.ACTIVE}_${player.discordId}_${!isActive}`)
+      .setLabel(
+        `${player.usernames.accounts?.find(account => account.isPrimary)?.hotsBattleTag.replace(/#.*$/, '') ?? player.usernames.discordGlobalName}`,
+      )
+      .setStyle(isActive ? ButtonStyle.Primary : ButtonStyle.Danger);
+  });
+  if (newMessage) {
+    await createNewAdminRoleButton(interaction, buttons);
+  } else {
+    const storedInteraction = getStoredInteraction(`${CommandIds.ADMIN}_${CommandIds.ACTIVE}`, interaction.channelId);
+    if (!storedInteraction) {
+      // just create a new message if we can't find the stored interaction, this can happen if the bot was restarted
+      await createNewAdminRoleButton(interaction, buttons);
+      return;
+    }
+    storedInteraction.editReply({
+      content: 'Click the buttons below to toggle the active status of the players in your voice channel.',
+      components: buttons.map(button => new ActionRowBuilder<ButtonBuilder>().addComponents(button)),
+    });
+  }
+}
+
+async function createNewAdminRoleButton(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+  buttons: ButtonBuilder[],
+) {
+  const message = await safeReply(interaction, {
+    content: 'Click the buttons below to toggle the active status of the players in your voice channel.',
+    flags: MessageFlags.Ephemeral,
+    components: buttons.map(button => new ActionRowBuilder<ButtonBuilder>().addComponents(button)),
+  });
+  if (message) {
+    storeInteraction(`${CommandIds.ADMIN}_${CommandIds.ACTIVE}`, interaction.channelId, interaction);
+  }
 }
 
 export async function handleSetReplayFolderCommand(

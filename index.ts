@@ -357,7 +357,7 @@ async function handleDefaultCommand(
     }
     return;
   }
-  if (parts.length === 4) {
+  if (parts.length === 4 && parts[0].startsWith(CommandIds.PLAYERS_ALL_PAGE)) {
     switch (parts[0]) {
       case CommandIds.PLAYERS_ALL_PAGE:
       case CommandIds.PLAYERS_ALL_PAGE_SORT:
@@ -371,6 +371,10 @@ async function handleDefaultCommand(
         return;
     }
   }
+  if (parts.length === 4 && isAdminSetActiveCommand(interaction, parts[0], parts[1], parts[2], parts[3])) {
+    await handleAdminSetActiveCommand(interaction, parts[2], parts[3] === 'true', true);
+    return;
+  }
   if (parts.length === 5 && isRoleCommandId(parts[0])) {
     // Handle role edit button commands with user ID and active state
     handleEditRoleButtonCommand(interaction, parts[3], parts[0], parts[4], parts[1] === CommandIds.ACTIVE, parts[2]);
@@ -381,6 +385,22 @@ async function handleDefaultCommand(
     return;
   }
   await handleUnknownCommand(interaction, commandName);
+}
+
+function isAdminSetActiveCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+  part0: string,
+  part1: string,
+  part2: string,
+  part3: string,
+): boolean {
+  return (
+    interaction.isButton() &&
+    part0 === CommandIds.ADMIN &&
+    part1 === CommandIds.ACTIVE &&
+    /^\d{17,19}$/.test(part2) &&
+    ['true', 'false'].includes(part3.toLowerCase())
+  );
 }
 
 function isRoleCommandId(commandName: string): commandName is CommandIds {

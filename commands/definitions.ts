@@ -351,7 +351,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
             name: CommandIds.DISCORD_ID,
             description: 'The user to modify.',
             type: ApplicationCommandOptionType.User,
-            required: true,
+            required: false,
           },
           {
             name: CommandIds.ACTIVE,
