@@ -47,6 +47,7 @@ export const enum CommandIds {
   ROLE_EDIT_REPLACE = 'role-edit-replace',
   ROLE_ADMIN = 'role-admin',
   ACTIVE = 'active',
+  REFRESH = 'refresh',
   INACTIVE = 'inactive',
   LEAVE = 'leave',
   CLEAR = 'clear',
@@ -111,7 +112,7 @@ export const roleBtn = new ButtonBuilder()
 export const rolesRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
   ...Object.entries(roleMap).map(([key, label]) => {
     return new ButtonBuilder().setCustomId(key).setLabel(label).setStyle(ButtonStyle.Primary);
-  })
+  }),
 );
 export const imPlayingBtn = new ButtonBuilder()
   .setCustomId(CommandIds.REJOIN)

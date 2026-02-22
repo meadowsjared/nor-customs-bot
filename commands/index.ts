@@ -2308,9 +2308,7 @@ export async function handleAdminSetActiveCommand(
           flags: MessageFlags.Ephemeral,
         })
         .then(message => {
-          setTimeout(() => {
-            message.delete().catch(console.error);
-          }); // Delete the message after 5 seconds
+          message.delete().catch(console.error);
         })
         .catch(console.error);
     } else {
@@ -2385,6 +2383,7 @@ export async function updateAdminActiveButtons(
     | ButtonInteraction<CacheType>
     | ModalSubmitInteraction<CacheType>,
   newMessage?: boolean,
+  fakeReply = false,
 ) {
   if (interaction.isModalSubmit()) {
     await safeReply(interaction, {
@@ -2414,15 +2413,22 @@ export async function updateAdminActiveButtons(
     return;
   }
 
-  const buttons = players.map(player => {
-    const isActive = player.active;
-    return new ButtonBuilder()
-      .setCustomId(`${CommandIds.ADMIN}_${CommandIds.ACTIVE}_${player.discordId}_${!isActive}`)
-      .setLabel(
-        `${player.usernames.accounts?.find(account => account.isPrimary)?.hotsBattleTag.replace(/#.*$/, '') ?? player.usernames.discordGlobalName}`,
-      )
-      .setStyle(isActive ? ButtonStyle.Primary : ButtonStyle.Danger);
-  });
+  const refreshButton = new ButtonBuilder()
+    .setCustomId(`${CommandIds.ADMIN}_${CommandIds.ACTIVE}_${CommandIds.REFRESH}`)
+    .setEmoji('🔄')
+    .setStyle(ButtonStyle.Success);
+
+  const buttons = players
+    .map(player => {
+      const isActive = player.active;
+      return new ButtonBuilder()
+        .setCustomId(`${CommandIds.ADMIN}_${CommandIds.ACTIVE}_${player.discordId}_${!isActive}`)
+        .setLabel(
+          `${player.usernames.accounts?.find(account => account.isPrimary)?.hotsBattleTag.replace(/#.*$/, '') ?? player.usernames.discordGlobalName}`,
+        )
+        .setStyle(isActive ? ButtonStyle.Primary : ButtonStyle.Danger);
+    })
+    .concat(refreshButton);
   if (newMessage) {
     await createNewAdminRoleButton(interaction, buttons);
   } else {
@@ -2436,6 +2442,10 @@ export async function updateAdminActiveButtons(
       content: 'Click the buttons below to toggle the active status of the players in your voice channel.',
       components: buttons.map(button => new ActionRowBuilder<ButtonBuilder>().addComponents(button)),
     });
+    if (fakeReply) {
+      const message = await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      message.delete().catch(console.error);
+    }
   }
 }
 

@@ -57,6 +57,7 @@ import {
   handleDeleteHotsAccountCommand,
   handleRefreshLobbyMessage,
   handlePlayersAllCommand,
+  updateAdminActiveButtons,
 } from './commands';
 import { slashCommands } from './commands/definitions';
 
@@ -284,6 +285,9 @@ client.on('interactionCreate', async interaction => {
         return;
       }
       handleAdminSubCommand(interaction);
+      break;
+    case `${CommandIds.ADMIN}_${CommandIds.ACTIVE}_${CommandIds.REFRESH}`:
+      updateAdminActiveButtons(interaction, false, true);
       break;
     default:
       await handleDefaultCommand(interaction, commandName);
