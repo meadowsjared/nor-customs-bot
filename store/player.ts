@@ -74,7 +74,7 @@ try {
 export function storeInteraction(
   messageId: string,
   channelId: string,
-  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ) {
   const key = getInteractionKey(messageId, channelId);
   interactionStore.set(key, interaction);
@@ -99,7 +99,7 @@ export function removeInteraction(messageId: string, channelId: string): void {
  */
 export function getStoredInteraction(
   messageId: string,
-  channelId: string
+  channelId: string,
 ): ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType> | undefined {
   const key = getInteractionKey(messageId, channelId);
   return interactionStore.get(key);
@@ -125,7 +125,7 @@ export async function savePlayer(
     | undefined,
   discordId: string,
   player: Player,
-  hotsBattleTag?: string
+  hotsBattleTag?: string,
 ): Promise<void> {
   const stmt = db.prepare(`
     INSERT INTO players (discord_id, discord_name, discord_global_name, discord_display_name, role, active)
@@ -144,7 +144,7 @@ export async function savePlayer(
     player.usernames.discordGlobalName,
     player.usernames.discordDisplayName,
     player.role,
-    player.active ? 1 : 0
+    player.active ? 1 : 0,
   );
   if (!hotsBattleTag) {
     return;
@@ -185,7 +185,7 @@ function getPlayerFromRow(row: FlatPlayer, accounts: HotsAccountRow[]): Player {
         (max: number | null, account) =>
           // find the highest MMR including both QM, SL, and AR
           Math.max(max ?? 0, account.hpQmMMR ?? 0, account.hpSlMMR ?? 0, account.hpArMMR ?? 0),
-        0
+        0,
       ) ?? 0) + (row.adjustment ?? 0),
     lastActive: new Date(row.last_active),
   };
@@ -213,7 +213,7 @@ export function getActivePlayers(): Player[] {
   const stmt = db.prepare<[], FlatPlayer>('SELECT * FROM players WHERE active = 1 ORDER BY active, team;');
   const rows: FlatPlayer[] = stmt.all();
   const accountsStmt = db.prepare<[], HotsAccountRow>(
-    'SELECT discord_id, hots_battle_tag, is_primary, HP_QM_MMR, HP_SL_MMR, HP_AR_MMR, HP_QM_Games, HP_SL_Games, HP_AR_Games FROM hots_accounts;'
+    'SELECT discord_id, hots_battle_tag, is_primary, HP_QM_MMR, HP_SL_MMR, HP_AR_MMR, HP_QM_Games, HP_SL_Games, HP_AR_Games FROM hots_accounts;',
   );
   const accounts = accountsStmt.all();
   return rows.map<Player>(row => getPlayerFromRow(row, accounts));
@@ -243,18 +243,18 @@ export function getAllPlayers(page: number, sort: 'mmr' | 'alphabetical', ascend
        ORDER BY (COALESCE(h.mmr, 0) + COALESCE(p.adjustment, 0)) ${
          ascending ? 'DESC' : 'ASC'
        }, p.discord_display_name ASC
-       LIMIT 20 OFFSET ?`
+       LIMIT 20 OFFSET ?`,
     );
   } else {
     stmt = db.prepare<[number], FlatPlayer>(
-      `SELECT * FROM players ORDER BY discord_display_name ${ascending ? ' ASC' : ' DESC'} LIMIT 20 OFFSET ?;`
+      `SELECT * FROM players ORDER BY discord_display_name ${ascending ? ' ASC' : ' DESC'} LIMIT 20 OFFSET ?;`,
     );
   }
 
   // const stmt2 = db.prepare<[number], FlatPlayer>('SELECT * FROM players ORDER BY MMR LIMIT 20 OFFSET ?;');
   const rows: FlatPlayer[] = stmt.all((page ?? 0) * 20);
   const accountsStmt = db.prepare<[], HotsAccountRow>(
-    'SELECT discord_id, hots_battle_tag, is_primary, HP_QM_MMR, HP_SL_MMR, HP_AR_MMR, HP_QM_Games, HP_SL_Games, HP_AR_Games FROM hots_accounts;'
+    'SELECT discord_id, hots_battle_tag, is_primary, HP_QM_MMR, HP_SL_MMR, HP_AR_MMR, HP_QM_Games, HP_SL_Games, HP_AR_Games FROM hots_accounts;',
   );
   const accounts = accountsStmt.all();
   return rows.map<Player>(row => getPlayerFromRow(row, accounts));
@@ -267,7 +267,7 @@ export async function handleAddHotsAccount(
     | ModalSubmitInteraction<CacheType>
     | undefined,
   discordId: string,
-  hotsBattleTag: string
+  hotsBattleTag: string,
 ): Promise<false | Player> {
   let hotsAccountAlreadyExists = false;
   let hasAccount = false;
@@ -286,7 +286,7 @@ ${validationResult.rules}
 
   //check if the hots account is already in use by another player
   const existingAccountStmt = db.prepare<string[], HotsAccount & { discord_id: string }>(
-    'SELECT discord_id, hots_battle_tag FROM hots_accounts WHERE hots_battle_tag = ? AND discord_id != ?'
+    'SELECT discord_id, hots_battle_tag FROM hots_accounts WHERE hots_battle_tag = ? AND discord_id != ?',
   );
   const existingAccount = existingAccountStmt.get(hotsBattleTag, discordId);
   if (existingAccount) {
@@ -341,7 +341,7 @@ ${validationResult.rules}
     player.usernames.accounts?.some(
       account =>
         account.hotsBattleTag.toLowerCase() === hotsBattleTag.toLowerCase() &&
-        ((account.hpQmGames ?? -1) > -1 || (account.hpSlGames ?? -1) > -1 || (account.hpArGames ?? -1) > -1)
+        ((account.hpQmGames ?? -1) > -1 || (account.hpSlGames ?? -1) > -1 || (account.hpArGames ?? -1) > -1),
     ) ?? false;
   if (hasAccount) {
     userIsSelf = discordId === interaction?.user.id;
@@ -357,7 +357,7 @@ ${validationResult.rules}
         HP_SL_Games = ?,
         HP_AR_Games = ?,
         updated_at = CURRENT_TIMESTAMP
-      WHERE discord_id = ? AND hots_battle_tag = ?`
+      WHERE discord_id = ? AND hots_battle_tag = ?`,
     );
     updateProfileStmt.run(
       profileData.region,
@@ -369,7 +369,7 @@ ${validationResult.rules}
       profileData.slGames,
       profileData.arGames,
       discordId,
-      hotsBattleTag
+      hotsBattleTag,
     );
     if (profileData.qmGames === -1 && profileData.slGames === -1 && profileData.arGames === -1) {
       await handleAccountNotFound(interaction, discordId, hotsBattleTag);
@@ -379,7 +379,7 @@ ${validationResult.rules}
   }
   try {
     const hotsAccountStmt = db.prepare(
-      'REPLACE INTO hots_accounts (discord_id, hots_battle_tag, is_primary, HP_Region, HP_Blizz_ID, HP_QM_MMR, HP_SL_MMR, HP_AR_MMR, HP_QM_Games, HP_SL_Games, HP_AR_Games) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      'REPLACE INTO hots_accounts (discord_id, hots_battle_tag, is_primary, HP_Region, HP_Blizz_ID, HP_QM_MMR, HP_SL_MMR, HP_AR_MMR, HP_QM_Games, HP_SL_Games, HP_AR_Games) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
     );
     hotsAccountStmt.run(
       discordId,
@@ -392,7 +392,7 @@ ${validationResult.rules}
       profileData.arMmr,
       profileData.qmGames,
       profileData.slGames,
-      profileData.arGames
+      profileData.arGames,
     );
     if (profileData.qmGames === -1 && profileData.slGames === -1 && profileData.arGames === -1) {
       await handleAccountNotFound(interaction, discordId, hotsBattleTag);
@@ -447,7 +447,7 @@ async function handleAccountNotFound(
     | ModalSubmitInteraction<CacheType>
     | undefined,
   discordId: string,
-  hotsBattleTag: string
+  hotsBattleTag: string,
 ) {
   deletePlayerHotsAccounts(discordId);
   interaction && (await updateLobbyMessage(interaction));
@@ -465,7 +465,7 @@ async function handleAccountNotFound(
 }
 
 export async function deletePlayer(
-  discordId: string
+  discordId: string,
 ): Promise<{ playersDeleted: number; hotsAccountsDeleted: number }> {
   // first delete the player's hots accounts
   let deletedPlayer = 0;
@@ -499,7 +499,7 @@ export async function setPrimaryAccount(
   discordId: string,
   hotsBattleTag: string,
   messageId: string,
-  channelId: string
+  channelId: string,
 ) {
   const { success, message, player } = await updatePrimaryAccountInDb(discordId, hotsBattleTag);
   if (!success || !player?.usernames.accounts) {
@@ -537,7 +537,7 @@ async function updateButtonInterface(
   player: Player,
   discordId: string,
   messageId: string,
-  channelId: string
+  channelId: string,
 ): Promise<{ success: boolean; messageOptions: InteractionReplyOptions }> {
   const accounts = player.usernames.accounts;
   if (!accounts?.length) {
@@ -580,12 +580,12 @@ export function getAccountButtons(
   accounts: HotsAccount[],
   discordId: string,
   messageId: string,
-  channelId: string
+  channelId: string,
 ): ActionRowBuilder<ButtonBuilder>[] {
   const buttons = accounts.map(account => {
     return new ButtonBuilder()
       .setCustomId(
-        `${CommandIds.ADMIN}_${CommandIds.PRIMARY}_${discordId}_${account.hotsBattleTag}_${messageId}_${channelId}`
+        `${CommandIds.ADMIN}_${CommandIds.PRIMARY}_${discordId}_${account.hotsBattleTag}_${messageId}_${channelId}`,
       )
       .setLabel(account.hotsBattleTag)
       .setStyle(account.isPrimary ? ButtonStyle.Primary : ButtonStyle.Secondary);
@@ -601,10 +601,10 @@ export function getAccountButtons(
  */
 async function updatePrimaryAccountInDb(
   discordId: string,
-  hotsBattleTag: string
+  hotsBattleTag: string,
 ): Promise<{ success: boolean; message?: string; player?: Player }> {
   const stmt = db.prepare(
-    'UPDATE hots_accounts SET is_primary = CASE WHEN hots_battle_tag = ? THEN 1 ELSE 0 END WHERE discord_id = ?'
+    'UPDATE hots_accounts SET is_primary = CASE WHEN hots_battle_tag = ? THEN 1 ELSE 0 END WHERE discord_id = ?',
   );
   const result = stmt.run(hotsBattleTag, discordId);
   if (result.changes === 0) {
@@ -635,7 +635,7 @@ async function updatePrimaryAccountInDb(
  */
 export function markAllPlayersInactive(): void {
   const stmt = db.prepare(
-    'UPDATE players SET active = 0, team = NULL, draft_rank = NULL WHERE active = 1 OR team IS NOT NULL'
+    'UPDATE players SET active = 0, team = NULL, draft_rank = NULL WHERE active = 1 OR team IS NOT NULL',
   );
   stmt.run();
 }
@@ -690,7 +690,7 @@ export function setPlayerName(
     | ButtonInteraction<CacheType>
     | ModalSubmitInteraction<CacheType>,
   discordId: string,
-  hotsBattleTag: string
+  hotsBattleTag: string,
 ): false | Player {
   if (!hotsBattleTag) {
     return false; // Invalid name
@@ -734,7 +734,7 @@ export function setPlayerDiscordNames(discordId: string, discordData: DiscordUse
 export function setPlayerActive(
   discordId: string,
   active: boolean,
-  hotsBattleTag?: string
+  hotsBattleTag?: string,
 ): { updated: boolean; player?: Player } {
   const player = getPlayerByDiscordId(discordId);
   if (!player) {
@@ -752,7 +752,7 @@ export function setPlayerActive(
       addDummyHotsAccount(discordId, hotsBattleTag);
     }
     const stmt = db.prepare(
-      `UPDATE players SET active = ?${active ? ', last_active = CURRENT_TIMESTAMP' : ''} WHERE discord_id = ?`
+      `UPDATE players SET active = ?${active ? ', last_active = CURRENT_TIMESTAMP' : ''} WHERE discord_id = ?`,
     );
     stmt.run(active ? 1 : 0, discordId);
   });
@@ -763,7 +763,7 @@ export function setPlayerActive(
 
 function addDummyHotsAccount(discordId: string, hotsBattleTag: string) {
   const hotsAccountStmt = db.prepare(
-    'REPLACE INTO hots_accounts (discord_id, hots_battle_tag, is_primary) VALUES (?, ?, ?)'
+    'REPLACE INTO hots_accounts (discord_id, hots_battle_tag, is_primary) VALUES (?, ?, ?)',
   );
   hotsAccountStmt.run(discordId, hotsBattleTag, 1);
 }
@@ -789,7 +789,7 @@ export function clearTeams(): void {
 export function setTeamsFromPlayers(
   team1: { player: Player; index: number }[],
   team2: { player: Player; index: number }[],
-  spectators: { player: Player; index: number }[]
+  spectators: { player: Player; index: number }[],
 ): void {
   const transaction = db.transaction(() => {
     const clearStmt = db.prepare('UPDATE players SET team = NULL, draft_rank = NULL');
@@ -832,7 +832,7 @@ export function getTeams(): { team1: Player[]; team2: Player[] } {
   const rows: FlatPlayer[] = stmt.all();
   // select all hots accounts by first joining to the players where team is not null, then getting all accounts where is_primary = 1
   const accountsStmt = db.prepare<[], HotsAccountRow>(
-    'SELECT discord_id, hots_battle_tag, is_primary, HP_QM_MMR, HP_SL_MMR, HP_AR_MMR, HP_QM_Games, HP_SL_Games, HP_AR_Games FROM hots_accounts WHERE is_primary = 1;'
+    'SELECT discord_id, hots_battle_tag, is_primary, HP_QM_MMR, HP_SL_MMR, HP_AR_MMR, HP_QM_Games, HP_SL_Games, HP_AR_Games FROM hots_accounts WHERE is_primary = 1;',
   );
   const accounts = accountsStmt.all();
   const team1: Player[] = [];
