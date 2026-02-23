@@ -2440,13 +2440,32 @@ export async function updateAdminActiveButtons(
     }
     storedInteraction.editReply({
       content: 'Click the buttons below to toggle the active status of the players in your voice channel.',
-      components: buttons.map(button => new ActionRowBuilder<ButtonBuilder>().addComponents(button)),
+      components: createButtonRows(buttons),
     });
     if (fakeReply) {
       const message = await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       message.delete().catch(console.error);
     }
   }
+}
+
+function createButtonRows(buttons: ButtonBuilder[]): ActionRowBuilder<ButtonBuilder>[] {
+  const rows: ActionRowBuilder<ButtonBuilder>[] = [];
+  const BUTTONS_PER_ROW = 5;
+  const MAX_BUTTONS = 25;
+
+  for (let i = 0; i < buttons.length && i < MAX_BUTTONS; i += BUTTONS_PER_ROW) {
+    const chunk = buttons.slice(i, i + BUTTONS_PER_ROW);
+    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(...chunk));
+  }
+
+  if (buttons.length > MAX_BUTTONS) {
+    console.warn(
+      `Too many buttons to display (${buttons.length}). Discord supports a maximum of ${MAX_BUTTONS} buttons per message.\n${buttons.length - MAX_BUTTONS} buttons were not shown.`,
+    );
+  }
+
+  return rows;
 }
 
 async function createNewAdminRoleButton(
@@ -2456,7 +2475,7 @@ async function createNewAdminRoleButton(
   const message = await safeReply(interaction, {
     content: 'Click the buttons below to toggle the active status of the players in your voice channel.',
     flags: MessageFlags.Ephemeral,
-    components: buttons.map(button => new ActionRowBuilder<ButtonBuilder>().addComponents(button)),
+    components: createButtonRows(buttons),
   });
   if (message) {
     storeInteraction(`${CommandIds.ADMIN}_${CommandIds.ACTIVE}`, interaction.channelId, interaction);
