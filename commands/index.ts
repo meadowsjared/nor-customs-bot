@@ -71,8 +71,11 @@ import { validateBattleTag } from '../utils/heroesOfTheStorm';
  * @returns The formatted lobby status message
  */
 function generateLobbyStatusMessage(pPreviousPlayersList?: string): string {
-  const previousPlayersList =
-    pPreviousPlayersList ?? getLobbyMessages([CommandIds.NEW_GAME])?.[0]?.previousPlayersList ?? '';
+  const prevPlayersFromDb: string[] = JSON.parse(
+    getLobbyMessages([CommandIds.NEW_GAME])?.[0]?.previousPlayersList ?? '[]',
+  );
+  const previousPlayersMessage = generatePreviousPlayersMessage(prevPlayersFromDb);
+  const previousPlayersList = pPreviousPlayersList ?? previousPlayersMessage ?? '';
   const activePlayers = getActivePlayers();
   activePlayers.sort((a, b) => a.lastActive.getTime() - b.lastActive.getTime()); // sort by last_active ascending
   const lobbyPlayers = activePlayers.map(
@@ -111,12 +114,15 @@ function generateLobbyStatusMessage(pPreviousPlayersList?: string): string {
 }
 
 /** generates the list of previous players */
-function generatePreviousPlayersList(): string {
-  const previousPlayers = getActivePlayers().map(p => `<@${p.discordId}>`);
-  if (previousPlayers.length === 0) {
+function generatePreviousPlayersList(): string[] {
+  return getActivePlayers().map(p => p.discordId);
+}
+
+function generatePreviousPlayersMessage(previousPlayersList: string[]): string {
+  if (previousPlayersList.length === 0) {
     return '**No Previous Players**';
   }
-  return `${previousPlayers.join(' ')}`;
+  return previousPlayersList.map(discordId => `<@${discordId}>`).join(' ');
 }
 
 /**
@@ -157,7 +163,8 @@ export async function handleNewGameCommand(
   markAllPlayersInactive();
 
   // Generate the initial lobby status message
-  const lobbyStatusMessage = generateLobbyStatusMessage(previousPlayersList);
+  const previousPlayersMessage = generatePreviousPlayersMessage(previousPlayersList);
+  const lobbyStatusMessage = generateLobbyStatusMessage(previousPlayersMessage);
 
   // announce in the channel that a new game has started and all players have been marked as inactive, so they need to hit the button if they are going to play
   const sentMessage = await announce(interaction, lobbyStatusMessage, safePing(undefined), [
@@ -166,7 +173,7 @@ export async function handleNewGameCommand(
 
   // Store the message ID so we can update it later
   if (sentMessage) {
-    saveLobbyMessage(CommandIds.NEW_GAME, sentMessage.id, sentMessage.channelId, previousPlayersList);
+    saveLobbyMessage(CommandIds.NEW_GAME, sentMessage.id, sentMessage.channelId, JSON.stringify(previousPlayersList));
   }
 
   const sentReply = await safeReply(interaction, {
