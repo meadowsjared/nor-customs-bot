@@ -2,6 +2,7 @@ import fs from 'fs';
 import {
   ActionRowBuilder,
   ButtonBuilder,
+  ButtonComponent,
   ButtonInteraction,
   ButtonStyle,
   CacheType,
@@ -2364,23 +2365,75 @@ async function handleAdminShowPlayerActiveButtons(
  */
 async function getPlayersByVoiceChannelId(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
-  channelId: string,
+  channelId: string | null,
 ): Promise<Player[]> {
-  const channel = await interaction.guild?.channels.fetch(channelId, { force: true });
-  if (!channel || !(channel instanceof VoiceChannel)) {
+  // get the users from the interaction's buttons
+  const storedInteraction = getStoredInteraction(`${CommandIds.ADMIN}_${CommandIds.ACTIVE}`, interaction.channelId);
+
+  // get previously stored players from the buttons of the previously stored interaction
+  const players = await getPreviousSetActivePlayers(storedInteraction);
+  const previousPlayers = getLobbyPreviousPlayers();
+  const activePlayers = getActivePlayers();
+  players.push(...previousPlayers.filter(lp => !players.some(p => p.discordId === lp.discordId))); // add the lobby players that are not already in the players array
+  players.push(...activePlayers.filter(ap => !players.some(p => p.discordId === ap.discordId))); // add the active players that are not already in the players array
+
+  if (channelId) {
+    const channel = await interaction.guild?.channels.fetch(channelId, { force: true });
+    if (!channel || !(channel instanceof VoiceChannel)) {
+      return players;
+    }
+
+    // add the players from the database that match the discord ids of the channel members
+    players.push(
+      ...channel.members
+        .map(member => getPlayerByDiscordId(member.user.id))
+        .filter((player): player is Player => !!player && !players.some(p => p.discordId === player.discordId)),
+    ); // add the players from the channel that are not already in the players array
+  }
+
+  return players;
+}
+
+async function getPreviousSetActivePlayers(
+  storedInteraction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType> | undefined,
+): Promise<Player[]> {
+  try {
+    return (
+      (await storedInteraction?.fetchReply())?.components.reduce<Player[]>((acc, actionRow) => {
+        if ('components' in actionRow && Array.isArray(actionRow.components)) {
+          for (const button of actionRow.components) {
+            if (button instanceof ButtonComponent) {
+              if (button.customId?.startsWith(`${CommandIds.ADMIN}_${CommandIds.ACTIVE}_`)) {
+                const parts = button.customId.split('_');
+                const discordId = parts[2];
+                if (discordId) {
+                  const player = getPlayerByDiscordId(discordId);
+                  if (player) {
+                    acc.push(player);
+                  }
+                }
+              }
+            }
+          }
+        }
+        return acc;
+      }, []) ?? []
+    );
+  } catch (error) {
+    console.error('Error fetching stored interaction reply:', error);
     return [];
   }
-  const channelMembers = channel.members;
+}
 
-  // get the players from the database that match the discord ids of the channel members
-  const players: Player[] = channelMembers.reduce<Player[]>((acc, member) => {
-    const player = getPlayerByDiscordId(member.user.id);
-    if (player) {
-      acc.push(player);
-    }
-    return acc;
-  }, []);
-
+function getLobbyPreviousPlayers(): Player[] {
+  const lobbyMessages = getLobbyMessages([CommandIds.NEW_GAME]);
+  if (!lobbyMessages || lobbyMessages.length === 0) {
+    return []; // No lobby message to update
+  }
+  const playerIds = JSON.parse(lobbyMessages[0].previousPlayersList ?? '[]');
+  const players: Player[] = playerIds
+    .map((discordId: string) => getPlayerByDiscordId(discordId))
+    .filter((player: Player | undefined) => player !== undefined);
   return players;
 }
 
@@ -2402,14 +2455,7 @@ export async function updateAdminActiveButtons(
   const commandExecutor = interaction.user.id;
 
   // get the channel id that the commandExecutor is in
-  const channelId = (await interaction.guild?.members.fetch(commandExecutor))?.voice.channelId;
-  if (!channelId) {
-    await safeReply(interaction, {
-      content: 'You must be in a voice channel to use this command.',
-      flags: MessageFlags.Ephemeral,
-    });
-    return;
-  }
+  const channelId = (await interaction.guild?.members.fetch(commandExecutor))?.voice.channelId ?? null;
 
   const players = await getPlayersByVoiceChannelId(interaction, channelId);
   if (players.length === 0) {
