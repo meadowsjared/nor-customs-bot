@@ -2246,21 +2246,23 @@ function getActiveFromInteraction(
   return pActive ?? true; // Default to true if not provided
 }
 
-export async function handleAdminSetActiveCommand(interaction: ChatInputCommandInteraction<CacheType>): Promise<void>;
+export async function handleAdminSetActiveCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+): Promise<void>;
 export async function handleAdminSetActiveCommand(
   interaction: ButtonInteraction<CacheType>,
-  pId: string,
+  pDiscordId: string,
   pActive?: boolean,
 ): Promise<void>;
 export async function handleAdminSetActiveCommand(
   interaction: ButtonInteraction<CacheType>,
-  pId: string,
+  pDiscordId: string,
   pActive?: boolean,
   isAdminActiveButton?: boolean,
 ): Promise<void>;
 export async function handleAdminSetActiveCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
-  pId?: string,
+  pDiscordId?: string,
   pActive?: boolean,
   isAdminActiveButton = false,
 ): Promise<void> {
@@ -2271,7 +2273,7 @@ export async function handleAdminSetActiveCommand(
     });
     return;
   }
-  const discordId = getMemberFromInteraction(interaction, pId);
+  const discordId = getMemberFromInteraction(interaction, pDiscordId);
   if (discordId === null) {
     await handleAdminShowPlayerActiveButtons(interaction);
     return;
@@ -2283,7 +2285,7 @@ export async function handleAdminSetActiveCommand(
     pActive = pActive ?? true; // Default to true if not provided
   }
   const isActive = getActiveFromInteraction(interaction, pActive); // Get the active status from the interaction or use the provided value
-  const id = discordId ?? pId;
+  const id = discordId ?? pDiscordId;
   const { player, updated } = setPlayerActive(id, isActive); // Set player as active in the database
   if (!player) {
     await safeReply(interaction, {
