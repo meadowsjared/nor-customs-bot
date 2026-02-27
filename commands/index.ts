@@ -10,6 +10,8 @@ import {
   EmbedBuilder,
   Interaction,
   InteractionReplyOptions,
+  InteractionResponse,
+  Message,
   MessageFlags,
   MessagePayload,
   ModalBuilder,
@@ -130,8 +132,8 @@ function generatePreviousPlayersMessage(previousPlayersList: string[]): string {
  * Updates the lobby announcement message with current player status
  * @param interaction The interaction object for guild access
  */
-export async function updateLobbyMessage(interaction: chatOrButtonOrModal) {
-  await updateAdminActiveButtons(interaction);
+export async function updateLobbyMessage(interaction: chatOrButtonOrModal, previousPlayersList?: string[]) {
+  await updateAdminActiveButtons(interaction, previousPlayersList);
 
   const lobbyMessages = getLobbyMessages([CommandIds.NEW_GAME]);
   if (!lobbyMessages || lobbyMessages.length === 0) {
@@ -160,6 +162,9 @@ export async function handleNewGameCommand(
 ) {
   // combine the observers, team1, and team2, into one string, labeling each section, but skip a section if there are no players in that section
 
+  /**
+   * Array of discord IDs of the players that were active before starting the new game
+   */
   const previousPlayersList = generatePreviousPlayersList();
   markAllPlayersInactive();
 
@@ -180,9 +185,12 @@ export async function handleNewGameCommand(
   const sentReply = await safeReply(interaction, {
     content: 'Game announced!', // empty content to avoid sending a message in the channel, since we already announced it'
     flags: MessageFlags.Ephemeral,
+    withResponse: true,
   });
   // delete sentReply
   await sentReply?.delete();
+  // TODO I want to show the admin active buttons here, but if I do it crashes
+  // handleAdminSetActiveCommand(interaction, previousPlayersList);
 }
 
 /**
@@ -2250,6 +2258,10 @@ export async function handleAdminSetActiveCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ): Promise<void>;
 export async function handleAdminSetActiveCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+  previousPlayersList: string[],
+): Promise<void>;
+export async function handleAdminSetActiveCommand(
   interaction: ButtonInteraction<CacheType>,
   pDiscordId: string,
   pActive?: boolean,
@@ -2262,7 +2274,7 @@ export async function handleAdminSetActiveCommand(
 ): Promise<void>;
 export async function handleAdminSetActiveCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
-  pDiscordId?: string,
+  pDiscordIdOrDiscordIdArray?: string | string[],
   pActive?: boolean,
   isAdminActiveButton = false,
 ): Promise<void> {
@@ -2273,6 +2285,14 @@ export async function handleAdminSetActiveCommand(
     });
     return;
   }
+  let pDiscordId: string | undefined = undefined;
+  let previousPlayersList: string[] | undefined = undefined;
+  if (Array.isArray(pDiscordIdOrDiscordIdArray)) {
+    previousPlayersList = pDiscordIdOrDiscordIdArray;
+  } else if (typeof pDiscordIdOrDiscordIdArray === 'string') {
+    pDiscordId = pDiscordIdOrDiscordIdArray;
+  }
+
   const discordId = getMemberFromInteraction(interaction, pDiscordId);
   if (discordId === null) {
     await handleAdminShowPlayerActiveButtons(interaction);
@@ -2313,7 +2333,7 @@ export async function handleAdminSetActiveCommand(
       .setStyle(ButtonStyle.Secondary);
     if (isAdminActiveButton) {
       // create a temporary reply, and then delete it
-      interaction
+      await interaction
         .deferReply({
           flags: MessageFlags.Ephemeral,
         })
@@ -2334,7 +2354,7 @@ export async function handleAdminSetActiveCommand(
         ],
       });
     }
-    await updateLobbyMessage(interaction);
+    await updateLobbyMessage(interaction, previousPlayersList);
   } else {
     await safeReply(interaction, {
       content: `${player.usernames.accounts?.find(a => a.isPrimary)?.hotsBattleTag.replace(/#.*$/, '')} is already ${
@@ -2368,13 +2388,23 @@ async function handleAdminShowPlayerActiveButtons(
 async function getPlayersByVoiceChannelId(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
   channelId: string | null,
+  previousPlayersList?: string[],
+): Promise<Player[]>;
+async function getPlayersByVoiceChannelId(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+  channelId: string | null,
+): Promise<Player[]>;
+async function getPlayersByVoiceChannelId(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+  channelId: string | null,
+  previousPlayersList?: string[],
 ): Promise<Player[]> {
   // get the users from the interaction's buttons
   const storedInteraction = getStoredInteraction(`${CommandIds.ADMIN}_${CommandIds.ACTIVE}`, interaction.channelId);
 
   // get previously stored players from the buttons of the previously stored interaction
   const players = await getPreviousSetActivePlayers(storedInteraction);
-  const previousPlayers = getLobbyPreviousPlayers();
+  const previousPlayers = getLobbyPreviousPlayers(previousPlayersList);
   const activePlayers = getActivePlayers();
   players.push(...previousPlayers.filter(lp => !players.some(p => p.discordId === lp.discordId))); // add the lobby players that are not already in the players array
   players.push(...activePlayers.filter(ap => !players.some(p => p.discordId === ap.discordId))); // add the active players that are not already in the players array
@@ -2399,40 +2429,50 @@ async function getPlayersByVoiceChannelId(
 async function getPreviousSetActivePlayers(
   storedInteraction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType> | undefined,
 ): Promise<Player[]> {
+  if (!storedInteraction) {
+    return [];
+  }
+  let reply: Message | null = null;
   try {
-    return (
-      (await storedInteraction?.fetchReply())?.components.reduce<Player[]>((acc, actionRow) => {
-        if ('components' in actionRow && Array.isArray(actionRow.components)) {
-          for (const button of actionRow.components) {
-            if (button instanceof ButtonComponent) {
-              if (button.customId?.startsWith(`${CommandIds.ADMIN}_${CommandIds.ACTIVE}_`)) {
-                const parts = button.customId.split('_');
-                const discordId = parts[2];
-                if (discordId) {
-                  const player = getPlayerByDiscordId(discordId);
-                  if (player) {
-                    acc.push(player);
-                  }
+    reply = await storedInteraction.fetchReply();
+    if (!reply) {
+      return [];
+    }
+  } catch (error) {
+    // console.error('Error fetching stored interaction reply:', error);
+    return [];
+  }
+  return (
+    reply?.components.reduce<Player[]>((acc, actionRow) => {
+      if ('components' in actionRow && Array.isArray(actionRow.components)) {
+        for (const button of actionRow.components) {
+          if (button instanceof ButtonComponent) {
+            if (button.customId?.startsWith(`${CommandIds.ADMIN}_${CommandIds.ACTIVE}_`)) {
+              const parts = button.customId.split('_');
+              const discordId = parts[2];
+              if (discordId) {
+                const player = getPlayerByDiscordId(discordId);
+                if (player) {
+                  acc.push(player);
                 }
               }
             }
           }
         }
-        return acc;
-      }, []) ?? []
-    );
-  } catch (error) {
-    console.error('Error fetching stored interaction reply:', error);
-    return [];
-  }
+      }
+      return acc;
+    }, []) ?? []
+  );
 }
 
-function getLobbyPreviousPlayers(): Player[] {
+function getLobbyPreviousPlayers(previousPlayersList?: string[]): Player[];
+function getLobbyPreviousPlayers(): Player[];
+function getLobbyPreviousPlayers(previousPlayersList?: string[]): Player[] {
   const lobbyMessages = getLobbyMessages([CommandIds.NEW_GAME]);
   if (!lobbyMessages || lobbyMessages.length === 0) {
     return []; // No lobby message to update
   }
-  const playerIds = JSON.parse(lobbyMessages[0].previousPlayersList ?? '[]');
+  const playerIds = previousPlayersList ?? JSON.parse(lobbyMessages[0].previousPlayersList ?? '[]');
   const players: Player[] = playerIds
     .map((discordId: string) => getPlayerByDiscordId(discordId))
     .filter((player: Player | undefined) => player !== undefined);
@@ -2444,9 +2484,34 @@ export async function updateAdminActiveButtons(
     | ChatInputCommandInteraction<CacheType>
     | ButtonInteraction<CacheType>
     | ModalSubmitInteraction<CacheType>,
+  previousPlayersList?: string[],
+): Promise<void>;
+export async function updateAdminActiveButtons(
+  interaction:
+    | ChatInputCommandInteraction<CacheType>
+    | ButtonInteraction<CacheType>
+    | ModalSubmitInteraction<CacheType>,
   newMessage?: boolean,
+  fakeReply?: boolean,
+): Promise<void>;
+export async function updateAdminActiveButtons(
+  interaction:
+    | ChatInputCommandInteraction<CacheType>
+    | ButtonInteraction<CacheType>
+    | ModalSubmitInteraction<CacheType>,
+  newMessageOrPreviousPlayersList?: boolean | string[],
   fakeReply = false,
-) {
+): Promise<void> {
+  let newMessage: boolean | undefined;
+  let previousPlayersList: string[] | undefined;
+  let followUp = false;
+  if (typeof newMessageOrPreviousPlayersList === 'boolean') {
+    newMessage = newMessageOrPreviousPlayersList;
+  } else if (Array.isArray(newMessageOrPreviousPlayersList)) {
+    previousPlayersList = newMessageOrPreviousPlayersList;
+    newMessage = true;
+  }
+
   if (interaction.isModalSubmit()) {
     await safeReply(interaction, {
       content: 'This command cannot be used in a modal.',
@@ -2459,7 +2524,7 @@ export async function updateAdminActiveButtons(
   // get the channel id that the commandExecutor is in
   const channelId = (await interaction.guild?.members.fetch(commandExecutor))?.voice.channelId ?? null;
 
-  const players = await getPlayersByVoiceChannelId(interaction, channelId);
+  const players = await getPlayersByVoiceChannelId(interaction, channelId, previousPlayersList);
   if (players.length === 0) {
     await safeReply(interaction, {
       content: 'No players found in the voice channel.',
@@ -2485,7 +2550,7 @@ export async function updateAdminActiveButtons(
     })
     .concat(refreshButton);
   if (newMessage) {
-    await createNewAdminRoleButton(interaction, buttons);
+    await createNewAdminRoleButton(interaction, buttons, followUp);
   } else {
     const storedInteraction = getStoredInteraction(`${CommandIds.ADMIN}_${CommandIds.ACTIVE}`, interaction.channelId);
     if (!storedInteraction) {
@@ -2493,13 +2558,24 @@ export async function updateAdminActiveButtons(
       await createNewAdminRoleButton(interaction, buttons);
       return;
     }
-    storedInteraction.editReply({
-      content: 'Click the buttons below to toggle the active status of the players in your voice channel.',
-      components: createButtonRows(buttons),
-    });
+    if (storedInteraction.deferred || storedInteraction.replied) {
+      try {
+        await storedInteraction.editReply({
+          content: 'Click the buttons below to toggle the active status of the players in your voice channel.',
+          components: createButtonRows(buttons),
+        });
+      } catch (error) {
+        if (storedInteraction.deferred || storedInteraction.replied) {
+          await storedInteraction?.deleteReply().catch(console.error);
+        }
+        await createNewAdminRoleButton(interaction, buttons);
+      }
+    }
     if (fakeReply) {
-      const message = await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-      message.delete().catch(console.error);
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      if (interaction.deferred || interaction.replied) {
+        await interaction.deleteReply().catch(console.error);
+      }
     }
   }
 }
@@ -2526,12 +2602,24 @@ function createButtonRows(buttons: ButtonBuilder[]): ActionRowBuilder<ButtonBuil
 async function createNewAdminRoleButton(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
   buttons: ButtonBuilder[],
+  followUp = false,
 ) {
-  const message = await safeReply(interaction, {
-    content: 'Click the buttons below to toggle the active status of the players in your voice channel.',
-    flags: MessageFlags.Ephemeral,
-    components: createButtonRows(buttons),
-  });
+  let message: InteractionResponse<boolean> | Message<boolean> | undefined = undefined;
+  if (followUp) {
+    message = await interaction.followUp({
+      content: 'Click the buttons below to toggle the active status of the players in your voice channel.',
+      flags: MessageFlags.Ephemeral,
+      components: createButtonRows(buttons),
+      withResponse: true,
+    });
+  } else {
+    message = await safeReply(interaction, {
+      content: 'Click the buttons below to toggle the active status of the players in your voice channel.',
+      flags: MessageFlags.Ephemeral,
+      components: createButtonRows(buttons),
+      withResponse: true,
+    });
+  }
   if (message) {
     storeInteraction(`${CommandIds.ADMIN}_${CommandIds.ACTIVE}`, interaction.channelId, interaction);
   }
