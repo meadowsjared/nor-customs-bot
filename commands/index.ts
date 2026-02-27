@@ -500,7 +500,10 @@ async function generateTeamsMessage(
         .forEach(async msg => {
           // we know it's an ephemeral message so:
           const message = getStoredInteraction(msg.messageId, msg.channelId);
-          message?.deleteReply().catch(console.error);
+          message?.deleteReply().catch(() => {
+            console.log('Failed to delete ephemeral message');
+            console.trace();
+          });
         });
       messages = messages.filter(msg => msg.messageType !== CommandIds.TEAMS_EPHEMERAL);
     }
@@ -2566,7 +2569,10 @@ export async function updateAdminActiveButtons(
         });
       } catch (error) {
         if (storedInteraction.deferred || storedInteraction.replied) {
-          await storedInteraction?.deleteReply().catch(console.error);
+          await storedInteraction?.deleteReply().catch(() => {
+            console.log('Failed to delete ephemeral message');
+            console.trace();
+          });
         }
         await createNewAdminRoleButton(interaction, buttons);
       }
@@ -2574,7 +2580,10 @@ export async function updateAdminActiveButtons(
     if (fakeReply) {
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       if (interaction.deferred || interaction.replied) {
-        await interaction.deleteReply().catch(console.error);
+        await interaction.deleteReply().catch(() => {
+          console.log('Failed to delete ephemeral message');
+          console.trace();
+        });
       }
     }
   }
