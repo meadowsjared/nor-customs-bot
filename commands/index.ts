@@ -185,7 +185,6 @@ export async function handleNewGameCommand(
   const sentReply = await safeReply(interaction, {
     content: 'Game announced!', // empty content to avoid sending a message in the channel, since we already announced it'
     flags: MessageFlags.Ephemeral,
-    withResponse: true,
   });
   // delete sentReply
   await sentReply?.delete();
