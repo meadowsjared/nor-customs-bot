@@ -666,6 +666,15 @@ export async function handlePublishTeamsCommand(
     team2.map(p => ({ player: p, index: p.draftRank ?? 0 })),
     true,
   );
+  // show the move to teams button
+  const moveToTeamsBtn = new ButtonBuilder()
+    .setCustomId(CommandIds.MOVE_TO_TEAMS)
+    .setLabel('Move Players to Teams')
+    .setStyle(ButtonStyle.Primary);
+  await interaction.followUp({
+    flags: MessageFlags.Ephemeral,
+    components: [new ActionRowBuilder<ButtonBuilder>().addComponents(moveToTeamsBtn)],
+  });
 }
 
 export async function handleMoveToLobbyCommand(
