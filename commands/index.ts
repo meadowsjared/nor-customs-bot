@@ -671,9 +671,13 @@ export async function handlePublishTeamsCommand(
     .setCustomId(CommandIds.MOVE_TO_TEAMS)
     .setLabel('Move Players to Teams')
     .setStyle(ButtonStyle.Primary);
+  const moveToLobbyBtn = new ButtonBuilder()
+    .setCustomId(CommandIds.MOVE_TO_LOBBY)
+    .setLabel('Move Players to Lobby')
+    .setStyle(ButtonStyle.Danger);
   await interaction.followUp({
     flags: MessageFlags.Ephemeral,
-    components: [new ActionRowBuilder<ButtonBuilder>().addComponents(moveToTeamsBtn)],
+    components: [new ActionRowBuilder<ButtonBuilder>().addComponents(moveToTeamsBtn, moveToLobbyBtn)],
   });
 }
 
