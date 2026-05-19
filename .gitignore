@@ -12,3 +12,4 @@ logs/
 .pid
 /screenshots
 .running_version
+store_backup/
