@@ -137,6 +137,11 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     name: CommandIds.SET_CHANNEL_TEAM_ID,
     description: 'Set the channel team ID',
     defaultMemberPermissions: minimumAdminPermissions,
+  },
+  {
+    name: CommandIds.SET_CHANNEL_TEAM_ID,
+    description: 'Set the channel team ID',
+    defaultMemberPermissions: minimumAdminPermissions,
     options: [
       {
         name: 'team_number',
@@ -166,7 +171,6 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
         name: 'channel_id',
         type: ApplicationCommandOptionType.Channel,
         description: 'The channel ID to set as the lobby channel',
-        required: true,
         channelTypes: [ChannelType.GuildVoice],
       },
     ],

@@ -883,7 +883,14 @@ export async function handleSetLobbyChannelCommand(
     console.error('Interaction is not a command or button interaction');
     return;
   }
-  const channel = interaction.options.getChannel('channel_id', true);
+  const channel = interaction.options.getChannel('channel_id', false);
+  // if channel is null
+  if (channel === null) {
+    // so instead list the lobby and team channels
+    await handleGetChannelsCommand(interaction);
+    return;
+  }
+
   // if channel isn't guild voice, return
   if (!(channel instanceof VoiceChannel)) {
     await safeReply(interaction, {
@@ -896,6 +903,28 @@ export async function handleSetLobbyChannelCommand(
   // This command is not implemented yet
   await safeReply(interaction, {
     content: `\`lobby\` channel set to <#${channel.id}>`,
+    flags: MessageFlags.Ephemeral,
+  });
+}
+
+export async function handleGetChannelsCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+) {
+  const channels = getChannels(['lobby', 'team1', 'team2']);
+  if (!channels || channels.length === 0) {
+    await safeReply(interaction, {
+      content: 'No channels set. Please set a lobby channel and team channels first.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  const lobbyChannel = channels.find(c => c.channelName === 'lobby');
+  const team1Channel = channels.find(c => c.channelName === 'team1');
+  const team2Channel = channels.find(c => c.channelName === 'team2');
+  await safeReply(interaction, {
+    content: `Current channels:\nLobby: ${lobbyChannel ? `<#${lobbyChannel.channelId}>` : 'Not set'}\nTeam 1: ${
+      team1Channel ? `<#${team1Channel.channelId}>` : 'Not set'
+    }\nTeam 2: ${team2Channel ? `<#${team2Channel.channelId}>` : 'Not set'}`,
     flags: MessageFlags.Ephemeral,
   });
 }
