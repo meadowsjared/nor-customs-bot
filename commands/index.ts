@@ -343,7 +343,7 @@ export async function handleSetTeamsCommand(
   });
   // set the teams in the database
   setTeamsFromPlayers(team1, team2, spectators);
-  generateTeamsMessage(interaction, team1, team2);
+  await generateTeamsMessage(interaction, team1, team2);
 }
 
 /**
@@ -660,7 +660,7 @@ export async function handlePublishTeamsCommand(
   }
   // get the teams from the database
   const { team1, team2 } = getTeams();
-  generateTeamsMessage(
+  await generateTeamsMessage(
     interaction,
     team1.map(p => ({ player: p, index: p.draftRank ?? 0 })),
     team2.map(p => ({ player: p, index: p.draftRank ?? 0 })),
