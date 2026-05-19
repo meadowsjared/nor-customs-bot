@@ -918,9 +918,9 @@ export async function handleGetChannelsCommand(
     });
     return;
   }
-  const lobbyChannel = channels.find(c => c.channelName === 'lobby');
-  const team1Channel = channels.find(c => c.channelName === 'team1');
-  const team2Channel = channels.find(c => c.channelName === 'team2');
+  const lobbyChannel = channels.find(c => c.channelType === 'lobby');
+  const team1Channel = channels.find(c => c.channelType === 'team1');
+  const team2Channel = channels.find(c => c.channelType === 'team2');
   await safeReply(interaction, {
     content: `Current channels:\nLobby: ${lobbyChannel ? `<#${lobbyChannel.channelId}>` : 'Not set'}\nTeam 1: ${
       team1Channel ? `<#${team1Channel.channelId}>` : 'Not set'
