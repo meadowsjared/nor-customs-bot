@@ -52,9 +52,9 @@ export function getChannels(channelTypes: channelTypes[]): ChannelLocal[] | unde
   if (channelTypes.length === 0) {
     return undefined;
   }
-  const placeholders = channelTypes.map(() => '?').join(', ');
+  const placeholders = channelTypes.map(c => `'${c}'`).join(', ');
   const stmt = db.prepare<string[], ChannelExtended>(`SELECT * FROM channels WHERE channelType IN (${placeholders})`);
-  const rows: ChannelExtended[] = stmt.all(...channelTypes);
+  const rows: ChannelExtended[] = stmt.all();
   if (!rows || rows.length === 0) {
     return undefined;
   }
