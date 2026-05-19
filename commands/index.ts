@@ -869,8 +869,12 @@ export async function handleSetChannelTeamIdCommand(
     console.error('Interaction is not a command or button interaction');
     return;
   }
-  const channel = interaction.options.getChannel('channel_id', true);
-  const teamId = interaction.options.getString('team_number', true);
+  const channel = interaction.options.getChannel('channel_id', false);
+  const teamId = interaction.options.getString('team_number', false);
+  if (!channel || !teamId) {
+    await handleGetChannelsCommand(interaction);
+    return;
+  }
   if (!(channel instanceof VoiceChannel)) {
     await safeReply(interaction, {
       content: 'Please select a valid voice channel.',
