@@ -75,7 +75,7 @@ export function saveLobbyMessage(
   messageType: string,
   messageId: string,
   channelId: string,
-  previousPlayersList: string
+  previousPlayersList: string,
 ): void {
   const stmt = db.prepare(`
     INSERT INTO lobby_messages (messageType, messageId, channelId, previousPlayersList)
@@ -95,7 +95,7 @@ export function saveLobbyMessage(
  * @returns The message and channel IDs, or undefined if no announcement exists
  */
 export function getLobbyMessages(
-  messageTypes: string[]
+  messageTypes: string[],
 ): { messageType: string; messageId: string; channelId: string; previousPlayersList: string }[] | undefined {
   const stmt = db.prepare<
     string[],
@@ -149,6 +149,6 @@ export function getAllChannels(): Map<string, ChannelLocal> {
         channelId: row.channelId,
         channelName: row.channelName,
       },
-    ])
+    ]),
   );
 }
