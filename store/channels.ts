@@ -48,7 +48,7 @@ type channelTypes = 'lobby' | 'team1' | 'team2';
  * Retrieves a lobby channel
  * @return {ChannelLocal} The lobby channel as an object, or undefined if it does not exist.
  */
-export function getChannels(channelTypes: channelTypes[]): ChannelLocal[] | undefined {
+export function getChannels(channelTypes: channelTypes[]): ChannelExtended[] | undefined {
   if (channelTypes.length === 0) {
     return undefined;
   }
@@ -61,6 +61,7 @@ export function getChannels(channelTypes: channelTypes[]): ChannelLocal[] | unde
   return rows.map((row: ChannelExtended) => ({
     channelId: row.channelId,
     channelName: row.channelName,
+    channelType: row.channelType,
   }));
 }
 
