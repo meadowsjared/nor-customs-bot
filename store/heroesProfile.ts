@@ -26,7 +26,7 @@ export async function getHeroesProfileData(battleTag: string): Promise<HPData | 
     const startTime = Date.now();
     // first check if we have their region and blizz_id stored already
     const hpRegionStmt = db.prepare<string, { HP_Blizz_ID: string; HP_Region: number }>(
-      'SELECT HP_Blizz_ID, HP_Region FROM hots_accounts WHERE hots_battle_tag = ?'
+      'SELECT HP_Blizz_ID, HP_Region FROM hots_accounts WHERE hots_battle_tag = ?',
     );
     const row = hpRegionStmt.get(battleTag);
     console.log(`Getting HP Data for ${battleTag}`);
@@ -46,7 +46,7 @@ export async function getHeroesProfileData(battleTag: string): Promise<HPData | 
       region = bestMatch.region;
       // store blizz_id, region for the first item in the array
       const hpUpdateStmt = db.prepare(
-        'UPDATE hots_accounts SET HP_Blizz_ID = ?, HP_Region = ? WHERE hots_battle_tag = ?'
+        'UPDATE hots_accounts SET HP_Blizz_ID = ?, HP_Region = ? WHERE hots_battle_tag = ?',
       );
       hpUpdateStmt.run(blizz_id, region, battleTag);
     }
@@ -82,7 +82,7 @@ export async function getHeroesProfileData(battleTag: string): Promise<HPData | 
     const endTime = Date.now();
     const elapsedTime = (endTime - startTime) / 1000;
     console.log(
-      `qm: ${hpData.qmMmr}/${hpData.qmGames}, sl: ${hpData.slMmr}/${hpData.slGames}, ar: ${hpData.arMmr}/${hpData.arGames}`
+      `qm: ${hpData.qmMmr}/${hpData.qmGames}, sl: ${hpData.slMmr}/${hpData.slGames}, ar: ${hpData.arMmr}/${hpData.arGames}`,
     );
     console.log(`Elapsed time: ${elapsedTime.toFixed(2)} seconds`);
     return hpData;
@@ -99,7 +99,7 @@ export async function getHeroesProfileData(battleTag: string): Promise<HPData | 
 async function getBestHpAccount(
   battleTag: string,
   decodedToken: string,
-  cookieHeaderValue: string
+  cookieHeaderValue: string,
 ): Promise<HPPlayerData | undefined> {
   // execute a post request
   const response = await fetchWithRetry('https://www.heroesprofile.com/api/v1/battletag/search', {
@@ -134,7 +134,7 @@ async function refreshXsrfTokenAndCookies(): Promise<void> {
     method: 'GET',
     headers: {
       'User-Agent':
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36',
     },
   });
   // Extract the XSRF token from the response cookies
