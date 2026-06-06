@@ -78,6 +78,11 @@ export const enum CommandIds {
   REPLAY_FOLDER_PATH = 'replay-folder-path',
   GET_REPLAY_FOLDER = 'get-replay-folder',
   LIST_REPLAYS = 'list-replays',
+  CHANNEL_COMMAND = 'channel-command',
+  CHANNEL = 'channel',
+  COMMAND = 'command',
+  MESSAGE_ID = 'message-id',
+  FIELD1 = 'field1',
 }
 
 export const roleMap: Record<string, string> = {

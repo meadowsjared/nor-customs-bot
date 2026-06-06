@@ -71,7 +71,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     defaultMemberPermissions: minimumAdminPermissions,
     options: [
       {
-        name: 'message_id',
+        name: CommandIds.MESSAGE_ID,
         type: ApplicationCommandOptionType.String,
         description: 'The ID of the message to delete',
         required: true,
@@ -457,5 +457,38 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
   {
     name: CommandIds.LIST_REPLAYS,
     description: 'List recent HotS replays',
+  },
+  {
+    name: CommandIds.CHANNEL_COMMAND,
+    description: 'Execute a command',
+    defaultMemberPermissions: minimumAdminPermissions,
+    options: [
+      {
+        name: CommandIds.COMMAND,
+        description: 'The command to execute',
+        type: ApplicationCommandOptionType.String,
+        required: true,
+      },
+
+      {
+        name: CommandIds.MESSAGE_ID,
+        description: 'The ID of the message to execute the command on (if applicable)',
+        type: ApplicationCommandOptionType.String,
+        required: false,
+      },
+      {
+        name: CommandIds.CHANNEL,
+        description: 'The channel to execute the command in',
+        type: ApplicationCommandOptionType.Channel,
+        required: false,
+        channelTypes: [ChannelType.GuildText],
+      },
+      {
+        name: CommandIds.FIELD1,
+        description: 'Additional field 1 for the command (if applicable)',
+        type: ApplicationCommandOptionType.String,
+        required: false,
+      },
+    ],
   },
 ];

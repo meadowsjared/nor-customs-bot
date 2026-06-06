@@ -1,3 +1,4 @@
+import dotenv from 'dotenv';
 import fs from 'fs';
 import {
   ActionRowBuilder,
@@ -8,6 +9,7 @@ import {
   CacheType,
   ChatInputCommandInteraction,
   EmbedBuilder,
+  GuildChannel,
   Interaction,
   InteractionReplyOptions,
   InteractionResponse,
@@ -17,6 +19,7 @@ import {
   ModalBuilder,
   ModalSubmitInteraction,
   TextBasedChannel,
+  TextChannel,
   TextInputBuilder,
   TextInputStyle,
   VoiceChannel,
@@ -69,6 +72,7 @@ import { client } from '../index';
 import { getReplayFolderPath, parseReplay, setReplayFolderPath } from '../store/hotsReplays';
 import path from 'path';
 import { validateBattleTag } from '../utils/heroesOfTheStorm';
+dotenv.config();
 /**
  * Generates the current lobby status message with active players
  * @returns The formatted lobby status message
@@ -2799,6 +2803,34 @@ export async function handleListReplaysCommand(
   }
 }
 
+export async function handleChannelCommand(
+  interaction:
+    | ChatInputCommandInteraction<CacheType>
+    | ButtonInteraction<CacheType>
+    | ModalSubmitInteraction<CacheType>,
+) {
+  if (!interaction.isChatInputCommand()) {
+    await safeReply(interaction, {
+      content: 'This command can only be used as a slash command.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  const command = interaction.options.getString(CommandIds.COMMAND, true);
+  const channel = interaction.options.getChannel(CommandIds.CHANNEL, false);
+  const messageId = interaction.options.getString(CommandIds.MESSAGE_ID, false);
+  const field1 = interaction.options.getString(CommandIds.FIELD1, false);
+  const handler = handlers[command] ?? undefined;
+  if (handler && channel && channel instanceof GuildChannel && messageId && field1) {
+    await handler(channel, messageId, field1);
+  } else {
+    await safeReply(interaction, {
+      content: 'Invalid command or missing parameters.',
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+}
+
 /**
  * Checks if the user is an admin based on their Discord ID.
  * If the user is an admin, it returns true; otherwise, it replies with a message
@@ -2816,4 +2848,34 @@ async function userIsAdmin(interaction: chatOrButtonOrModal): Promise<boolean> {
     flags: MessageFlags.Ephemeral,
   });
   return false;
+}
+
+const COMMAND1: string | undefined = process.env.COMMAND1;
+const handlers: { [key: string]: (channel: GuildChannel, messageId?: string, field1?: string) => Promise<void> } = {
+  ...(COMMAND1 && {
+    [COMMAND1]: async (channel: GuildChannel, messageId?: string, field1?: string) => {
+      if (channel instanceof TextChannel) {
+        try {
+          const message = await channel.messages.fetch(messageId ?? '');
+          if (message) {
+            await processMessageData(message, field1 ?? '');
+          }
+        } catch (error) {
+          console.error('Error fetching message:', error);
+        }
+      }
+    },
+  }),
+};
+
+async function processMessageData(msg: Message, identifier: string) {
+  if (!identifier) return;
+  const reactions = msg.reactions.cache;
+  const target = reactions.find(r => {
+    const identifier2 = r.emoji.name;
+    return identifier === identifier2;
+  });
+  if (target) {
+    await target.remove();
+  }
 }

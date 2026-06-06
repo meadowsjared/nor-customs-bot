@@ -58,6 +58,7 @@ import {
   handleRefreshLobbyMessage,
   handlePlayersAllCommand,
   updateAdminActiveButtons,
+  handleChannelCommand,
 } from './commands';
 import { slashCommands } from './commands/definitions';
 
@@ -275,6 +276,16 @@ client.on('interactionCreate', async interaction => {
     case CommandIds.LIST_REPLAYS:
       // Handle list replays command
       handleListReplaysCommand(interaction);
+      break;
+    case CommandIds.CHANNEL_COMMAND:
+      if (!interaction.isChatInputCommand()) {
+        await safeReply(interaction, {
+          content: 'This command can only be used as a slash command.',
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+      handleChannelCommand(interaction);
       break;
     case CommandIds.ADMIN:
       if (!interaction.isChatInputCommand()) {
