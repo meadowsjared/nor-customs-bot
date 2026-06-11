@@ -2,6 +2,8 @@ import { HPData, HPPlayerData, HPPlayerStatsData } from '../types/heroesProfile'
 import Database from 'better-sqlite3';
 
 const db = new Database('./store/nor_customs.db');
+export const userAgent =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36';
 
 let CACHED_XSRF_TOKEN: string | null = null;
 let CACHED_COOKIE_HEADER: string | null = null;
@@ -55,15 +57,14 @@ export async function getHeroesProfileData(battleTag: string): Promise<HPData | 
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36',
+        'User-Agent': userAgent,
         'X-XSRF-TOKEN': CACHED_XSRF_TOKEN,
         Cookie: CACHED_COOKIE_HEADER,
       },
       body: JSON.stringify({ battletag: battleTag, region, blizz_id }),
     });
     if (!response.ok) {
-      console.error(`Error fetching data: ${response.status}`);
+      console.error(`Error fetching getHeroesProfileData data: ${response.status}`);
       return undefined;
     }
 
@@ -106,8 +107,7 @@ async function getBestHpAccount(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'User-Agent':
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36',
+      'User-Agent': userAgent,
       'X-XSRF-TOKEN': decodedToken,
       Cookie: cookieHeaderValue,
     },
@@ -115,7 +115,7 @@ async function getBestHpAccount(
   });
 
   if (!response.ok) {
-    console.error(`Error fetching data: ${response.status}`);
+    console.error(`Error fetching getBestHpAccount data: ${response.status}`);
     return undefined;
   }
 
