@@ -2,6 +2,7 @@ import puppeteer, { Browser, Page } from 'puppeteer';
 import { HPSelectors } from '../types/heroesProfilePuppeteer'; // Assuming you have a types.ts file for type definitions
 import { HPData } from '../types/heroesProfile';
 import { appendFileSync, existsSync, mkdirSync } from 'fs';
+import { userAgent } from './heroesProfile';
 
 // Save original console methods
 const origLog = console.log;
@@ -20,6 +21,51 @@ console.error = (...args: any[]) => {
   origError(...args);
   appendFileSync('out.log', '[ERROR] ' + msg + '\n');
 };
+
+export async function puppeteerRefreshXsrfTokenAndCookies(
+  url: string,
+): Promise<{ xsrfToken: string; cookies: string }> {
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--user-agent=' + userAgent, '--no-sandbox', '--disable-setuid-sandbox'],
+  });
+  try {
+    const page = (await browser.pages())[0];
+    await page.setRequestInterception(true);
+    page.on('request', request => {
+      const resourceType = request.resourceType();
+      if (request.resourceType() === 'document') {
+        request.continue();
+      } else {
+        request.abort();
+      }
+    });
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+
+    // Find the XSRF token
+    const client = await page.createCDPSession();
+    const { cookies: cookieObjects } = await client.send('Network.getAllCookies');
+
+    const xsrfCookie = cookieObjects.find(c => c.name === 'XSRF-TOKEN');
+    if (!xsrfCookie) {
+      throw new Error(
+        'XSRF-TOKEN cookie not found! Cookies: ' + cookieObjects.map(c => `${c.name}=${c.value}`).join('; '),
+      );
+    }
+
+    // Format cookies as a header string
+    const cookieHeader = cookieObjects.map(c => `${c.name}=${c.value}`).join('; ');
+
+    // console.log('cookieHeader:', cookieHeader);
+
+    return {
+      xsrfToken: xsrfCookie.value,
+      cookies: cookieHeader,
+    };
+  } finally {
+    await browser.close();
+  }
+}
 
 async function scrapePlayerStats(browser: Browser, url: string, battleTag: string): Promise<HPData> {
   const page = await browser.newPage();
