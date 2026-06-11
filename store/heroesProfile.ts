@@ -1,5 +1,6 @@
 import { HPData, HPPlayerData, HPPlayerStatsData } from '../types/heroesProfile'; // Assuming you have a types.ts file for type definitions
 import Database from 'better-sqlite3';
+import { puppeteerRefreshXsrfTokenAndCookies } from './heroesProfilePuppeteer';
 
 const db = new Database('./store/nor_customs.db');
 export const userAgent =
@@ -129,29 +130,20 @@ async function getBestHpAccount(
 }
 
 async function refreshXsrfTokenAndCookies(): Promise<void> {
-  // get the XSRF token
-  const getResponse = await fetch('https://www.heroesprofile.com/', {
-    method: 'GET',
-    headers: {
-      'User-Agent':
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36',
-    },
-  });
-  // Extract the XSRF token from the response cookies
-  const rawCookies = getResponse.headers.getSetCookie();
+  const { xsrfToken, cookies: rawCookies } = await puppeteerRefreshXsrfTokenAndCookies(
+    'https://www.heroesprofile.com/',
+  );
   if (rawCookies?.length === 0) {
     throw new Error('No cookies received from server!');
   }
   // We need to find the specific "XSRF-TOKEN" cookie string
-  const xsrfCookieString = rawCookies.find(c => c.startsWith('XSRF-TOKEN='));
-  if (!xsrfCookieString) {
+  if (!xsrfToken) {
     throw new Error('XSRF-TOKEN cookie not found!');
   }
-  const encodedToken = xsrfCookieString.split(';')[0].replace('XSRF-TOKEN=', '');
 
-  const decodedToken = decodeURIComponent(encodedToken);
+  const decodedToken = decodeURIComponent(xsrfToken);
 
-  const cookieHeaderValue = rawCookies.map(c => c.split(';')[0]).join('; ');
+  const cookieHeaderValue = rawCookies;
   CACHED_XSRF_TOKEN = decodedToken;
   CACHED_COOKIE_HEADER = cookieHeaderValue;
   TOKEN_FETCHED_AT = new Date();
