@@ -113,9 +113,9 @@ async function scrapePlayerStats(browser: Browser, url: string, battleTag: strin
                 Array.from(link.querySelectorAll('div'))
                   ?.find(div => div.textContent?.startsWith('Games Played: '))
                   ?.textContent?.trim() ?? '0'
-              ).replace(/[^\d]/g, '0')
+              ).replace(/[^\d]/g, '0'),
             ),
-          }))
+          })),
         );
         profileLinks.sort((a, b) => b.gamesPlayed - a.gamesPlayed);
         console.log({ profileLinks });
@@ -252,7 +252,7 @@ async function getMMR(page: Page, playerName: string, rowName: string): Promise<
         return null;
       }
     },
-    { playerName, rowName }
+    { playerName, rowName },
   );
 }
 
@@ -269,7 +269,7 @@ async function getGames(
   page: Page,
   selectors: HPSelectors,
   label: 'qm' | 'sl' | 'ar',
-  playerName: string
+  playerName: string,
 ): Promise<{ games: number; wins: number; losses: number }> {
   // run this up to 5 times max
   let attempts = 0;
@@ -306,15 +306,15 @@ async function getGames(
     parseInt(
       (await page.$eval(selectors.winsSelector, el => el.textContent?.trim() ?? 'None').catch(() => 'None')).replace(
         /,/g,
-        ''
-      )
+        '',
+      ),
     ) || 0;
   let losses =
     parseInt(
       (await page.$eval(selectors.lossesSelector, el => el?.textContent?.trim() ?? 'None').catch(() => 'None')).replace(
         /,/g,
-        ''
-      )
+        '',
+      ),
     ) || 0;
 
   const games = wins === 0 && losses === 0 ? -1 : wins + losses;
