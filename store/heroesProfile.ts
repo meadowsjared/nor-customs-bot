@@ -57,22 +57,29 @@ export async function getHeroesProfileData(battleTag: string): Promise<HPData | 
       hpUpdateStmt.run(blizz_id, region, battleTag);
     }
 
-    const response = await fetchWithRetry('https://www.heroesprofile.com/api/v1/player', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'User-Agent': userAgent,
-        'X-XSRF-TOKEN': CACHED_XSRF_TOKEN,
-        Cookie: CACHED_COOKIE_HEADER,
-      },
-      body: JSON.stringify({ battletag: battleTag, region, blizz_id }),
-    });
-    if (!response.ok) {
-      console.error(`Error fetching getHeroesProfileData data: ${response.status}`);
-      return undefined;
-    }
+    const hpDataReturned: HPPlayerStatsData = await PAGE_INSTANCE.evaluate(
+      async (token: string, battleTag: string, region: number, blizz_id: string) => {
+        const response = await fetch('https://www.heroesprofile.com/api/v1/player', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-XSRF-TOKEN': token,
+          },
+          body: JSON.stringify({ battletag: battleTag, region, blizz_id }),
+        });
 
-    const hpDataReturned: HPPlayerStatsData = await response.json();
+        if (!response.ok) {
+          throw new Error(`${response.status}`);
+        }
+
+        return response.json();
+      },
+      CACHED_XSRF_TOKEN,
+      battleTag,
+      region,
+      blizz_id,
+    );
+
     const hpData: HPData = {
       region,
       blizz_id,
