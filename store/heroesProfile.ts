@@ -106,30 +106,48 @@ async function getBestHpAccount(
   decodedToken: string,
   cookieHeaderValue: string,
 ): Promise<HPPlayerData | undefined> {
-  // execute a post request
-  const response = await fetchWithRetry('https://www.heroesprofile.com/api/v1/battletag/search', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'User-Agent': userAgent,
-      'X-XSRF-TOKEN': decodedToken,
-      Cookie: cookieHeaderValue,
-    },
-    body: JSON.stringify({ userinput: battleTag }),
-  });
-
-  if (!response.ok) {
-    console.error(`Error fetching getBestHpAccount data: ${response.status}`);
+  if (!PAGE_INSTANCE) {
+    console.error('Page instance not available');
     return undefined;
   }
 
-  const data: HPPlayerData[] = await response.json();
-  data.sort((a, b) => b.totalGamesPlayed - a.totalGamesPlayed); // Sort by totalGamesPlayed descending
-  if (data.length === 0) {
-    console.log(`No data found for BattleTag: ${battleTag}`);
+  try {
+    const data = await PAGE_INSTANCE.evaluate(
+      async (token: string, tag: string) => {
+        const response = await fetch('https://www.heroesprofile.com/api/v1/battletag/search', {
+          method: 'POST',
+          headers: {
+            'X-XSRF-TOKEN': token,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ userinput: tag }),
+        });
+
+        if (!response.ok) {
+          BROWSER_INSTANCE?.close();
+          throw new Error(`WHOA! ${response.status}`);
+        }
+        console.log('response.json:', await response.clone().json());
+        return response.json();
+      },
+      decodedToken,
+      battleTag,
+    );
+
+    if (!Array.isArray(data) || data.length === 0) {
+      console.log(`No data found for BattleTag: ${battleTag}`);
+      BROWSER_INSTANCE?.close();
+      return undefined;
+    }
+
+    data.sort((a, b) => b.totalGamesPlayed - a.totalGamesPlayed);
+    BROWSER_INSTANCE?.close();
+    return data[0];
+  } catch (error) {
+    BROWSER_INSTANCE?.close();
+    console.error(`Error fetching getBestHpAccount data:`, error);
     return undefined;
   }
-  return data[0];
 }
 
 async function refreshXsrfTokenAndCookies(): Promise<void> {
