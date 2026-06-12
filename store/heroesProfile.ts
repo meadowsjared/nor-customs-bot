@@ -33,7 +33,7 @@ export async function getHeroesProfileData(battleTag: string): Promise<HPData | 
 
     let blizz_id = row?.HP_Blizz_ID;
     let region = row?.HP_Region;
-    const { xsrfToken, cookies, page, browser } = await refreshXsrfTokenAndCookies();
+    const { xsrfToken, page, browser } = await initializeHPPage();
     if (!xsrfToken || !page) {
       browser.close();
       throw new Error('XSRF token or page instance is missing.');
@@ -156,20 +156,14 @@ async function getBestHpAccount(
   }
 }
 
-async function refreshXsrfTokenAndCookies(): Promise<{
+async function initializeHPPage(): Promise<{
   xsrfToken: string;
-  cookies: string;
   page: Page;
   browser: Browser;
 }> {
-  const {
-    xsrfToken,
-    cookies: rawCookies,
-    page,
-    browser,
-  } = await puppeteerRefreshXsrfTokenAndCookies('https://www.heroesprofile.com/');
-  if (rawCookies?.length === 0) {
-    throw new Error('No cookies received from server!');
+  const { xsrfToken, page, browser } = await puppeteerRefreshXsrfTokenAndCookies('https://www.heroesprofile.com/');
+  if (!page) {
+    throw new Error('No page instance received from server!');
   }
   // We need to find the specific "XSRF-TOKEN" cookie string
   if (!xsrfToken) {
@@ -180,5 +174,5 @@ async function refreshXsrfTokenAndCookies(): Promise<{
 
   const tokenFetchedAt = new Date();
   console.log(`XSRF token and cookies refreshed successfully at ${tokenFetchedAt.toISOString()}`);
-  return { xsrfToken: decodedToken, cookies: rawCookies, page, browser };
+  return { xsrfToken: decodedToken, page, browser };
 }
