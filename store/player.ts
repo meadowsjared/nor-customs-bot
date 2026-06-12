@@ -307,7 +307,7 @@ ${validationResult.rules}
   const player = getPlayerByDiscordId(discordId);
   if (!player) {
     await safeReply(interaction, {
-      content: 'Player not found',
+      content: 'Player not found in database',
       flags: MessageFlags.Ephemeral,
     });
     return false; // Player not found
