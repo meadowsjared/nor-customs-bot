@@ -1,6 +1,7 @@
 import { HPData, HPPlayerData, HPPlayerStatsData } from '../types/heroesProfile'; // Assuming you have a types.ts file for type definitions
 import Database from 'better-sqlite3';
 import { puppeteerRefreshXsrfTokenAndCookies } from './heroesProfilePuppeteer';
+import { Browser, Page } from 'puppeteer';
 
 const db = new Database('./store/nor_customs.db');
 export const userAgent =
@@ -8,6 +9,8 @@ export const userAgent =
 
 let CACHED_XSRF_TOKEN: string | null = null;
 let CACHED_COOKIE_HEADER: string | null = null;
+let PAGE_INSTANCE: Page | null = null;
+let BROWSER_INSTANCE: Browser | null = null;
 let TOKEN_FETCHED_AT: Date | null = null;
 let isInitialized = false;
 
@@ -130,9 +133,12 @@ async function getBestHpAccount(
 }
 
 async function refreshXsrfTokenAndCookies(): Promise<void> {
-  const { xsrfToken, cookies: rawCookies } = await puppeteerRefreshXsrfTokenAndCookies(
-    'https://www.heroesprofile.com/',
-  );
+  const {
+    xsrfToken,
+    cookies: rawCookies,
+    page,
+    browser,
+  } = await puppeteerRefreshXsrfTokenAndCookies('https://www.heroesprofile.com/');
   if (rawCookies?.length === 0) {
     throw new Error('No cookies received from server!');
   }
@@ -146,6 +152,8 @@ async function refreshXsrfTokenAndCookies(): Promise<void> {
   const cookieHeaderValue = rawCookies;
   CACHED_XSRF_TOKEN = decodedToken;
   CACHED_COOKIE_HEADER = cookieHeaderValue;
+  PAGE_INSTANCE = page;
+  BROWSER_INSTANCE = browser;
   TOKEN_FETCHED_AT = new Date();
   console.log(`XSRF token and cookies refreshed successfully at ${TOKEN_FETCHED_AT.toISOString()}`);
 }

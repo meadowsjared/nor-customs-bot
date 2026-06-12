@@ -24,7 +24,7 @@ console.error = (...args: any[]) => {
 
 export async function puppeteerRefreshXsrfTokenAndCookies(
   url: string,
-): Promise<{ xsrfToken: string; cookies: string }> {
+): Promise<{ xsrfToken: string; cookies: string; page: Page; browser: Browser }> {
   const browser = await puppeteer.launch({
     headless: true,
     args: ['--user-agent=' + userAgent, '--no-sandbox', '--disable-setuid-sandbox'],
@@ -33,7 +33,7 @@ export async function puppeteerRefreshXsrfTokenAndCookies(
     const page = (await browser.pages())[0];
     await page.setRequestInterception(true);
     page.on('request', request => {
-      if (request.resourceType() === 'document') {
+      if (request.resourceType() === 'document' || request.url().startsWith('https://www.heroesprofile.com/api/')) {
         request.continue();
       } else {
         request.abort();
@@ -60,9 +60,12 @@ export async function puppeteerRefreshXsrfTokenAndCookies(
     return {
       xsrfToken: xsrfCookie.value,
       cookies: cookieHeader,
+      page,
+      browser,
     };
-  } finally {
+  } catch (error) {
     await browser.close();
+    throw error;
   }
 }
 
