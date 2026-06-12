@@ -17,7 +17,6 @@ import { CommandIds } from '../constants';
 import { getHeroesProfileData } from './heroesProfile';
 import { HOTS_ACCOUNTS_COLUMNS } from '../types/csvSpreadsheet';
 import { generateCreateTableSQL } from '../utils/sql';
-import { getHeroesProfileDataPuppeteer } from './heroesProfilePuppeteer';
 import { validateBattleTag } from '../utils/heroesOfTheStorm';
 
 const db = new Database('./store/nor_customs.db');
@@ -617,7 +616,7 @@ async function updatePrimaryAccountInDb(
   if (!player) {
     return {
       success: false,
-      message: 'Player not found',
+      message: 'Player not found in database',
     };
   }
   if (!player.usernames.accounts || player.usernames.accounts.length === 0) {
