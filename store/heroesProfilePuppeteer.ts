@@ -33,7 +33,6 @@ export async function puppeteerRefreshXsrfTokenAndCookies(
     const page = (await browser.pages())[0];
     await page.setRequestInterception(true);
     page.on('request', request => {
-      const resourceType = request.resourceType();
       if (request.resourceType() === 'document') {
         request.continue();
       } else {
