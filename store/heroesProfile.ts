@@ -37,9 +37,9 @@ export async function getHeroesProfileData(battleTag: string): Promise<HPData | 
     const row = hpRegionStmt.get(battleTag);
     console.log(`Getting HP Data for ${battleTag}`);
 
-    // await initialize();
-    if (!CACHED_XSRF_TOKEN || !CACHED_COOKIE_HEADER) {
-      throw new Error('XSRF token or cookie header is missing. Please refresh them before making the request.');
+    if (!CACHED_XSRF_TOKEN || !CACHED_COOKIE_HEADER || !PAGE_INSTANCE) {
+      BROWSER_INSTANCE?.close();
+      throw new Error('XSRF token, cookie header, or page instance is missing.');
     }
 
     let blizz_id = row?.HP_Blizz_ID;
@@ -47,7 +47,10 @@ export async function getHeroesProfileData(battleTag: string): Promise<HPData | 
     if (!blizz_id || !region) {
       // we don't know their blizz_id or region, so we need to look it up
       const bestMatch = await getBestHpAccount(battleTag, CACHED_XSRF_TOKEN, CACHED_COOKIE_HEADER);
-      if (!bestMatch) return undefined;
+      if (!bestMatch) {
+        BROWSER_INSTANCE?.close();
+        return undefined;
+      }
       blizz_id = bestMatch.blizz_id;
       region = bestMatch.region;
       // store blizz_id, region for the first item in the array
@@ -69,6 +72,7 @@ export async function getHeroesProfileData(battleTag: string): Promise<HPData | 
         });
 
         if (!response.ok) {
+          BROWSER_INSTANCE?.close();
           throw new Error(`${response.status}`);
         }
 
@@ -97,9 +101,11 @@ export async function getHeroesProfileData(battleTag: string): Promise<HPData | 
       `qm: ${hpData.qmMmr}/${hpData.qmGames}, sl: ${hpData.slMmr}/${hpData.slGames}, ar: ${hpData.arMmr}/${hpData.arGames}`,
     );
     console.log(`Elapsed time: ${elapsedTime.toFixed(2)} seconds`);
+    BROWSER_INSTANCE?.close();
     return hpData;
   } catch (error) {
     console.error('An error occurred:', error);
+    BROWSER_INSTANCE?.close();
   }
 }
 
@@ -148,7 +154,6 @@ async function getBestHpAccount(
     }
 
     data.sort((a, b) => b.totalGamesPlayed - a.totalGamesPlayed);
-    BROWSER_INSTANCE?.close();
     return data[0];
   } catch (error) {
     BROWSER_INSTANCE?.close();
