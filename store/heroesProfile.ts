@@ -8,10 +8,8 @@ export const userAgent =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36';
 
 let CACHED_XSRF_TOKEN: string | null = null;
-let CACHED_COOKIE_HEADER: string | null = null;
 let PAGE_INSTANCE: Page | null = null;
 let BROWSER_INSTANCE: Browser | null = null;
-let TOKEN_FETCHED_AT: Date | null = null;
 let isInitialized = false;
 
 // Initialize tokens on module load
@@ -37,16 +35,16 @@ export async function getHeroesProfileData(battleTag: string): Promise<HPData | 
     const row = hpRegionStmt.get(battleTag);
     console.log(`Getting HP Data for ${battleTag}`);
 
-    if (!CACHED_XSRF_TOKEN || !CACHED_COOKIE_HEADER || !PAGE_INSTANCE) {
+    if (!CACHED_XSRF_TOKEN || !PAGE_INSTANCE) {
       BROWSER_INSTANCE?.close();
-      throw new Error('XSRF token, cookie header, or page instance is missing.');
+      throw new Error('XSRF token or page instance is missing.');
     }
 
     let blizz_id = row?.HP_Blizz_ID;
     let region = row?.HP_Region;
     if (!blizz_id || !region) {
       // we don't know their blizz_id or region, so we need to look it up
-      const bestMatch = await getBestHpAccount(battleTag, CACHED_XSRF_TOKEN, CACHED_COOKIE_HEADER);
+      const bestMatch = await getBestHpAccount(battleTag, CACHED_XSRF_TOKEN);
       if (!bestMatch) {
         BROWSER_INSTANCE?.close();
         return undefined;
@@ -114,11 +112,7 @@ export async function getHeroesProfileData(battleTag: string): Promise<HPData | 
  * @param battleTag The BattleTag of the player to search for
  * @returns The best matching HPPlayerData or undefined if not found
  */
-async function getBestHpAccount(
-  battleTag: string,
-  decodedToken: string,
-  cookieHeaderValue: string,
-): Promise<HPPlayerData | undefined> {
+async function getBestHpAccount(battleTag: string, decodedToken: string): Promise<HPPlayerData | undefined> {
   if (!PAGE_INSTANCE) {
     console.error('Page instance not available');
     return undefined;
@@ -179,41 +173,9 @@ async function refreshXsrfTokenAndCookies(): Promise<void> {
 
   const decodedToken = decodeURIComponent(xsrfToken);
 
-  const cookieHeaderValue = rawCookies;
   CACHED_XSRF_TOKEN = decodedToken;
-  CACHED_COOKIE_HEADER = cookieHeaderValue;
   PAGE_INSTANCE = page;
   BROWSER_INSTANCE = browser;
-  TOKEN_FETCHED_AT = new Date();
-  console.log(`XSRF token and cookies refreshed successfully at ${TOKEN_FETCHED_AT.toISOString()}`);
-}
-
-/**
- * Wrapper for fetch that automatically retries with a refreshed token on 401/419 errors
- */
-async function fetchWithRetry(url: string, options: RequestInit, retryCount = 0): Promise<Response> {
-  const maxRetries = 1;
-
-  const response = await fetch(url, options);
-
-  // If we get a 401 (Unauthorized) or 419 (CSRF token mismatch), refresh and retry
-  if ((response.status === 401 || response.status === 419) && retryCount < maxRetries) {
-    console.log(`Received ${response.status}, refreshing XSRF token and retrying...`);
-    await refreshXsrfTokenAndCookies();
-
-    if (!CACHED_XSRF_TOKEN || !CACHED_COOKIE_HEADER) {
-      throw new Error('Failed to refresh XSRF token or cookies');
-    }
-    // Update the headers with the new token
-    if (options.headers && CACHED_XSRF_TOKEN && CACHED_COOKIE_HEADER) {
-      const headers = new Headers(options.headers);
-      headers.set('X-XSRF-TOKEN', CACHED_XSRF_TOKEN);
-      headers.set('Cookie', CACHED_COOKIE_HEADER);
-      options.headers = headers;
-    }
-
-    return fetchWithRetry(url, options, retryCount + 1);
-  }
-
-  return response;
+  const tokenFetchedAt = new Date();
+  console.log(`XSRF token and cookies refreshed successfully at ${tokenFetchedAt.toISOString()}`);
 }
