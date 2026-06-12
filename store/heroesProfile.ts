@@ -7,15 +7,11 @@ const db = new Database('./store/nor_customs.db');
 export const userAgent =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36';
 
-let CACHED_XSRF_TOKEN: string | null = null;
-let PAGE_INSTANCE: Page | null = null;
-let BROWSER_INSTANCE: Browser | null = null;
 let isInitialized = false;
 
 // Initialize tokens on module load
 async function initialize() {
   if (!isInitialized) {
-    await refreshXsrfTokenAndCookies();
     isInitialized = true;
   }
 }
@@ -35,18 +31,18 @@ export async function getHeroesProfileData(battleTag: string): Promise<HPData | 
     const row = hpRegionStmt.get(battleTag);
     console.log(`Getting HP Data for ${battleTag}`);
 
-    if (!CACHED_XSRF_TOKEN || !PAGE_INSTANCE) {
-      BROWSER_INSTANCE?.close();
-      throw new Error('XSRF token or page instance is missing.');
-    }
-
     let blizz_id = row?.HP_Blizz_ID;
     let region = row?.HP_Region;
+    const { xsrfToken, cookies, page, browser } = await refreshXsrfTokenAndCookies();
+    if (!xsrfToken || !page) {
+      browser.close();
+      throw new Error('XSRF token or page instance is missing.');
+    }
     if (!blizz_id || !region) {
       // we don't know their blizz_id or region, so we need to look it up
-      const bestMatch = await getBestHpAccount(battleTag, CACHED_XSRF_TOKEN);
+      const bestMatch = await getBestHpAccount(battleTag, xsrfToken, page, browser);
       if (!bestMatch) {
-        BROWSER_INSTANCE?.close();
+        browser.close();
         return undefined;
       }
       blizz_id = bestMatch.blizz_id;
@@ -58,7 +54,7 @@ export async function getHeroesProfileData(battleTag: string): Promise<HPData | 
       hpUpdateStmt.run(blizz_id, region, battleTag);
     }
 
-    const hpDataReturned: HPPlayerStatsData = await PAGE_INSTANCE.evaluate(
+    const hpDataReturned: HPPlayerStatsData = await page.evaluate(
       async (token: string, battleTag: string, region: number, blizz_id: string) => {
         const response = await fetch('https://www.heroesprofile.com/api/v1/player', {
           method: 'POST',
@@ -70,13 +66,13 @@ export async function getHeroesProfileData(battleTag: string): Promise<HPData | 
         });
 
         if (!response.ok) {
-          BROWSER_INSTANCE?.close();
+          browser.close();
           throw new Error(`${response.status}`);
         }
 
         return response.json();
       },
-      CACHED_XSRF_TOKEN,
+      xsrfToken,
       battleTag,
       region,
       blizz_id,
@@ -99,11 +95,10 @@ export async function getHeroesProfileData(battleTag: string): Promise<HPData | 
       `qm: ${hpData.qmMmr}/${hpData.qmGames}, sl: ${hpData.slMmr}/${hpData.slGames}, ar: ${hpData.arMmr}/${hpData.arGames}`,
     );
     console.log(`Elapsed time: ${elapsedTime.toFixed(2)} seconds`);
-    BROWSER_INSTANCE?.close();
+    browser.close();
     return hpData;
   } catch (error) {
     console.error('An error occurred:', error);
-    BROWSER_INSTANCE?.close();
   }
 }
 
@@ -112,14 +107,19 @@ export async function getHeroesProfileData(battleTag: string): Promise<HPData | 
  * @param battleTag The BattleTag of the player to search for
  * @returns The best matching HPPlayerData or undefined if not found
  */
-async function getBestHpAccount(battleTag: string, decodedToken: string): Promise<HPPlayerData | undefined> {
-  if (!PAGE_INSTANCE) {
+async function getBestHpAccount(
+  battleTag: string,
+  decodedToken: string,
+  page: Page,
+  browser: Browser,
+): Promise<HPPlayerData | undefined> {
+  if (!page) {
     console.error('Page instance not available');
     return undefined;
   }
 
   try {
-    const data = await PAGE_INSTANCE.evaluate(
+    const data = await page.evaluate(
       async (token: string, tag: string) => {
         const response = await fetch('https://www.heroesprofile.com/api/v1/battletag/search', {
           method: 'POST',
@@ -131,7 +131,7 @@ async function getBestHpAccount(battleTag: string, decodedToken: string): Promis
         });
 
         if (!response.ok) {
-          BROWSER_INSTANCE?.close();
+          browser.close();
           throw new Error(`WHOA! ${response.status}`);
         }
         console.log('response.json:', await response.clone().json());
@@ -143,20 +143,25 @@ async function getBestHpAccount(battleTag: string, decodedToken: string): Promis
 
     if (!Array.isArray(data) || data.length === 0) {
       console.log(`No data found for BattleTag: ${battleTag}`);
-      BROWSER_INSTANCE?.close();
+      browser.close();
       return undefined;
     }
 
     data.sort((a, b) => b.totalGamesPlayed - a.totalGamesPlayed);
     return data[0];
   } catch (error) {
-    BROWSER_INSTANCE?.close();
+    browser.close();
     console.error(`Error fetching getBestHpAccount data:`, error);
     return undefined;
   }
 }
 
-async function refreshXsrfTokenAndCookies(): Promise<void> {
+async function refreshXsrfTokenAndCookies(): Promise<{
+  xsrfToken: string;
+  cookies: string;
+  page: Page;
+  browser: Browser;
+}> {
   const {
     xsrfToken,
     cookies: rawCookies,
@@ -173,9 +178,7 @@ async function refreshXsrfTokenAndCookies(): Promise<void> {
 
   const decodedToken = decodeURIComponent(xsrfToken);
 
-  CACHED_XSRF_TOKEN = decodedToken;
-  PAGE_INSTANCE = page;
-  BROWSER_INSTANCE = browser;
   const tokenFetchedAt = new Date();
   console.log(`XSRF token and cookies refreshed successfully at ${tokenFetchedAt.toISOString()}`);
+  return { xsrfToken: decodedToken, cookies: rawCookies, page, browser };
 }
