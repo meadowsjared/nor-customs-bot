@@ -1,7 +1,4 @@
 import dotenv from 'dotenv';
-import crypto from 'crypto';
-import fs from 'fs';
-import path from 'path';
 
 dotenv.config();
 
@@ -59,6 +56,7 @@ import {
   handlePlayersAllCommand,
   updateAdminActiveButtons,
   handleChannelCommand,
+  handleAdminDeleteHotsAccountCommand,
 } from './commands';
 import { slashCommands } from './commands/definitions';
 
@@ -320,6 +318,9 @@ function handleAdminSubCommand(interaction: ChatInputCommandInteraction<CacheTyp
       break;
     case CommandIds.ADD_ACCOUNT:
       handleAdminAddHotsAccountCommand(interaction);
+      break;
+    case CommandIds.DELETE_ACCOUNT:
+      handleAdminDeleteHotsAccountCommand(interaction);
       break;
     case CommandIds.PRIMARY:
       handleAdminPrimaryCommand(interaction);

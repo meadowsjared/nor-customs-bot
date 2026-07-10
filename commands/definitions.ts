@@ -398,6 +398,25 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
         ],
       },
       {
+        name: CommandIds.DELETE_ACCOUNT,
+        description: "Delete a player's Heroes of the Storm account.",
+        type: ApplicationCommandOptionType.Subcommand,
+        options: [
+          {
+            name: CommandIds.DISCORD_ID,
+            description: 'The user to modify.',
+            type: ApplicationCommandOptionType.User,
+            required: true,
+          },
+          {
+            name: CommandIds.BATTLE_TAG,
+            description: 'The Heroes of the Storm battle tag to delete (including the # and number)',
+            type: ApplicationCommandOptionType.String,
+            required: false,
+          },
+        ],
+      },
+      {
         name: CommandIds.PRIMARY,
         description: "Set a player's primary Heroes of the Storm account.",
         type: ApplicationCommandOptionType.Subcommand,

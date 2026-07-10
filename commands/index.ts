@@ -58,6 +58,7 @@ import {
   deletePlayer,
   deleteHotsAccount,
   getAllPlayers,
+  handleDeleteHotsAccount,
 } from '../store/player';
 import {
   saveChannel,
@@ -1637,6 +1638,20 @@ export async function handleAdminAddHotsAccountCommand(interaction: ChatInputCom
   await handleAddHotsAccountCommandSub(interaction, member.user.id, hotsBattleTag);
 }
 
+export async function handleAdminDeleteHotsAccountCommand(interaction: ChatInputCommandInteraction<CacheType>) {
+  const member = interaction.options.getMember(CommandIds.DISCORD_ID);
+  if (!member || 'user' in member === false) {
+    await safeReply(interaction, {
+      content: 'Please provide a valid Discord member to look up.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  const hotsBattleTag = interaction.options.getString(CommandIds.BATTLE_TAG, false);
+  // check if the battleTag is valid, it should be in the format of Name#1234
+  await handleDeleteHotsAccountCommandSub(interaction, member.user.id, hotsBattleTag);
+}
+
 export async function handleAdminPrimaryCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
   discordIdParam?: string,
@@ -1786,6 +1801,14 @@ async function handleAddHotsAccountCommandSub(
   }
 
   await handleAddHotsAccount(interaction, discordId, hotsBattleTag);
+}
+
+async function handleDeleteHotsAccountCommandSub(
+  interaction: ChatInputCommandInteraction<CacheType>,
+  discordId: string,
+  hotsBattleTag: string | null,
+) {
+  await handleDeleteHotsAccount(interaction, discordId, hotsBattleTag);
 }
 
 /**

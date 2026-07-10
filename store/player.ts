@@ -439,6 +439,36 @@ ${validationResult.rules}
   return player;
 }
 
+export async function handleDeleteHotsAccount(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+  discordId: string,
+  hotsBattleTag: string | null,
+) {
+  if (!hotsBattleTag) {
+    // delete all hots accounts associated with the discordId
+    deletePlayerHotsAccounts(discordId);
+    const hotsAccountStmt = db.prepare('DELETE FROM hots_accounts WHERE discord_id = ?');
+    hotsAccountStmt.run(discordId);
+    await safeReply(interaction, {
+      content: `ALL Heroes of the Storm accounts associated with <@${discordId}> have been deleted.`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  const deleted = deleteHotsAccount(hotsBattleTag);
+  if (deleted > 0) {
+    await safeReply(interaction, {
+      content: `Heroes of the Storm account \`${hotsBattleTag}\` has been deleted.`,
+      flags: MessageFlags.Ephemeral,
+    });
+  } else {
+    await safeReply(interaction, {
+      content: `Failed to delete Heroes of the Storm account \`${hotsBattleTag}\`. It may not exist.`,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+}
+
 async function handleAccountNotFound(
   interaction:
     | ChatInputCommandInteraction<CacheType>
