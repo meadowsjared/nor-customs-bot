@@ -1650,6 +1650,7 @@ export async function handleAdminDeleteHotsAccountCommand(interaction: ChatInput
   const hotsBattleTag = interaction.options.getString(CommandIds.BATTLE_TAG, false);
   // check if the battleTag is valid, it should be in the format of Name#1234
   await handleDeleteHotsAccountCommandSub(interaction, member.user.id, hotsBattleTag);
+  await handleRefreshLobbyMessage(interaction);
 }
 
 export async function handleAdminPrimaryCommand(
@@ -1809,6 +1810,7 @@ async function handleDeleteHotsAccountCommandSub(
   hotsBattleTag: string | null,
 ) {
   await handleDeleteHotsAccount(interaction, discordId, hotsBattleTag);
+  await handleRefreshLobbyMessage(interaction);
 }
 
 /**
