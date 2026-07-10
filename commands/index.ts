@@ -1813,7 +1813,7 @@ async function handleDeleteHotsAccountCommandSub(
   hotsBattleTag: string | null,
 ) {
   await handleDeleteHotsAccount(interaction, discordId, hotsBattleTag);
-  await handleRefreshLobbyMessage(interaction);
+  await handleRefreshLobbyMessage(interaction, false);
 }
 
 /**
