@@ -59,6 +59,8 @@ import {
   handleAdminDeleteHotsAccountCommand,
 } from './commands';
 import { slashCommands } from './commands/definitions';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 
 export const client = new Client({
   intents: [
@@ -111,7 +113,8 @@ client.once('clientReady', async () => {
     ],
   });
   // announce the bot's current version
-  console.log(`Bot version: ${process.env.npm_package_version}`);
+  const packageJson = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf-8'));
+  console.log(`Bot version: ${packageJson.version}`);
   // Log all guilds the bot is in
   client.guilds.cache.forEach(async guild => {
     guild.commands.set(slashCommands);
