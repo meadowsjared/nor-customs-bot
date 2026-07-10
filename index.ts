@@ -127,14 +127,14 @@ client.once('clientReady', async () => {
       commands.forEach(command => {
         console.log(`Command: ${command.name}, ID: ${command.id}`);
       });
+      // announce the bot's current version
+      const packageJson = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf-8'));
+      console.log(`Bot version: ${packageJson.version}`);
     })
     .catch(error => {
       console.error('Error fetching guild commands:', error);
     });
 
-  // announce the bot's current version
-  const packageJson = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf-8'));
-  console.log(`Bot version: ${packageJson.version}`);
   console.log(`Bot is ready! Logged in as ${client.user?.tag}`);
 });
 
