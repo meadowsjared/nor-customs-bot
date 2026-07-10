@@ -112,9 +112,6 @@ client.once('clientReady', async () => {
       },
     ],
   });
-  // announce the bot's current version
-  const packageJson = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf-8'));
-  console.log(`Bot version: ${packageJson.version}`);
   // Log all guilds the bot is in
   client.guilds.cache.forEach(async guild => {
     guild.commands.set(slashCommands);
@@ -135,6 +132,9 @@ client.once('clientReady', async () => {
       console.error('Error fetching guild commands:', error);
     });
 
+  // announce the bot's current version
+  const packageJson = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf-8'));
+  console.log(`Bot version: ${packageJson.version}`);
   console.log(`Bot is ready! Logged in as ${client.user?.tag}`);
 });
 
