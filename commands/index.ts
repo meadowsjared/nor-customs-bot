@@ -1470,13 +1470,16 @@ export async function handleDeleteHotsAccountCommand(
 
 export async function handleRefreshLobbyMessage(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+  reply: boolean = true,
 ) {
   await updateLobbyMessage(interaction);
-  const reply = await safeReply(interaction, {
-    content: 'Lobby messages refreshed.',
-    flags: MessageFlags.Ephemeral,
-  });
-  await reply?.delete();
+  if (reply) {
+    const replyMessage = await safeReply(interaction, {
+      content: 'Lobby messages refreshed.',
+      flags: MessageFlags.Ephemeral,
+    });
+    await replyMessage?.delete();
+  }
 }
 
 /**
@@ -1650,7 +1653,7 @@ export async function handleAdminDeleteHotsAccountCommand(interaction: ChatInput
   const hotsBattleTag = interaction.options.getString(CommandIds.BATTLE_TAG, false);
   // check if the battleTag is valid, it should be in the format of Name#1234
   await handleDeleteHotsAccountCommandSub(interaction, member.user.id, hotsBattleTag);
-  await handleRefreshLobbyMessage(interaction);
+  await handleRefreshLobbyMessage(interaction, false);
 }
 
 export async function handleAdminPrimaryCommand(
