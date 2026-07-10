@@ -110,6 +110,8 @@ client.once('clientReady', async () => {
       },
     ],
   });
+  // announce the bot's current version
+  console.log(`Bot version: ${process.env.npm_package_version}`);
   // Log all guilds the bot is in
   client.guilds.cache.forEach(async guild => {
     guild.commands.set(slashCommands);
