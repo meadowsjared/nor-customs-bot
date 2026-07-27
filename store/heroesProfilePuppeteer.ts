@@ -1,4 +1,4 @@
-import { appendFileSync } from 'fs';
+import { appendFileSync, mkdirSync } from 'fs';
 import { connect, PageWithCursor } from 'puppeteer-real-browser';
 import type { Browser, Protocol } from "rebrowser-puppeteer-core";
 
@@ -33,10 +33,16 @@ export async function puppeteerRefreshXsrfTokenAndCookies(
     } catch { }
   }
 
+  const userDataDir = '/tmp/puppeteer_real_browser';
+  mkdirSync(userDataDir, { recursive: true });
+
   const { browser, page } = await connect({
-    headless: true,
+    headless: false,
     turnstile: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--user-data-dir=' + userDataDir],
+    customConfig: {
+      userDataDir,
+    },
   });
   try {
     await page.goto(url, { waitUntil: 'domcontentloaded' });
