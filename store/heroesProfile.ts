@@ -1,7 +1,8 @@
 import { HPData, HPPlayerData, HPPlayerStatsData } from '../types/heroesProfile'; // Assuming you have a types.ts file for type definitions
 import Database from 'better-sqlite3';
 import { puppeteerRefreshXsrfTokenAndCookies } from './heroesProfilePuppeteer';
-import { Browser, Page } from 'puppeteer';
+import { PageWithCursor } from 'puppeteer-real-browser';
+import type { Browser } from "rebrowser-puppeteer-core";
 
 const db = new Database('./store/nor_customs.db');
 export const userAgent =
@@ -110,7 +111,7 @@ export async function getHeroesProfileData(battleTag: string): Promise<HPData | 
 async function getBestHpAccount(
   battleTag: string,
   decodedToken: string,
-  page: Page,
+  page: PageWithCursor,
   browser: Browser,
 ): Promise<HPPlayerData | undefined> {
   if (!page) {
@@ -158,7 +159,7 @@ async function getBestHpAccount(
 
 async function initializeHPPage(): Promise<{
   xsrfToken: string;
-  page: Page;
+  page: PageWithCursor;
   browser: Browser;
 }> {
   const { xsrfToken, page, browser } = await puppeteerRefreshXsrfTokenAndCookies('https://www.heroesprofile.com/');

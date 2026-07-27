@@ -1,6 +1,6 @@
-import puppeteer, { Browser, Page } from 'puppeteer';
 import { appendFileSync } from 'fs';
-import { userAgent } from './heroesProfile';
+import { connect, PageWithCursor } from 'puppeteer-real-browser';
+import type { Browser, Protocol } from "rebrowser-puppeteer-core";
 
 // Save original console methods
 const origLog = console.log;
@@ -22,28 +22,37 @@ console.error = (...args: any[]) => {
 
 export async function puppeteerRefreshXsrfTokenAndCookies(
   url: string,
-): Promise<{ xsrfToken: string; cookies: string; page: Page; browser: Browser }> {
-  const browser = await puppeteer.launch({
+): Promise<{ xsrfToken: string; cookies: string; page: PageWithCursor; browser: Browser }> {
+  if (!process.env.CHROME_PATH) {
+    try {
+      const { execSync } = await import('child_process');
+      const foundPath = execSync('find ~/.cache/puppeteer/chrome -name chrome -type f 2>/dev/null | head -n 1', {
+        encoding: 'utf8',
+      }).trim();
+      if (foundPath) process.env.CHROME_PATH = foundPath;
+    } catch { }
+  }
+
+  const { browser, page } = await connect({
     headless: true,
-    args: ['--user-agent=' + userAgent, '--no-sandbox', '--disable-setuid-sandbox'],
+    turnstile: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
   });
   try {
-    const page = (await browser.pages())[0];
-    await page.setRequestInterception(true);
-    page.on('request', request => {
-      if (request.resourceType() === 'document' || request.url().startsWith('https://www.heroesprofile.com/api/')) {
-        request.continue();
-      } else {
-        request.abort();
-      }
-    });
     await page.goto(url, { waitUntil: 'domcontentloaded' });
 
     // Find the XSRF token
-    const client = await page.createCDPSession();
-    const { cookies: cookieObjects } = await client.send('Network.getAllCookies');
+    let xsrfCookie;
+    let cookieObjects: Protocol.Network.Cookie[] = [];
+    for (let i = 0; i < 10; i++) {
+      const client = await page.createCDPSession();
+      const res = await client.send('Network.getAllCookies');
+      cookieObjects = res.cookies;
+      xsrfCookie = cookieObjects.find(c => c.name === 'XSRF-TOKEN');
+      if (xsrfCookie) break;
+      await new Promise(r => setTimeout(r, 1000));
+    }
 
-    const xsrfCookie = cookieObjects.find(c => c.name === 'XSRF-TOKEN');
     if (!xsrfCookie) {
       throw new Error(
         'XSRF-TOKEN cookie not found! Cookies: ' + cookieObjects.map(c => `${c.name}=${c.value}`).join('; '),
