@@ -243,6 +243,8 @@ try {
   console.error('Error initializing database schema:', error);
 }
 
+type ParsedReplay = NonNullable<Awaited<ReturnType<typeof parseReplay>>>;
+
 /**
  * Parses a Heroes of the Storm replay file using hots-parser and extracts relevant information.
  * @param file The path to the replay file
@@ -251,54 +253,10 @@ export async function parseReplay(file: string) {
   try {
     const Parser = require('hots-parser');
     const replay: HotSReplay = Parser.processReplay(file, { overrideVerifiedBuild: true });
-    // const header = Parser.getHeader(file);
     if (!replay || !replay.match) {
       console.error(`Invalid or incomplete replay data for file: ${file}`);
-      return;
+      return null;
     }
-
-    // first write the match data to the match table in the database
-    function getInsertMatchSQL(replay: HotSReplay): { sql: string; values: unknown[] } {
-      const allColumns: readonly ColumnDefinition[] = HOTS_REPLAYS_MATCH_COLUMNS.slice();
-      const filteredColumns = allColumns.filter(col => !col.skipImport);
-      const columnNames = filteredColumns.map(col => col.name);
-      const placeholders = filteredColumns.map(() => '?').join(', ');
-
-      const values = filteredColumns.map(col => {
-        const rawValue = replay.match[col.name as keyof typeof replay.match]; // we know the key exists because the match is defined by HOTS_REPLAYS_MATCH_COLUMNS
-
-        if (rawValue === undefined || rawValue === null) {
-          return null;
-        }
-
-        if ((rawValue as unknown) instanceof Date) {
-          return (rawValue as unknown as Date).toISOString();
-        }
-
-        if (typeof rawValue === 'boolean') {
-          return rawValue ? 1 : 0;
-        }
-
-        if (
-          typeof rawValue === 'number' ||
-          typeof rawValue === 'string' ||
-          typeof rawValue === 'bigint' ||
-          Buffer.isBuffer(rawValue)
-        ) {
-          return rawValue;
-        }
-
-        return String(rawValue);
-      });
-
-      return {
-        sql: `INSERT INTO hots_replays (${columnNames.join(', ')}) VALUES (${placeholders}) ON CONFLICT(map, date, loopLength) DO UPDATE SET map=excluded.map RETURNING id`,
-        values,
-      };
-    }
-    const { sql, values } = getInsertMatchSQL(replay);
-    const row = db.prepare(sql).get(values) as { id: number };
-    const replayId = row.id;
 
     const players = Object.values(replay.players).map(player => player);
     const team0Players = players
@@ -311,7 +269,7 @@ export async function parseReplay(file: string) {
       .join(', ');
 
     return {
-      replayId,
+      replayObj: replay,
       date: replay.match.date,
       type: replay.match.type,
       mode: replay.match.mode,
@@ -320,11 +278,37 @@ export async function parseReplay(file: string) {
       winner: replay.match.winner,
       team0Takedowns: replay.match.team0Takedowns,
       team1Takedowns: replay.match.team1Takedowns,
-      team0Players: team0Players,
-      team1Players: team1Players,
+      team0Players,
+      team1Players,
       file,
     };
   } catch (error) {
     console.error(`Error parsing replay file ${file}:`, error);
+    return null;
   }
+}
+
+/**
+ * Saves a parsed custom match into the database and returns its assigned replay ID.
+ */
+export function saveReplayToDb(parsedReplay: ParsedReplay): number {
+  const replay = parsedReplay.replayObj;
+
+  const allColumns: readonly ColumnDefinition[] = HOTS_REPLAYS_MATCH_COLUMNS.slice();
+  const filteredColumns = allColumns.filter(col => !col.skipImport);
+  const columnNames = filteredColumns.map(col => col.name);
+  const placeholders = filteredColumns.map(() => '?').join(', ');
+
+  const values = filteredColumns.map(col => {
+    const rawValue = replay.match[col.name as keyof typeof replay.match];
+    if (rawValue === undefined || rawValue === null) return null;
+    if ((rawValue as unknown) instanceof Date) return (rawValue as unknown as Date).toISOString();
+    if (typeof rawValue === 'boolean') return rawValue ? 1 : 0;
+    if (typeof rawValue === 'number' || typeof rawValue === 'string' || typeof rawValue === 'bigint' || Buffer.isBuffer(rawValue)) return rawValue;
+    return String(rawValue);
+  });
+
+  const sql = `INSERT INTO hots_replays (${columnNames.join(', ')}) VALUES (${placeholders}) ON CONFLICT(map, date, loopLength) DO UPDATE SET map=excluded.map RETURNING id`;
+  const row = db.prepare(sql).get(values) as { id: number };
+  return row.id;
 }

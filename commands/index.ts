@@ -70,7 +70,7 @@ import {
 } from '../store/channels';
 import { DiscordUserNames, Player } from '../types/player';
 import { client } from '../index';
-import { parseReplay } from '../store/hotsReplays';
+import { parseReplay, saveReplayToDb } from '../store/hotsReplays';
 import path from 'path';
 import { validateBattleTag } from '../utils/heroesOfTheStorm';
 dotenv.config();
@@ -2848,6 +2848,7 @@ export async function handleListReplaysCommand(
       isReplayOnOrAfterDate(file, replayData.date, cutoffDate)
     ) {
       count++;
+      const replayId = saveReplayToDb(replayData);
       const durationMin = Math.floor(replayData.length / 60);
       const durationSec = Math.floor(replayData.length % 60);
       const replayDate = formatDateToMMDDYYYY(new Date(replayData.date));
@@ -2855,7 +2856,7 @@ export async function handleListReplaysCommand(
       const redWin = replayData.winner === 1 ? ' 🎉' : '';
 
       let entryStr = `${count.toLocaleString('en-US')}. ${fileName}\n`;
-      entryStr += `  - Replay ID: ${replayData.replayId} Map: ${replayData.map}, Date: ${replayDate}, Duration: ${durationMin}m ${durationSec}s\n`;
+      entryStr += `  - Replay ID: ${replayId} Map: ${replayData.map}, Date: ${replayDate}, Duration: ${durationMin}m ${durationSec}s\n`;
       entryStr += `  - Winner: ${replayData.winner} Takedowns: ${replayData.team0Takedowns.toLocaleString('en-US')} - ${replayData.team1Takedowns.toLocaleString('en-US')}, Players:\n`;
       entryStr += `    Blue Team: ${replayData.team0Players}${blueWin}\n`;
       entryStr += `    Red Team: ${replayData.team1Players}${redWin}\n`;
