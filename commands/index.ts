@@ -2823,16 +2823,16 @@ export async function handleListReplaysCommand(
     return bStat.mtime.getTime() - aStat.mtime.getTime();
   });
 
-  const maxContentLength = 1800; // Leave some buffer for the header text
-  // split the content into multiple messages if it's too long
-  const maxMessages = 10;
+  const maxContentLength = 1700; // Buffer for 2000 character limit
 
   let currentChunk = `Found the following custom .StormReplay files on or after **${targetDateStr}** in:\n\`${folderPath}\`\n\n`;
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   let count = 0;
+  let isFirstChunk = true;
+  let activeMessage: Message<boolean> | null = null;
+
   for (const file of files) {
-    if (count >= maxMessages) break;
     const fileName = path.basename(file);
     const replayData = await parseReplay(file);
 
@@ -2842,25 +2842,36 @@ export async function handleListReplaysCommand(
       (replayData.mode === -1) &&
       isReplayOnOrAfterDate(file, replayData.date, cutoffDate)
     ) {
-      if (currentChunk.length + fileName.length + 1 <= maxContentLength) {
-        count++;
-        const durationMin = Math.floor(replayData.length / 60);
-        const durationSec = Math.floor(replayData.length % 60);
-        const replayDate = formatDateToMMDDYYYY(new Date(replayData.date));
-        const blueWin = replayData.winner === 0 ? ' 🎉' : '';
-        const redWin = replayData.winner === 1 ? ' 🎉' : '';
+      count++;
+      const durationMin = Math.floor(replayData.length / 60);
+      const durationSec = Math.floor(replayData.length % 60);
+      const replayDate = formatDateToMMDDYYYY(new Date(replayData.date));
+      const blueWin = replayData.winner === 0 ? ' 🎉' : '';
+      const redWin = replayData.winner === 1 ? ' 🎉' : '';
 
-        currentChunk += `${count}. ${fileName}\n`;
-        currentChunk += `  - Replay ID: ${replayData.replayId}\n`;
-        currentChunk += `  - Map: ${replayData.map}, Mode: ${replayData.mode}, Date: ${replayDate}\n`;
-        currentChunk += `  - Winner: ${replayData.winner}, Duration: ${durationMin}m ${durationSec}s, takedowns: ${replayData.team0Takedowns} - ${replayData.team1Takedowns}\n`;
-        currentChunk += `  - Players:\n`;
-        currentChunk += `    Blue Team: ${replayData.team0Players}${blueWin}\n`;
-        currentChunk += `    Red Team: ${replayData.team1Players}${redWin}\n`;
+      let entryStr = `${count}. ${fileName}\n`;
+      entryStr += `  - Replay ID: ${replayData.replayId}\n`;
+      entryStr += `  - Map: ${replayData.map}, Mode: ${replayData.mode}, Date: ${replayDate}\n`;
+      entryStr += `  - Winner: ${replayData.winner}, Duration: ${durationMin}m ${durationSec}s, takedowns: ${replayData.team0Takedowns} - ${replayData.team1Takedowns}\n`;
+      entryStr += `  - Players:\n`;
+      entryStr += `    Blue Team: ${replayData.team0Players}${blueWin}\n`;
+      entryStr += `    Red Team: ${replayData.team1Players}${redWin}\n`;
 
-        await interaction.editReply({
+      if (currentChunk.length + entryStr.length > maxContentLength) {
+        // Limit reached for current message: start a new followUp message
+        isFirstChunk = false;
+        currentChunk = entryStr;
+        activeMessage = (await interaction.followUp({
+          flags: MessageFlags.Ephemeral,
           content: currentChunk,
-        });
+        })) as Message<boolean>;
+      } else {
+        currentChunk += entryStr;
+        if (isFirstChunk) {
+          await interaction.editReply({ content: currentChunk });
+        } else if (activeMessage) {
+          await activeMessage.edit({ content: currentChunk });
+        }
       }
     }
   }
