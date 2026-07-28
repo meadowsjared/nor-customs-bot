@@ -2820,13 +2820,9 @@ export async function handleListReplaysCommand(
   });
 
   const maxContentLength = 1700; // Buffer for 2000 character limit
-
-  let currentChunk = `Found the following custom .StormReplay files on or after **${targetDateStr}** in:\n\`${folderPath}\`\n\n`;
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-  let count = 0;
-  let isFirstChunk = true;
-  let activeMessage: Message<boolean> | null = null;
+  const matchingEntries: string[] = [];
 
   for (const file of files) {
     const fileName = path.basename(file);
@@ -2838,7 +2834,7 @@ export async function handleListReplaysCommand(
       (replayData.mode === -1) &&
       isReplayOnOrAfterDate(file, replayData.date, cutoffDate)
     ) {
-      count++;
+      const count = matchingEntries.length + 1;
       const durationMin = Math.floor(replayData.length / 60);
       const durationSec = Math.floor(replayData.length % 60);
       const replayDate = formatDateToMMDDYYYY(new Date(replayData.date));
@@ -2851,29 +2847,43 @@ export async function handleListReplaysCommand(
       entryStr += `    Blue Team: ${replayData.team0Players}${blueWin}\n`;
       entryStr += `    Red Team: ${replayData.team1Players}${redWin}\n`;
 
-      if (currentChunk.length + entryStr.length > maxContentLength) {
-        // Limit reached for current message: start a new followUp message
-        isFirstChunk = false;
-        currentChunk = entryStr;
-        activeMessage = (await interaction.followUp({
-          flags: MessageFlags.Ephemeral,
-          content: currentChunk,
-        })) as Message<boolean>;
-      } else {
-        currentChunk += entryStr;
-        if (isFirstChunk) {
-          await interaction.editReply({ content: currentChunk });
-        } else if (activeMessage) {
-          await activeMessage.edit({ content: currentChunk });
-        }
-      }
+      matchingEntries.push(entryStr);
     }
   }
 
-  if (count === 0) {
+  if (matchingEntries.length === 0) {
     await interaction.editReply({
       content: `No custom .StormReplay games found on or after **${targetDateStr}** in:\n\`${folderPath}\``,
     });
+    return;
+  }
+
+  // Chunk matching entries into messages within maxContentLength
+  const chunks: string[] = [];
+  let currentChunk = `Found **${matchingEntries.length}** custom .StormReplay files on or after **${targetDateStr}** in:\n\`${folderPath}\`\n\n`;
+
+  for (const entry of matchingEntries) {
+    if (currentChunk.length + entry.length > maxContentLength) {
+      chunks.push(currentChunk);
+      currentChunk = entry;
+    } else {
+      currentChunk += entry;
+    }
+  }
+  if (currentChunk.length > 0) {
+    chunks.push(currentChunk);
+  }
+
+  // Send chunks to Discord
+  for (let i = 0; i < chunks.length; i++) {
+    if (i === 0) {
+      await interaction.editReply({ content: chunks[i] });
+    } else {
+      await interaction.followUp({
+        flags: MessageFlags.Ephemeral,
+        content: chunks[i],
+      });
+    }
   }
 }
 
