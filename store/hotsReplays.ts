@@ -261,19 +261,30 @@ export async function parseReplay(file: string) {
       const placeholders = filteredColumns.map(() => '?').join(', ');
 
       const values = filteredColumns.map(col => {
-        const value = replay.match[col.name as keyof typeof replay.match]; // we know the key exists because the match is defined by HOTS_REPLAYS_MATCH_COLUMNS
+        const rawValue = replay.match[col.name as keyof typeof replay.match]; // we know the key exists because the match is defined by HOTS_REPLAYS_MATCH_COLUMNS
 
-        // Handle boolean conversion for SQLite (convert true/false to 1/0)
-        if (col.isBoolean && typeof value === 'boolean') {
-          return value ? 1 : 0;
+        if (rawValue === undefined || rawValue === null) {
+          return null;
         }
 
-        // Handle string values that need quotes
-        if (col.dbType === SQLiteColumnType.TEXT && typeof value === 'string') {
-          return value;
+        if ((rawValue as unknown) instanceof Date) {
+          return (rawValue as unknown as Date).toISOString();
         }
 
-        return value;
+        if (typeof rawValue === 'boolean') {
+          return rawValue ? 1 : 0;
+        }
+
+        if (
+          typeof rawValue === 'number' ||
+          typeof rawValue === 'string' ||
+          typeof rawValue === 'bigint' ||
+          Buffer.isBuffer(rawValue)
+        ) {
+          return rawValue;
+        }
+
+        return String(rawValue);
       });
 
       return {
