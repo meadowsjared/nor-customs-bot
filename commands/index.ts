@@ -2849,13 +2849,12 @@ export async function handleListReplaysCommand(
     ) {
       count++;
       const replayId = saveReplayToDb(replayData);
-      // copy the replay from /mnt/HotsBandayd... to /mnt/NorCustoms/
-      const sourcePath = path.join('/mnt/HotsBandayd', fileName);
+      // copy the replay from its nested path 'file' to /mnt/NorCustoms/
       const destPath = path.join('/mnt/NorCustoms', fileName);
       try {
-        fs.copyFileSync(sourcePath, destPath);
-      } catch (_error) {
-        console.error('Error copying replay:', fileName);
+        fs.copyFileSync(file, destPath);
+      } catch (error) {
+        console.error('Error copying replay:', fileName, error);
       }
       const durationMin = Math.floor(replayData.length / 60);
       const durationSec = Math.floor(replayData.length % 60);
