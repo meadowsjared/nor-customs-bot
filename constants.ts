@@ -75,6 +75,7 @@ export const enum CommandIds {
   ROLE_FLEX_ACTIVE = 'F_active',
   RENAME_HOTS_ACCOUNT = 'rename-hots-account',
   LIST_REPLAYS = 'list-replays',
+  REPLAY_DATE = 'date',
   CHANNEL_COMMAND = 'channel-command',
   CHANNEL = 'channel',
   COMMAND = 'command',

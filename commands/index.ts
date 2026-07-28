@@ -2738,6 +2738,46 @@ function findStormReplays(baseDir: string): string[] {
   return results;
 }
 
+function formatDateToYYYYMMDD(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function parseCutoffDate(inputStr?: string | null): Date {
+  const now = new Date();
+  if (!inputStr || inputStr.trim().toLowerCase() === 'yesterday') {
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0, 0);
+  }
+  if (inputStr.trim().toLowerCase() === 'today') {
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+  }
+  const parsed = new Date(inputStr.trim());
+  if (!isNaN(parsed.getTime())) {
+    return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate(), 0, 0, 0, 0);
+  }
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0, 0);
+}
+
+function isReplayOnOrAfterDate(file: string, replayDate: unknown, cutoffDate: Date): boolean {
+  if (replayDate) {
+    try {
+      const d = new Date(replayDate as any);
+      if (!isNaN(d.getTime())) {
+        return d.getTime() >= cutoffDate.getTime();
+      }
+    } catch {}
+  }
+
+  try {
+    const mtime = fs.statSync(file).mtime;
+    return mtime.getTime() >= cutoffDate.getTime();
+  } catch {}
+
+  return false;
+}
+
 export async function handleListReplaysCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ) {
@@ -2752,6 +2792,10 @@ export async function handleListReplaysCommand(
     return;
   }
   const folderPath = '/mnt/HotsBandayd';
+  const rawDateInput = interaction.options.getString(CommandIds.REPLAY_DATE);
+  const cutoffDate = parseCutoffDate(rawDateInput);
+  const targetDateStr = formatDateToYYYYMMDD(cutoffDate);
+
   let files: string[] = [];
   try {
     files = findStormReplays(folderPath);
@@ -2766,7 +2810,7 @@ export async function handleListReplaysCommand(
 
   if (files.length === 0) {
     await safeReply(interaction, {
-      content: `No replay files found in any Replays folder under:\n\`${folderPath}\``,
+      content: `No .StormReplay files found in any Replays folder under:\n\`${folderPath}\``,
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -2783,7 +2827,7 @@ export async function handleListReplaysCommand(
   // split the content into multiple messages if it's too long
   const maxMessages = 10;
 
-  let currentChunk = `Found the following custom .StormReplay files in the folder:\n\`${folderPath}\`\n\n`;
+  let currentChunk = `Found the following custom .StormReplay files on or after **${targetDateStr}** in:\n\`${folderPath}\`\n\n`;
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   let count = 0;
@@ -2792,8 +2836,12 @@ export async function handleListReplaysCommand(
     const fileName = path.basename(file);
     const replayData = await parseReplay(file);
 
-    // Only include Custom games (mode === -1)
-    if (replayData && (replayData.mode === -1 || String(replayData.mode) === 'Custom')) {
+    // Only include Custom games (mode === -1) played on or after the cutoff date
+    if (
+      replayData &&
+      (replayData.mode === -1 || String(replayData.mode) === 'Custom') &&
+      isReplayOnOrAfterDate(file, replayData.date, cutoffDate)
+    ) {
       if (currentChunk.length + fileName.length + 1 <= maxContentLength) {
         count++;
         currentChunk += `${count}. ${fileName}\n`;
@@ -2813,7 +2861,7 @@ export async function handleListReplaysCommand(
 
   if (count === 0) {
     await interaction.editReply({
-      content: `No custom .StormReplay games found in:\n\`${folderPath}\``,
+      content: `No custom .StormReplay games found on or after **${targetDateStr}** in:\n\`${folderPath}\``,
     });
   }
 }
