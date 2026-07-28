@@ -2844,11 +2844,19 @@ export async function handleListReplaysCommand(
     ) {
       if (currentChunk.length + fileName.length + 1 <= maxContentLength) {
         count++;
+        const durationMin = Math.floor(replayData.length / 60);
+        const durationSec = Math.floor(replayData.length % 60);
+        const replayDate = formatDateToMMDDYYYY(new Date(replayData.date));
+        const blueWin = replayData.winner === 0 ? ' 🎉' : '';
+        const redWin = replayData.winner === 1 ? ' 🎉' : '';
+
         currentChunk += `${count}. ${fileName}\n`;
         currentChunk += `  - Replay ID: ${replayData.replayId}\n`;
-        currentChunk += `  - Map: ${replayData.map}, Mode: ${replayData.mode}, Date: ${formatDateToMMDDYYYY(new Date(replayData.date))}\n  - Winner: ${replayData.winner}, Duration: ${Math.floor(replayData.length / 60)}m ${Math.floor(replayData.length % 60
-        )}s, takedowns: ${replayData.team0Takedowns} - ${replayData.team1Takedowns}\n  - Players:\n${replayData.team0Players
-          } vs\n${replayData.team1Players}\n`;
+        currentChunk += `  - Map: ${replayData.map}, Mode: ${replayData.mode}, Date: ${replayDate}\n`;
+        currentChunk += `  - Winner: ${replayData.winner}, Duration: ${durationMin}m ${durationSec}s, takedowns: ${replayData.team0Takedowns} - ${replayData.team1Takedowns}\n`;
+        currentChunk += `  - Players:\n`;
+        currentChunk += `    Blue Team: ${replayData.team0Players}${blueWin}\n`;
+        currentChunk += `    Red Team: ${replayData.team1Players}${redWin}\n`;
 
         await interaction.editReply({
           content: currentChunk,
