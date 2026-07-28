@@ -2849,6 +2849,14 @@ export async function handleListReplaysCommand(
     ) {
       count++;
       const replayId = saveReplayToDb(replayData);
+      // copy the replay from /mnt/HotsBandayd... to /mnt/NorCustoms/
+      const sourcePath = path.join('/mnt/HotsBandayd', fileName);
+      const destPath = path.join('/mnt/NorCustoms', fileName);
+      try {
+        fs.copyFileSync(sourcePath, destPath);
+      } catch (_error) {
+        console.error('Error copying replay:', fileName);
+      }
       const durationMin = Math.floor(replayData.length / 60);
       const durationSec = Math.floor(replayData.length % 60);
       const replayDate = formatDateToMMDDYYYY(new Date(replayData.date));
