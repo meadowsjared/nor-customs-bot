@@ -2822,14 +2822,19 @@ export async function handleListReplaysCommand(
   const maxContentLength = 1700; // Buffer for 2000 character limit
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-  const matchingEntries: string[] = [];
-
-  // filter the files to only include the replays by date using fs.statSync
-  files = files.filter((file) => {
-    const fileStat = fs.statSync(file);
-    return fileStat.mtime.getTime() >= cutoffDate.getTime();
+  // Filter files by date using file mtime cutoff for fast pre-filtering
+  files = files.filter(file => {
+    try {
+      const fileStat = fs.statSync(file);
+      return fileStat.mtime.getTime() >= cutoffDate.getTime();
+    } catch {
+      return true;
+    }
   });
 
+  let count = 0;
+  let currentChunk = `Found the following custom .StormReplay files on or after **${targetDateStr}** in:\n\`${folderPath}\`\n\n`;
+  let activeMessage: Message<boolean> | null = null;
 
   for (const file of files) {
     const fileName = path.basename(file);
@@ -2838,10 +2843,10 @@ export async function handleListReplaysCommand(
     // Only include Custom games (mode === -1) played on or after the cutoff date
     if (
       replayData &&
-      (replayData.mode === -1) &&
+      replayData.mode === -1 &&
       isReplayOnOrAfterDate(file, replayData.date, cutoffDate)
     ) {
-      const count = matchingEntries.length + 1;
+      count++;
       const durationMin = Math.floor(replayData.length / 60);
       const durationSec = Math.floor(replayData.length % 60);
       const replayDate = formatDateToMMDDYYYY(new Date(replayData.date));
@@ -2854,43 +2859,29 @@ export async function handleListReplaysCommand(
       entryStr += `    Blue Team: ${replayData.team0Players}${blueWin}\n`;
       entryStr += `    Red Team: ${replayData.team1Players}${redWin}\n`;
 
-      matchingEntries.push(entryStr);
+      if (currentChunk.length + entryStr.length > maxContentLength) {
+        // Exceeded current message limit: start a new followUp message with fetchReply: true
+        currentChunk = entryStr;
+        activeMessage = (await interaction.followUp({
+          flags: MessageFlags.Ephemeral,
+          content: currentChunk,
+          fetchReply: true,
+        })) as Message<boolean>;
+      } else {
+        currentChunk += entryStr;
+        if (!activeMessage) {
+          await interaction.editReply({ content: currentChunk });
+        } else {
+          await activeMessage.edit({ content: currentChunk });
+        }
+      }
     }
   }
 
-  if (matchingEntries.length === 0) {
+  if (count === 0) {
     await interaction.editReply({
       content: `No custom .StormReplay games found on or after **${targetDateStr}** in:\n\`${folderPath}\``,
     });
-    return;
-  }
-
-  // Chunk matching entries into messages within maxContentLength
-  const chunks: string[] = [];
-  let currentChunk = `Found **${matchingEntries.length}** custom .StormReplay files on or after **${targetDateStr}** in:\n\`${folderPath}\`\n\n`;
-
-  for (const entry of matchingEntries) {
-    if (currentChunk.length + entry.length > maxContentLength) {
-      chunks.push(currentChunk);
-      currentChunk = entry;
-    } else {
-      currentChunk += entry;
-    }
-  }
-  if (currentChunk.length > 0) {
-    chunks.push(currentChunk);
-  }
-
-  // Send chunks to Discord
-  for (let i = 0; i < chunks.length; i++) {
-    if (i === 0) {
-      await interaction.editReply({ content: chunks[i] });
-    } else {
-      await interaction.followUp({
-        flags: MessageFlags.Ephemeral,
-        content: chunks[i],
-      });
-    }
   }
 }
 
