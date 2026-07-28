@@ -70,7 +70,7 @@ import {
 } from '../store/channels';
 import { DiscordUserNames, Player } from '../types/player';
 import { client } from '../index';
-import { getReplayFolderPath, parseReplay, setReplayFolderPath } from '../store/hotsReplays';
+import { parseReplay } from '../store/hotsReplays';
 import path from 'path';
 import { validateBattleTag } from '../utils/heroesOfTheStorm';
 dotenv.config();
@@ -90,15 +90,13 @@ function generateLobbyStatusMessage(pPreviousPlayersList?: string): string {
     (p, index) =>
       `${index + 1}: @${p.usernames.discordDisplayName}: (${(
         p.usernames.accounts?.find(a => a.isPrimary)?.hotsBattleTag ?? 'hots account missing! :scream:'
-      ).replace(/#.*$/, '')}) \`${getPlayerRolesFormatted(p.role)}\`${
-        p.usernames.accounts?.length === 1 &&
+      ).replace(/#.*$/, '')}) \`${getPlayerRolesFormatted(p.role)}\`${p.usernames.accounts?.length === 1 &&
         p.usernames.accounts[0].hpSlGames === null &&
         p.usernames.accounts[0].hpQmGames === null &&
         p.usernames.accounts[0].hpArGames === null
           ? ' loading MMR...'
           : ''
-      }${
-        p.usernames.accounts?.length === 1 &&
+      }${p.usernames.accounts?.length === 1 &&
         p.usernames.accounts[0].hpSlGames === -1 &&
         p.usernames.accounts[0].hpQmGames === -1 &&
         p.usernames.accounts[0].hpArGames === -1
@@ -621,10 +619,8 @@ export async function handleSwapTeamsCommand(
     !playerB
   ) {
     await safeReply(interaction, {
-      content: `Invalid player numbers (playerANumber: ${playerANumber + 1}, playerBNumber: ${
-        playerBNumber + 1
-      }, playerA: ${playerA?.discordId}, playerB: ${playerB?.discordId}) There are only ${
-        activePlayers.length
+      content: `Invalid player numbers (playerANumber: ${playerANumber + 1}, playerBNumber: ${playerBNumber + 1
+        }, playerA: ${playerA?.discordId}, playerB: ${playerB?.discordId}) There are only ${activePlayers.length
       } players.`,
       flags: MessageFlags.Ephemeral,
     });
@@ -815,8 +811,7 @@ export async function handleMoveToTeamsCommand(
     await interaction.editReply({
       content: `Moved ${numberMoved} players to their respective team channels: ${result
         .map(c => `<#${c.channelId}>`)
-        .join(', ')}\nWARNING: **${
-        teams.team1.length + teams.team2.length - numberMoved
+        .join(', ')}\nWARNING: **${teams.team1.length + teams.team2.length - numberMoved
       } players could not be moved.**`,
     });
   } else {
@@ -944,8 +939,7 @@ export async function handleGetChannelsCommand(
   const team1Channel = channels.find(c => c.channelType === 'team1');
   const team2Channel = channels.find(c => c.channelType === 'team2');
   await safeReply(interaction, {
-    content: `Current channels:\nLobby: ${lobbyChannel ? `<#${lobbyChannel.channelId}>` : 'Not set'}\nTeam 1: ${
-      team1Channel ? `<#${team1Channel.channelId}>` : 'Not set'
+    content: `Current channels:\nLobby: ${lobbyChannel ? `<#${lobbyChannel.channelId}>` : 'Not set'}\nTeam 1: ${team1Channel ? `<#${team1Channel.channelId}>` : 'Not set'
     }\nTeam 2: ${team2Channel ? `<#${team2Channel.channelId}>` : 'Not set'}`,
     flags: MessageFlags.Ephemeral,
   });
@@ -1127,8 +1121,7 @@ export async function handlePlayersAllCommand(
     const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(...buttons);
     const sortAlphbetically = new ButtonBuilder()
       .setCustomId(
-        `${CommandIds.PLAYERS_ALL_PAGE_SORT}_alphabetical_${
-          sort === 'alphabetical' ? !ascending : ascending
+        `${CommandIds.PLAYERS_ALL_PAGE_SORT}_alphabetical_${sort === 'alphabetical' ? !ascending : ascending
         }_${pageNumber}`,
       )
       .setEmoji('🔤')
@@ -1381,12 +1374,9 @@ async function handleLookupCommandSub(
     }, 0);
 
     await safeReply(interaction, {
-      content: `${`<@${discordId}>`}\nDiscord ID: \`${discordId}\`\ndiscordName: \`${
-        discordData.discordName
-      }\`\ndiscordGlobalName: \`${discordData.discordGlobalName}\`\nDisplay Name: \`${
-        discordData.discordDisplayName
-      }\`\n${
-        player?.adjustment ? `Adjustment: ${player.adjustment}\n` : ''
+      content: `${`<@${discordId}>`}\nDiscord ID: \`${discordId}\`\ndiscordName: \`${discordData.discordName
+        }\`\ndiscordGlobalName: \`${discordData.discordGlobalName}\`\nDisplay Name: \`${discordData.discordDisplayName
+        }\`\n${player?.adjustment ? `Adjustment: ${player.adjustment}\n` : ''
       }${message}\nMMR: ${MMR}\nHotS Accounts:\n${accounts}`,
       flags: safePing(MessageFlags.Ephemeral),
     });
@@ -1446,8 +1436,7 @@ export async function handleDeletePlayerCommand(
   await updateLobbyMessage(interaction);
   // reply with the number of players and accounts deleted
   await safeReply(interaction, {
-    content: `Deleted ${playersDeleted} player${
-      playersDeleted === 1 ? '' : 's'
+    content: `Deleted ${playersDeleted} player${playersDeleted === 1 ? '' : 's'
     } and ${hotsAccountsDeleted} HotS account${hotsAccountsDeleted === 1 ? '' : 's'} for Discord ID: <@${discordId}>.`,
     flags: MessageFlags.Ephemeral,
   });
@@ -1796,8 +1785,7 @@ async function handleAddHotsAccountCommandSub(
       .map(account => `* \`${account.hotsBattleTag}\` ${account.isPrimary ? '(Primary)' : ''}`)
       .join('\n');
     await safeReply(interaction, {
-      content: `${
-        interaction.user.id === discordId ? 'Your' : `<@${discordId}>'s`
+      content: `${interaction.user.id === discordId ? 'Your' : `<@${discordId}>'s`
       } associated Heroes of the Storm accounts:\n${accountsList}`,
       flags: MessageFlags.Ephemeral,
     });
@@ -2437,8 +2425,7 @@ export async function handleAdminSetActiveCommand(
     await updateLobbyMessage(interaction, previousPlayersList);
   } else {
     await safeReply(interaction, {
-      content: `${player.usernames.accounts?.find(a => a.isPrimary)?.hotsBattleTag.replace(/#.*$/, '')} is already ${
-        isActive ? CommandIds.ACTIVE : CommandIds.INACTIVE
+      content: `${player.usernames.accounts?.find(a => a.isPrimary)?.hotsBattleTag.replace(/#.*$/, '')} is already ${isActive ? CommandIds.ACTIVE : CommandIds.INACTIVE
       }.`,
       flags: MessageFlags.Ephemeral,
     });
