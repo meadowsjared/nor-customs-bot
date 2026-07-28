@@ -2885,14 +2885,32 @@ export async function handleListReplaysCommand(
     }
   }
 
-  // After loop completes, send any leftover chunk
+  // After loop completes, append summary and send final chunk
   if (count > 0 && currentChunk.length > 0) {
-    if (isFirstMessage) {
-      await interaction.editReply({ content: currentChunk });
+    const summaryStr = `\n✅ Finished listing **${count}** custom .StormReplay file${count === 1 ? '' : 's'}.`;
+
+    if (currentChunk.length + summaryStr.length <= maxContentLength) {
+      currentChunk += summaryStr;
+      if (isFirstMessage) {
+        await interaction.editReply({ content: currentChunk });
+      } else {
+        await interaction.followUp({
+          flags: MessageFlags.Ephemeral,
+          content: currentChunk,
+        });
+      }
     } else {
+      if (isFirstMessage) {
+        await interaction.editReply({ content: currentChunk });
+      } else {
+        await interaction.followUp({
+          flags: MessageFlags.Ephemeral,
+          content: currentChunk,
+        });
+      }
       await interaction.followUp({
         flags: MessageFlags.Ephemeral,
-        content: currentChunk,
+        content: summaryStr,
       });
     }
   } else if (count === 0) {
