@@ -2753,13 +2753,13 @@ function isReplayOnOrAfterDate(file: string, replayDate: unknown, cutoffDate: Da
       if (!isNaN(d.getTime()) && d.getTime() >= cutoffTime) {
         return true;
       }
-    } catch {}
+    } catch { }
   }
 
   try {
     const mtime = fs.statSync(file).mtime;
     if (mtime.getTime() >= cutoffTime) return true;
-  } catch {}
+  } catch { }
 
   // Fallback: check filename YYYY-MM-DD prefix (e.g. 2026-05-28 01.45.06...)
   const fileName = path.basename(file);
@@ -2823,6 +2823,13 @@ export async function handleListReplaysCommand(
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   const matchingEntries: string[] = [];
+
+  // filter the files to only include the replays by date using fs.statSync
+  files = files.filter((file) => {
+    const fileStat = fs.statSync(file);
+    return fileStat.mtime.getTime() >= cutoffDate.getTime();
+  });
+
 
   for (const file of files) {
     const fileName = path.basename(file);
