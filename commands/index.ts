@@ -2783,27 +2783,44 @@ export async function handleListReplaysCommand(
   // split the content into multiple messages if it's too long
   const maxMessages = 10;
 
-  let currentChunk = `Found the following .StormReplay files in the folder:\n\`${folderPath}\`\n\n`;
-  const filesToShow = files.slice(0, maxMessages);
+  let currentChunk = `Found the following custom .StormReplay files in the folder:\n\`${folderPath}\`\n\n`;
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-  for (const [index, file] of filesToShow.entries()) {
+
+  let count = 0;
+  for (const file of files) {
+    if (count >= maxMessages) break;
     const fileName = path.basename(file);
-    if (currentChunk.length + fileName.length + 1 <= maxContentLength) {
-      const replayData = await parseReplay(file);
-      if (replayData) {
-        currentChunk += `${index + 1}. ${fileName}\n`;
+    const replayData = await parseReplay(file);
+
+    // Only include Custom games (mode === -1 or type === -1 or String === 'Custom')
+    if (
+      replayData &&
+      (replayData.mode === -1 ||
+        replayData.type === -1 ||
+        String(replayData.type) === 'Custom' ||
+        String(replayData.mode) === 'Custom')
+    ) {
+      if (currentChunk.length + fileName.length + 1 <= maxContentLength) {
+        count++;
+        currentChunk += `${count}. ${fileName}\n`;
         currentChunk += `  - Replay ID: ${replayData.replayId}\n`;
         currentChunk += `  - Map: ${replayData.map}, Type: ${replayData.type}, Date: ${new Date(
           replayData.date,
         ).getUTCDate()}\n  - Winner: ${replayData.winner}, Duration: ${Math.floor(replayData.length / 60)}m ${replayData.length % 60
           }s, takedowns: ${replayData.team0Takedowns} - ${replayData.team1Takedowns}\n  - Players:\n${replayData.team0Players
           } vs\n${replayData.team1Players}\n`;
+
+        await interaction.editReply({
+          content: currentChunk,
+        });
       }
-      await interaction.editReply({
-        content: currentChunk,
-      });
-      // return; // stop after one, for testing
     }
+  }
+
+  if (count === 0) {
+    await interaction.editReply({
+      content: `No custom .StormReplay games found in:\n\`${folderPath}\``,
+    });
   }
 }
 
