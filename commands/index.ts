@@ -2854,9 +2854,9 @@ export async function handleListReplaysCommand(
       const blueWin = replayData.winner === 0 ? ' 🎉' : '';
       const redWin = replayData.winner === 1 ? ' 🎉' : '';
 
-      let entryStr = `${count}. ${fileName}\n`;
+      let entryStr = `${count.toLocaleString('en-US')}. ${fileName}\n`;
       entryStr += `  - Replay ID: ${replayData.replayId} Map: ${replayData.map}, Date: ${replayDate}, Duration: ${durationMin}m ${durationSec}s\n`;
-      entryStr += `  - Winner: ${replayData.winner} Takedowns: ${replayData.team0Takedowns} - ${replayData.team1Takedowns}, Players:\n`;
+      entryStr += `  - Winner: ${replayData.winner} Takedowns: ${replayData.team0Takedowns.toLocaleString('en-US')} - ${replayData.team1Takedowns.toLocaleString('en-US')}, Players:\n`;
       entryStr += `    Blue Team: ${replayData.team0Players}${blueWin}\n`;
       entryStr += `    Red Team: ${replayData.team1Players}${redWin}\n`;
 
@@ -2888,7 +2888,7 @@ export async function handleListReplaysCommand(
 
   // After loop completes, append summary and send final chunk
   if (count > 0 && currentChunk.length > 0) {
-    const summaryStr = `\nFinished listing **${count}** custom .StormReplay file${count === 1 ? '' : 's'} from ${numTotalFiles}.`;
+    const summaryStr = `\nFinished listing **${count.toLocaleString('en-US')}** customs file${count === 1 ? '' : 's'} from ${numTotalFiles.toLocaleString('en-US')}.`;
 
     if (currentChunk.length + summaryStr.length <= maxContentLength) {
       currentChunk += summaryStr;
