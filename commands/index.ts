@@ -2834,7 +2834,7 @@ export async function handleListReplaysCommand(
 
   let count = 0;
   let currentChunk = `Found the following custom .StormReplay files on or after **${targetDateStr}** in:\n\`${folderPath}\`\n\n`;
-  let activeMessage: Message<boolean> | null = null;
+  let isFirstMessage = true;
 
   for (const file of files) {
     const fileName = path.basename(file);
@@ -2859,26 +2859,43 @@ export async function handleListReplaysCommand(
       entryStr += `    Blue Team: ${replayData.team0Players}${blueWin}\n`;
       entryStr += `    Red Team: ${replayData.team1Players}${redWin}\n`;
 
-      if (currentChunk.length + entryStr.length > maxContentLength) {
-        // Exceeded current message limit: start a new followUp message with fetchReply: true
-        currentChunk = entryStr;
-        activeMessage = (await interaction.followUp({
-          flags: MessageFlags.Ephemeral,
-          content: currentChunk,
-          fetchReply: true,
-        })) as Message<boolean>;
-      } else {
-        currentChunk += entryStr;
-        if (!activeMessage) {
+      if (isFirstMessage) {
+        if (currentChunk.length + entryStr.length > maxContentLength) {
+          // First message is full! Flush first message via editReply
           await interaction.editReply({ content: currentChunk });
+          isFirstMessage = false;
+          currentChunk = entryStr;
         } else {
-          await activeMessage.edit({ content: currentChunk });
+          currentChunk += entryStr;
+          // Live update the first message while filling it up
+          await interaction.editReply({ content: currentChunk });
+        }
+      } else {
+        if (currentChunk.length + entryStr.length > maxContentLength) {
+          // Subsequent message is full! Send followUp message
+          await interaction.followUp({
+            flags: MessageFlags.Ephemeral,
+            content: currentChunk,
+          });
+          currentChunk = entryStr;
+        } else {
+          currentChunk += entryStr;
         }
       }
     }
   }
 
-  if (count === 0) {
+  // After loop completes, send any leftover chunk
+  if (count > 0 && currentChunk.length > 0) {
+    if (isFirstMessage) {
+      await interaction.editReply({ content: currentChunk });
+    } else {
+      await interaction.followUp({
+        flags: MessageFlags.Ephemeral,
+        content: currentChunk,
+      });
+    }
+  } else if (count === 0) {
     await interaction.editReply({
       content: `No custom .StormReplay games found on or after **${targetDateStr}** in:\n\`${folderPath}\``,
     });
