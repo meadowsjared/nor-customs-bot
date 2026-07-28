@@ -458,22 +458,6 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     ],
   },
   {
-    name: CommandIds.SET_REPLAY_FOLDER,
-    description: 'Set your HotS replay folder path',
-    options: [
-      {
-        name: CommandIds.REPLAY_FOLDER_PATH,
-        description: 'Path to your Heroes of the Storm replay folder',
-        type: ApplicationCommandOptionType.String,
-        required: true,
-      },
-    ],
-  },
-  {
-    name: CommandIds.GET_REPLAY_FOLDER,
-    description: 'Get your HotS replay folder path',
-  },
-  {
     name: CommandIds.LIST_REPLAYS,
     description: 'List recent HotS replays',
   },
