@@ -2781,7 +2781,7 @@ export async function handleListReplaysCommand(
 
   const maxContentLength = 1800; // Leave some buffer for the header text
   // split the content into multiple messages if it's too long
-  const maxMessages = 10;
+  const maxMessages = 5;
 
   let currentChunk = `Found the following custom .StormReplay files in the folder:\n\`${folderPath}\`\n\n`;
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
@@ -2804,7 +2804,7 @@ export async function handleListReplaysCommand(
         count++;
         currentChunk += `${count}. ${fileName}\n`;
         currentChunk += `  - Replay ID: ${replayData.replayId}\n`;
-        currentChunk += `  - Map: ${replayData.map}, Type: ${replayData.type}, Date: ${new Date(
+        currentChunk += `  - Map: ${replayData.map}, Mode: ${replayData.mode}, Type: ${replayData.type}, Date: ${new Date(
           replayData.date,
         ).getUTCDate()}\n  - Winner: ${replayData.winner}, Duration: ${Math.floor(replayData.length / 60)}m ${replayData.length % 60
           }s, takedowns: ${replayData.team0Takedowns} - ${replayData.team1Takedowns}\n  - Players:\n${replayData.team0Players
