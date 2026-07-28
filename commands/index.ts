@@ -2781,7 +2781,7 @@ export async function handleListReplaysCommand(
 
   const maxContentLength = 1800; // Leave some buffer for the header text
   // split the content into multiple messages if it's too long
-  const maxMessages = 3;
+  const maxMessages = 10;
 
   let currentChunk = `Found the following .StormReplay files in the folder:\n\`${folderPath}\`\n\n`;
   const filesToShow = files.slice(0, maxMessages);
@@ -2789,9 +2789,9 @@ export async function handleListReplaysCommand(
   for (const [index, file] of filesToShow.entries()) {
     const fileName = path.basename(file);
     if (currentChunk.length + fileName.length + 1 <= maxContentLength) {
-      currentChunk += `${index + 1}. ${fileName}\n`;
       const replayData = await parseReplay(file);
       if (replayData) {
+        currentChunk += `${index + 1}. ${fileName}\n`;
         currentChunk += `  - Replay ID: ${replayData.replayId}\n`;
         currentChunk += `  - Map: ${replayData.map}, Type: ${replayData.type}, Date: ${new Date(
           replayData.date,
