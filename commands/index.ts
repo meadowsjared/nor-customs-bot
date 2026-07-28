@@ -2698,44 +2698,23 @@ async function createNewAdminRoleButton(
   }
 }
 
-function collectReplayFiles(dir: string): string[] {
+function findStormReplays(dir: string): string[] {
   let files: string[] = [];
   try {
+    if (!fs.existsSync(dir)) return [];
     const entries = fs.readdirSync(dir, { withFileTypes: true });
     for (const entry of entries) {
       const fullPath = path.join(dir, entry.name);
       if (entry.isDirectory()) {
-        files = files.concat(collectReplayFiles(fullPath));
+        files = files.concat(findStormReplays(fullPath));
       } else if (entry.isFile() && entry.name.endsWith('.StormReplay')) {
         files.push(fullPath);
       }
     }
   } catch (error) {
-    console.error(`Error reading directory ${dir}:`, error);
+    console.error(`Error scanning ${dir} for replays:`, error);
   }
   return files;
-}
-
-function findStormReplays(baseDir: string): string[] {
-  let results: string[] = [];
-  try {
-    if (!fs.existsSync(baseDir)) return [];
-    const entries = fs.readdirSync(baseDir, { withFileTypes: true });
-
-    for (const entry of entries) {
-      const fullPath = path.join(baseDir, entry.name);
-      if (entry.isDirectory()) {
-        if (entry.name.toLowerCase() === 'replays') {
-          results = results.concat(collectReplayFiles(fullPath));
-        } else {
-          results = results.concat(findStormReplays(fullPath));
-        }
-      }
-    }
-  } catch (error) {
-    console.error(`Error scanning ${baseDir} for replays:`, error);
-  }
-  return results;
 }
 
 function formatDateToMMDDYYYY(d: Date): string {
@@ -2753,7 +2732,12 @@ function parseCutoffDate(inputStr?: string | null): Date {
   if (inputStr.trim().toLowerCase() === 'today') {
     return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
   }
-  const parsed = new Date(inputStr.trim());
+  let str = inputStr.trim();
+  // Handle M/D or MM/DD without a year (e.g., "5/28" -> "5/28/2026")
+  if (/^\d{1,2}[\/\-]\d{1,2}$/.test(str)) {
+    str = `${str}/${now.getFullYear()}`;
+  }
+  const parsed = new Date(str);
   if (!isNaN(parsed.getTime())) {
     return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate(), 0, 0, 0, 0);
   }
@@ -2761,19 +2745,31 @@ function parseCutoffDate(inputStr?: string | null): Date {
 }
 
 function isReplayOnOrAfterDate(file: string, replayDate: unknown, cutoffDate: Date): boolean {
+  const cutoffTime = cutoffDate.getTime();
+
   if (replayDate) {
     try {
       const d = new Date(replayDate as any);
-      if (!isNaN(d.getTime())) {
-        return d.getTime() >= cutoffDate.getTime();
+      if (!isNaN(d.getTime()) && d.getTime() >= cutoffTime) {
+        return true;
       }
-    } catch { }
+    } catch {}
   }
 
   try {
     const mtime = fs.statSync(file).mtime;
-    return mtime.getTime() >= cutoffDate.getTime();
-  } catch { }
+    if (mtime.getTime() >= cutoffTime) return true;
+  } catch {}
+
+  // Fallback: check filename YYYY-MM-DD prefix (e.g. 2026-05-28 01.45.06...)
+  const fileName = path.basename(file);
+  const match = fileName.match(/^(\d{4})[._-](\d{2})[._-](\d{2})/);
+  if (match) {
+    const fileDate = new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]), 23, 59, 59);
+    if (!isNaN(fileDate.getTime()) && fileDate.getTime() >= cutoffTime) {
+      return true;
+    }
+  }
 
   return false;
 }
