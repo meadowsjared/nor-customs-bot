@@ -94,14 +94,14 @@ function generateLobbyStatusMessage(pPreviousPlayersList?: string): string {
         p.usernames.accounts[0].hpSlGames === null &&
         p.usernames.accounts[0].hpQmGames === null &&
         p.usernames.accounts[0].hpArGames === null
-          ? ' loading MMR...'
-          : ''
+        ? ' loading MMR...'
+        : ''
       }${p.usernames.accounts?.length === 1 &&
         p.usernames.accounts[0].hpSlGames === -1 &&
         p.usernames.accounts[0].hpQmGames === -1 &&
         p.usernames.accounts[0].hpArGames === -1
-          ? ' MMR error!... :scream:'
-          : ''
+        ? ' MMR error!... :scream:'
+        : ''
       }`,
   );
 
@@ -621,7 +621,7 @@ export async function handleSwapTeamsCommand(
     await safeReply(interaction, {
       content: `Invalid player numbers (playerANumber: ${playerANumber + 1}, playerBNumber: ${playerBNumber + 1
         }, playerA: ${playerA?.discordId}, playerB: ${playerB?.discordId}) There are only ${activePlayers.length
-      } players.`,
+        } players.`,
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -812,7 +812,7 @@ export async function handleMoveToTeamsCommand(
       content: `Moved ${numberMoved} players to their respective team channels: ${result
         .map(c => `<#${c.channelId}>`)
         .join(', ')}\nWARNING: **${teams.team1.length + teams.team2.length - numberMoved
-      } players could not be moved.**`,
+        } players could not be moved.**`,
     });
   } else {
     await interaction.editReply({
@@ -940,7 +940,7 @@ export async function handleGetChannelsCommand(
   const team2Channel = channels.find(c => c.channelType === 'team2');
   await safeReply(interaction, {
     content: `Current channels:\nLobby: ${lobbyChannel ? `<#${lobbyChannel.channelId}>` : 'Not set'}\nTeam 1: ${team1Channel ? `<#${team1Channel.channelId}>` : 'Not set'
-    }\nTeam 2: ${team2Channel ? `<#${team2Channel.channelId}>` : 'Not set'}`,
+      }\nTeam 2: ${team2Channel ? `<#${team2Channel.channelId}>` : 'Not set'}`,
     flags: MessageFlags.Ephemeral,
   });
 }
@@ -1029,9 +1029,9 @@ export async function handlePlayersCommand(
         return onlyRaw
           ? `<@${discordId}>`
           : `@${user?.displayName}` +
-              `: (${usernames.accounts
-                ?.find(a => a.isPrimary)
-                ?.hotsBattleTag.replace(/#.*$/, '')}) \`${getPlayerRolesFormatted(role)}\``;
+          `: (${usernames.accounts
+            ?.find(a => a.isPrimary)
+            ?.hotsBattleTag.replace(/#.*$/, '')}) \`${getPlayerRolesFormatted(role)}\``;
       })
       .join('\n') || 'No players in the lobby';
   const rawPlayerList = Object.values(players)
@@ -1208,8 +1208,8 @@ export async function handleRejoinCommand(
       ` the lobby as: \`${player.usernames.accounts
         ?.find(a => a.isPrimary)
         ?.hotsBattleTag.replace(/#.*$/, '')}\`, \`${getPlayerRolesFormatted(
-        player.role,
-      )}\`\nUse /leave to leave the lobby, or use the buttons below.`;
+          player.role,
+        )}\`\nUse /leave to leave the lobby, or use the buttons below.`;
     await safeReply(interaction, {
       content,
       flags: MessageFlags.Ephemeral,
@@ -1349,8 +1349,8 @@ async function handleLookupCommandSub(
     const message = player
       ? `${hotsBattleTag || 'Player'} found in the lobby with role: \`${getPlayerRolesFormatted(player.role)}\``
       : `${hotsBattleTag || 'Player'} not found in the lobby, adding them with default role \`${getPlayerRolesFormatted(
-          CommandIds.ROLE_FLEX,
-        )}\`.`;
+        CommandIds.ROLE_FLEX,
+      )}\`.`;
     // show the player's hots_accounts.hotsBattleTag
     const hotsAccounts =
       player?.usernames.accounts?.sort((a, b) => {
@@ -1377,7 +1377,7 @@ async function handleLookupCommandSub(
       content: `${`<@${discordId}>`}\nDiscord ID: \`${discordId}\`\ndiscordName: \`${discordData.discordName
         }\`\ndiscordGlobalName: \`${discordData.discordGlobalName}\`\nDisplay Name: \`${discordData.discordDisplayName
         }\`\n${player?.adjustment ? `Adjustment: ${player.adjustment}\n` : ''
-      }${message}\nMMR: ${MMR}\nHotS Accounts:\n${accounts}`,
+        }${message}\nMMR: ${MMR}\nHotS Accounts:\n${accounts}`,
       flags: safePing(MessageFlags.Ephemeral),
     });
   }
@@ -1437,7 +1437,7 @@ export async function handleDeletePlayerCommand(
   // reply with the number of players and accounts deleted
   await safeReply(interaction, {
     content: `Deleted ${playersDeleted} player${playersDeleted === 1 ? '' : 's'
-    } and ${hotsAccountsDeleted} HotS account${hotsAccountsDeleted === 1 ? '' : 's'} for Discord ID: <@${discordId}>.`,
+      } and ${hotsAccountsDeleted} HotS account${hotsAccountsDeleted === 1 ? '' : 's'} for Discord ID: <@${discordId}>.`,
     flags: MessageFlags.Ephemeral,
   });
 }
@@ -1786,7 +1786,7 @@ async function handleAddHotsAccountCommandSub(
       .join('\n');
     await safeReply(interaction, {
       content: `${interaction.user.id === discordId ? 'Your' : `<@${discordId}>'s`
-      } associated Heroes of the Storm accounts:\n${accountsList}`,
+        } associated Heroes of the Storm accounts:\n${accountsList}`,
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -2426,7 +2426,7 @@ export async function handleAdminSetActiveCommand(
   } else {
     await safeReply(interaction, {
       content: `${player.usernames.accounts?.find(a => a.isPrimary)?.hotsBattleTag.replace(/#.*$/, '')} is already ${isActive ? CommandIds.ACTIVE : CommandIds.INACTIVE
-      }.`,
+        }.`,
       flags: MessageFlags.Ephemeral,
     });
   }
@@ -2698,38 +2698,44 @@ async function createNewAdminRoleButton(
   }
 }
 
-export async function handleSetReplayFolderCommand(
-  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
-) {
-  if (!(await userIsAdmin(interaction))) {
-    return;
+function collectReplayFiles(dir: string): string[] {
+  let files: string[] = [];
+  try {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        files = files.concat(collectReplayFiles(fullPath));
+      } else if (entry.isFile() && entry.name.endsWith('.StormReplay')) {
+        files.push(fullPath);
+      }
+    }
+  } catch (error) {
+    console.error(`Error reading directory ${dir}:`, error);
   }
-  if (!interaction.isChatInputCommand()) {
-    await safeReply(interaction, {
-      content: 'This command can only be used as a slash command.',
-      flags: MessageFlags.Ephemeral,
-    });
-    return;
-  }
-  const folderPath = interaction.options.getString(CommandIds.REPLAY_FOLDER_PATH, true);
-  setReplayFolderPath(folderPath);
-  await safeReply(interaction, {
-    content: `Replay folder path set to:\n\`${folderPath}\``,
-    flags: MessageFlags.Ephemeral,
-  });
+  return files;
 }
 
-export async function handleGetReplayFolderCommand(
-  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
-) {
-  if (!(await userIsAdmin(interaction))) {
-    return;
+function findStormReplays(baseDir: string): string[] {
+  let results: string[] = [];
+  try {
+    if (!fs.existsSync(baseDir)) return [];
+    const entries = fs.readdirSync(baseDir, { withFileTypes: true });
+
+    for (const entry of entries) {
+      const fullPath = path.join(baseDir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name.toLowerCase() === 'replays') {
+          results = results.concat(collectReplayFiles(fullPath));
+        } else {
+          results = results.concat(findStormReplays(fullPath));
+        }
+      }
+    }
+  } catch (error) {
+    console.error(`Error scanning ${baseDir} for replays:`, error);
   }
-  const folderPath = getReplayFolderPath();
-  await safeReply(interaction, {
-    content: `Current replay folder path is:\n\`${folderPath}\``,
-    flags: MessageFlags.Ephemeral,
-  });
+  return results;
 }
 
 export async function handleListReplaysCommand(
@@ -2745,18 +2751,10 @@ export async function handleListReplaysCommand(
     });
     return;
   }
-  const folderPath = getReplayFolderPath();
-  if (!folderPath) {
-    await safeReply(interaction, {
-      content: `Replay folder path is not set. Please set it using the \`/${CommandIds.SET_REPLAY_FOLDER}\` command.`,
-      flags: MessageFlags.Ephemeral,
-    });
-    return;
-  }
-  // list all the files in the replay folder
+  const folderPath = '/mnt/HotsBandayd';
   let files: string[] = [];
   try {
-    files = fs.readdirSync(folderPath);
+    files = findStormReplays(folderPath);
   } catch (error) {
     console.error('Error reading replay folder:', error);
     await safeReply(interaction, {
@@ -2765,26 +2763,19 @@ export async function handleListReplaysCommand(
     });
     return;
   }
+
   if (files.length === 0) {
     await safeReply(interaction, {
-      content: `No replay files found in the folder:\n\`${folderPath}\``,
+      content: `No replay files found in any Replays folder under:\n\`${folderPath}\``,
       flags: MessageFlags.Ephemeral,
     });
     return;
   }
-  // filter the files to only include .StormReplay files
-  files = files.filter(file => file.endsWith('.StormReplay'));
-  if (files.length === 0) {
-    await safeReply(interaction, {
-      content: `No .StormReplay files found in the folder:\n\`${folderPath}\``,
-      flags: MessageFlags.Ephemeral,
-    });
-    return;
-  }
-  // sort the files by date
+
+  // sort the files by date (newest first)
   files.sort((a, b) => {
-    const aStat = fs.statSync(path.join(folderPath, a));
-    const bStat = fs.statSync(path.join(folderPath, b));
+    const aStat = fs.statSync(a);
+    const bStat = fs.statSync(b);
     return bStat.mtime.getTime() - aStat.mtime.getTime();
   });
 
@@ -2794,21 +2785,19 @@ export async function handleListReplaysCommand(
 
   let currentChunk = `Found the following .StormReplay files in the folder:\n\`${folderPath}\`\n\n`;
   const filesToShow = files.slice(0, maxMessages);
-  // process each file
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   for (const [index, file] of filesToShow.entries()) {
-    if (currentChunk.length + file.length + 1 <= maxContentLength) {
-      currentChunk += `${index + 1}. ${file}\n`;
-      const replayData = await parseReplay(path.join(folderPath, file));
+    const fileName = path.basename(file);
+    if (currentChunk.length + fileName.length + 1 <= maxContentLength) {
+      currentChunk += `${index + 1}. ${fileName}\n`;
+      const replayData = await parseReplay(file);
       if (replayData) {
         currentChunk += `  - Replay ID: ${replayData.replayId}\n`;
         currentChunk += `  - Map: ${replayData.map}, Type: ${replayData.type}, Date: ${new Date(
           replayData.date,
-        ).getUTCDate()}\n  - Winner: ${replayData.winner}, Duration: ${Math.floor(replayData.length / 60)}m ${
-          replayData.length % 60
-        }s, takedowns: ${replayData.team0Takedowns} - ${replayData.team1Takedowns}\n  - Players:\n${
-          replayData.team0Players
-        } vs\n${replayData.team1Players}\n`;
+        ).getUTCDate()}\n  - Winner: ${replayData.winner}, Duration: ${Math.floor(replayData.length / 60)}m ${replayData.length % 60
+          }s, takedowns: ${replayData.team0Takedowns} - ${replayData.team1Takedowns}\n  - Players:\n${replayData.team0Players
+          } vs\n${replayData.team1Players}\n`;
       }
       await interaction.editReply({
         content: currentChunk,
