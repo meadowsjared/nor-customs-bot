@@ -2818,6 +2818,7 @@ export async function handleListReplaysCommand(
     const bStat = fs.statSync(b);
     return bStat.mtime.getTime() - aStat.mtime.getTime();
   });
+  const numTotalFiles = files.length;
 
   const maxContentLength = 1700; // Buffer for 2000 character limit
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
@@ -2887,7 +2888,7 @@ export async function handleListReplaysCommand(
 
   // After loop completes, append summary and send final chunk
   if (count > 0 && currentChunk.length > 0) {
-    const summaryStr = `\n✅ Finished listing **${count}** custom .StormReplay file${count === 1 ? '' : 's'}.`;
+    const summaryStr = `\nFinished listing **${count}** custom .StormReplay file${count === 1 ? '' : 's'} from ${numTotalFiles}.`;
 
     if (currentChunk.length + summaryStr.length <= maxContentLength) {
       currentChunk += summaryStr;
