@@ -2767,13 +2767,13 @@ function isReplayOnOrAfterDate(file: string, replayDate: unknown, cutoffDate: Da
       if (!isNaN(d.getTime())) {
         return d.getTime() >= cutoffDate.getTime();
       }
-    } catch {}
+    } catch { }
   }
 
   try {
     const mtime = fs.statSync(file).mtime;
     return mtime.getTime() >= cutoffDate.getTime();
-  } catch {}
+  } catch { }
 
   return false;
 }
@@ -2839,14 +2839,14 @@ export async function handleListReplaysCommand(
     // Only include Custom games (mode === -1) played on or after the cutoff date
     if (
       replayData &&
-      (replayData.mode === -1 || String(replayData.mode) === 'Custom') &&
+      (replayData.mode === -1) &&
       isReplayOnOrAfterDate(file, replayData.date, cutoffDate)
     ) {
       if (currentChunk.length + fileName.length + 1 <= maxContentLength) {
         count++;
         currentChunk += `${count}. ${fileName}\n`;
         currentChunk += `  - Replay ID: ${replayData.replayId}\n`;
-        currentChunk += `  - Map: ${replayData.map}, Mode: ${replayData.mode}, Type: ${replayData.type}, Date: ${new Date(
+        currentChunk += `  - Map: ${replayData.map}, Mode: ${replayData.mode}, Date: ${new Date(
           replayData.date,
         ).getUTCDate()}\n  - Winner: ${replayData.winner}, Duration: ${Math.floor(replayData.length / 60)}m ${replayData.length % 60
           }s, takedowns: ${replayData.team0Takedowns} - ${replayData.team1Takedowns}\n  - Players:\n${replayData.team0Players
