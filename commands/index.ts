@@ -2850,10 +2850,8 @@ export async function handleListReplaysCommand(
       const redWin = replayData.winner === 1 ? ' 🎉' : '';
 
       let entryStr = `${count}. ${fileName}\n`;
-      entryStr += `  - Replay ID: ${replayData.replayId}\n`;
-      entryStr += `  - Map: ${replayData.map}, Mode: ${replayData.mode}, Date: ${replayDate}\n`;
-      entryStr += `  - Winner: ${replayData.winner}, Duration: ${durationMin}m ${durationSec}s, takedowns: ${replayData.team0Takedowns} - ${replayData.team1Takedowns}\n`;
-      entryStr += `  - Players:\n`;
+      entryStr += `  - Replay ID: ${replayData.replayId} Map: ${replayData.map}, Date: ${replayDate}, Duration: ${durationMin}m ${durationSec}s\n`;
+      entryStr += `  - Winner: ${replayData.winner} Takedowns: ${replayData.team0Takedowns} - ${replayData.team1Takedowns}, Players:\n`;
       entryStr += `    Blue Team: ${replayData.team0Players}${blueWin}\n`;
       entryStr += `    Red Team: ${replayData.team1Players}${redWin}\n`;
 
