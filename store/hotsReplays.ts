@@ -248,8 +248,8 @@ export async function parseReplay(file: string) {
     const Parser = require('hots-parser');
     const replay: HotSReplay = Parser.processReplay(file, { overrideVerifiedBuild: true });
     // const header = Parser.getHeader(file);
-    if (!replay) {
-      console.error(`Invalid replay data for file: ${file}`);
+    if (!replay || !replay.match) {
+      console.error(`Invalid or incomplete replay data for file: ${file}`);
       return;
     }
 
