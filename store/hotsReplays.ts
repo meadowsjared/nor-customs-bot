@@ -239,23 +239,6 @@ try {
   console.error('Error initializing database schema:', error);
 }
 
-export function setReplayFolderPath(path: string) {
-  const stmt = db.prepare(`
-    INSERT INTO settings (key, value)
-    VALUES ('${CommandIds.REPLAY_FOLDER_PATH}', ?)
-    ON CONFLICT(key) DO UPDATE SET value=excluded.value
-  `);
-  stmt.run(path);
-}
-
-export function getReplayFolderPath(): string | undefined {
-  const stmt = db.prepare<string[], { value: string } | undefined>(`
-    SELECT value FROM settings WHERE key = '${CommandIds.REPLAY_FOLDER_PATH}'
-  `);
-  const row = stmt.get();
-  return row ? row.value : undefined;
-}
-
 /**
  * Parses a Heroes of the Storm replay file using hots-parser and extracts relevant information.
  * @param file The path to the replay file
