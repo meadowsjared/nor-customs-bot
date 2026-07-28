@@ -2738,11 +2738,11 @@ function findStormReplays(baseDir: string): string[] {
   return results;
 }
 
-function formatDateToYYYYMMDD(d: Date): string {
+function formatDateToMMDDYYYY(d: Date): string {
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  return `${month}-${day}-${year}`;
 }
 
 function parseCutoffDate(inputStr?: string | null): Date {
@@ -2794,7 +2794,7 @@ export async function handleListReplaysCommand(
   const folderPath = '/mnt/HotsBandayd';
   const rawDateInput = interaction.options.getString(CommandIds.REPLAY_DATE);
   const cutoffDate = parseCutoffDate(rawDateInput);
-  const targetDateStr = formatDateToYYYYMMDD(cutoffDate);
+  const targetDateStr = formatDateToMMDDYYYY(cutoffDate);
 
   let files: string[] = [];
   try {
@@ -2846,10 +2846,8 @@ export async function handleListReplaysCommand(
         count++;
         currentChunk += `${count}. ${fileName}\n`;
         currentChunk += `  - Replay ID: ${replayData.replayId}\n`;
-        currentChunk += `  - Map: ${replayData.map}, Mode: ${replayData.mode}, Date: ${new Date(
-          replayData.date,
-        ).getUTCDate()}\n  - Winner: ${replayData.winner}, Duration: ${Math.floor(replayData.length / 60)}m ${replayData.length % 60
-          }s, takedowns: ${replayData.team0Takedowns} - ${replayData.team1Takedowns}\n  - Players:\n${replayData.team0Players
+        currentChunk += `  - Map: ${replayData.map}, Mode: ${replayData.mode}, Date: ${formatDateToMMDDYYYY(new Date(replayData.date))}\n  - Winner: ${replayData.winner}, Duration: ${Math.floor(replayData.length / 60)}m ${Math.floor(replayData.length % 60
+        )}s, takedowns: ${replayData.team0Takedowns} - ${replayData.team1Takedowns}\n  - Players:\n${replayData.team0Players
           } vs\n${replayData.team1Players}\n`;
 
         await interaction.editReply({
