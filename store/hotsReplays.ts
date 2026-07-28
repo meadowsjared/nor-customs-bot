@@ -213,6 +213,10 @@ const initSchema = db.transaction(() => {
     CREATE INDEX IF NOT EXISTS idx_hots_replays_name_date_type
     ON hots_replays(map, date, type)
   `);
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_hots_replays_unique_match
+    ON hots_replays(map, date, loopLength)
+  `);
 
   const createHotsReplayPlayersTableSQL = generateCreateTableSQL('hots_replay_players', HOTS_REPLAY_PLAYER_COLUMNS);
   db.exec(createHotsReplayPlayersTableSQL);
@@ -288,15 +292,13 @@ export async function parseReplay(file: string) {
       });
 
       return {
-        sql: `INSERT INTO hots_replays (${columnNames.join(', ')}) VALUES (${placeholders})`,
+        sql: `INSERT INTO hots_replays (${columnNames.join(', ')}) VALUES (${placeholders}) ON CONFLICT(map, date, loopLength) DO UPDATE SET map=excluded.map RETURNING id`,
         values,
       };
     }
     const { sql, values } = getInsertMatchSQL(replay);
-    const matchStmt = db.prepare(sql);
-    const result = matchStmt.run(values);
-    const replayId = result.lastInsertRowid;
-    fs.writeFileSync(`./replay_debug_${replayId}.json`, JSON.stringify(replay, null, 2));
+    const row = db.prepare(sql).get(values) as { id: number };
+    const replayId = row.id;
 
     const players = Object.values(replay.players).map(player => player);
     const team0Players = players
