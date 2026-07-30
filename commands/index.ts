@@ -2798,15 +2798,15 @@ function isReplayInFilterRange(file: string, replayDate: unknown, startDate: Dat
   }
 
   if (fileTime === null) {
-  try {
+    try {
       fileTime = fs.statSync(file).mtime.getTime();
-  } catch { }
+    } catch { }
   }
 
   if (fileTime === null) {
-  const fileName = path.basename(file);
-  const match = fileName.match(/^(\d{4})[._-](\d{2})[._-](\d{2})/);
-  if (match) {
+    const fileName = path.basename(file);
+    const match = fileName.match(/^(\d{4})[._-](\d{2})[._-](\d{2})/);
+    if (match) {
       const fileDate = new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]), 12, 0, 0);
       if (!isNaN(fileDate.getTime())) {
         fileTime = fileDate.getTime();
@@ -2936,6 +2936,11 @@ export async function handleImportReplaysCommand(
       entryStr += `  - Winner: ${replayData.winner} Takedowns: ${replayData.team0Takedowns.toLocaleString('en-US')} - ${replayData.team1Takedowns.toLocaleString('en-US')}, Players:\n`;
       entryStr += `    Blue Team: ${replayData.team0Players}${blueWin}\n`;
       entryStr += `    Red Team: ${replayData.team1Players}${redWin}\n`;
+
+      // // write the replayData to a file
+      // const replayDataPath = path.join('/mnt/NorCustoms', `${fileName}.json`);
+      // fs.writeFileSync(replayDataPath, JSON.stringify(replayData, null, 2));
+      // console.log('replayData written to file path:', replayDataPath)
       let webhookExpired = false;
       const sendChunkUpdate = async (contentToSend: string, isFirst: boolean) => {
         if (webhookExpired) return;
