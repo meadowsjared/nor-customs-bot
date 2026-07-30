@@ -2936,25 +2936,43 @@ export async function handleImportReplaysCommand(
       entryStr += `  - Winner: ${replayData.winner} Takedowns: ${replayData.team0Takedowns.toLocaleString('en-US')} - ${replayData.team1Takedowns.toLocaleString('en-US')}, Players:\n`;
       entryStr += `    Blue Team: ${replayData.team0Players}${blueWin}\n`;
       entryStr += `    Red Team: ${replayData.team1Players}${redWin}\n`;
+      let webhookExpired = false;
+      const sendChunkUpdate = async (contentToSend: string, isFirst: boolean) => {
+        if (webhookExpired) return;
+        try {
+          if (isFirst) {
+            await interaction.editReply({ content: contentToSend });
+          } else {
+            await interaction.followUp({
+              flags: MessageFlags.Ephemeral,
+              content: contentToSend,
+            });
+          }
+        } catch (err: any) {
+          if (err?.code === 50027 || err?.status === 401 || String(err?.message).includes('Invalid Webhook Token')) {
+            console.warn(`[import-replays] Discord interaction token expired after 15m (file ${count}). Continuing import in background...`);
+            webhookExpired = true;
+          } else {
+            console.error('Error sending Discord interaction update:', err);
+          }
+        }
+      };
 
       if (isFirstMessage) {
         if (currentChunk.length + entryStr.length > maxContentLength) {
           // First message is full! Flush first message via editReply
-          await interaction.editReply({ content: currentChunk });
+          await sendChunkUpdate(currentChunk, true);
           isFirstMessage = false;
           currentChunk = entryStr;
         } else {
           currentChunk += entryStr;
           // Live update the first message while filling it up
-          await interaction.editReply({ content: currentChunk });
+          await sendChunkUpdate(currentChunk, true);
         }
       } else {
         if (currentChunk.length + entryStr.length > maxContentLength) {
           // Subsequent message is full! Send followUp message
-          await interaction.followUp({
-            flags: MessageFlags.Ephemeral,
-            content: currentChunk,
-          });
+          await sendChunkUpdate(currentChunk, false);
           currentChunk = entryStr;
         } else {
           currentChunk += entryStr;
@@ -2965,36 +2983,42 @@ export async function handleImportReplaysCommand(
 
   // After loop completes, append summary and send final chunk
   if (count > 0 && currentChunk.length > 0) {
-    const summaryStr = `\nFinished listing **${count.toLocaleString('en-US')}** customs file${count === 1 ? '' : 's'} from ${numTotalFiles.toLocaleString('en-US')}.`;
+    const summaryStr = `\nFinished importing **${count.toLocaleString('en-US')}** customs file${count === 1 ? '' : 's'} from ${numTotalFiles.toLocaleString('en-US')}.`;
 
-    if (currentChunk.length + summaryStr.length <= maxContentLength) {
-      currentChunk += summaryStr;
-      if (isFirstMessage) {
-        await interaction.editReply({ content: currentChunk });
+    try {
+      if (currentChunk.length + summaryStr.length <= maxContentLength) {
+        currentChunk += summaryStr;
+        if (isFirstMessage) {
+          await interaction.editReply({ content: currentChunk });
+        } else {
+          await interaction.followUp({
+            flags: MessageFlags.Ephemeral,
+            content: currentChunk,
+          });
+        }
       } else {
+        if (isFirstMessage) {
+          await interaction.editReply({ content: currentChunk });
+        } else {
+          await interaction.followUp({
+            flags: MessageFlags.Ephemeral,
+            content: currentChunk,
+          });
+        }
         await interaction.followUp({
           flags: MessageFlags.Ephemeral,
-          content: currentChunk,
+          content: summaryStr,
         });
       }
-    } else {
-      if (isFirstMessage) {
-        await interaction.editReply({ content: currentChunk });
-      } else {
-        await interaction.followUp({
-          flags: MessageFlags.Ephemeral,
-          content: currentChunk,
-        });
-      }
-      await interaction.followUp({
-        flags: MessageFlags.Ephemeral,
-        content: summaryStr,
-      });
+    } catch (err: any) {
+      console.warn(`[import-replays] Final summary could not be sent to Discord (interaction expired): ${summaryStr}`);
     }
   } else if (count === 0) {
-    await interaction.editReply({
-      content: `No custom .StormReplay games matched the criteria in:\n\`${folderPath}\``,
-    });
+    try {
+      await interaction.editReply({
+        content: `No custom .StormReplay games matched the criteria in:\n\`${folderPath}\``,
+      });
+    } catch { }
   }
 }
 
