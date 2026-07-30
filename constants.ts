@@ -74,7 +74,7 @@ export const enum CommandIds {
   ROLE_HEALER_ACTIVE = 'H_active',
   ROLE_FLEX_ACTIVE = 'F_active',
   RENAME_HOTS_ACCOUNT = 'rename-hots-account',
-  LIST_REPLAYS = 'list-replays',
+  IMPORT_REPLAYS = 'import-replays',
   START_DATE_OR_COUNT = 'start_date_or_count',
   END_DATE = 'end_date',
   CHANNEL_COMMAND = 'channel-command',

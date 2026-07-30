@@ -47,7 +47,7 @@ import {
   handleDraftTeamsCommand,
   handlePublishTeamsCommand,
   handleSwapTeamsCommand,
-  handleListReplaysCommand,
+  handleImportReplaysCommand,
   handleDeletePlayerCommand,
   handleDeleteHotsAccountCommand,
   handleRefreshLobbyMessage,
@@ -266,9 +266,9 @@ client.on('interactionCreate', async interaction => {
       // Handle delete message command
       handleDeleteMessageCommand(interaction);
       break;
-    case CommandIds.LIST_REPLAYS:
-      // Handle list replays command
-      handleListReplaysCommand(interaction);
+    case CommandIds.IMPORT_REPLAYS:
+      // Handle import replays command
+      handleImportReplaysCommand(interaction);
       break;
     case CommandIds.CHANNEL_COMMAND:
       if (!interaction.isChatInputCommand()) {

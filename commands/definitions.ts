@@ -458,8 +458,8 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     ],
   },
   {
-    name: CommandIds.LIST_REPLAYS,
-    description: 'List recent HotS replays',
+    name: CommandIds.IMPORT_REPLAYS,
+    description: 'Import custom HotS replays into the database',
     options: [
       {
         name: CommandIds.START_DATE_OR_COUNT,

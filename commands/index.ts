@@ -2822,7 +2822,7 @@ function isReplayInFilterRange(file: string, replayDate: unknown, startDate: Dat
   return true;
 }
 
-export async function handleListReplaysCommand(
+export async function handleImportReplaysCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ) {
   if (!(await userIsAdmin(interaction))) {
