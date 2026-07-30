@@ -462,8 +462,14 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     description: 'List recent HotS replays',
     options: [
       {
-        name: CommandIds.REPLAY_DATE,
-        description: 'Oldest date to look at (MM-DD), defaults to yesterday',
+        name: CommandIds.START_DATE_OR_COUNT,
+        description: 'Start date (MM-DD) OR max number of replays to import',
+        type: ApplicationCommandOptionType.String,
+        required: false,
+      },
+      {
+        name: CommandIds.END_DATE,
+        description: 'End date (MM-DD)',
         type: ApplicationCommandOptionType.String,
         required: false,
       },

@@ -2724,54 +2724,102 @@ function formatDateToMMDDYYYY(d: Date): string {
   return `${month}-${day}-${year}`;
 }
 
-function parseCutoffDate(inputStr?: string | null): Date {
+interface ReplayFilterParams {
+  startDate: Date | null;
+  endDate: Date | null;
+  maxFilesLimit: number | null;
+}
+
+function parseReplayFilterParams(rawStartInput?: string | null, rawEndInput?: string | null): ReplayFilterParams {
+  let maxFilesLimit: number | null = null;
+  let startDate: Date | null = null;
+  let endDate: Date | null = null;
+
   const now = new Date();
-  if (!inputStr || inputStr.trim().toLowerCase() === 'yesterday') {
-    return new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0, 0);
+
+  if (rawStartInput && rawStartInput.trim() !== '') {
+    const trimmed = rawStartInput.trim();
+    if (/^\d+$/.test(trimmed)) {
+      maxFilesLimit = parseInt(trimmed, 10);
+    } else {
+      startDate = parseSingleDate(trimmed, false);
+    }
+  } else {
+    // Default max files to 1 if no input provided
+    maxFilesLimit = 1;
   }
-  if (inputStr.trim().toLowerCase() === 'today') {
-    return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+
+  if (rawEndInput && rawEndInput.trim() !== '') {
+    endDate = parseSingleDate(rawEndInput.trim(), true);
   }
-  let str = inputStr.trim();
-  // Handle M/D or MM/DD without a year (e.g., "5/28" -> "5/28/2026")
+
+  return { startDate, endDate, maxFilesLimit };
+}
+
+function parseSingleDate(inputStr: string, isEndOfDay: boolean): Date | null {
+  const now = new Date();
+  const lower = inputStr.toLowerCase();
+
+  if (lower === 'yesterday') {
+    return isEndOfDay
+      ? new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59, 999)
+      : new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0, 0);
+  }
+  if (lower === 'today') {
+    return isEndOfDay
+      ? new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)
+      : new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+  }
+
+  let str = inputStr;
   if (/^\d{1,2}[\/\-]\d{1,2}$/.test(str)) {
     str = `${str}/${now.getFullYear()}`;
   }
+
   const parsed = new Date(str);
   if (!isNaN(parsed.getTime())) {
-    return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate(), 0, 0, 0, 0);
+    return isEndOfDay
+      ? new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate(), 23, 59, 59, 999)
+      : new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate(), 0, 0, 0, 0);
   }
-  return new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0, 0);
+  return null;
 }
 
-function isReplayOnOrAfterDate(file: string, replayDate: unknown, cutoffDate: Date): boolean {
-  const cutoffTime = cutoffDate.getTime();
+function isReplayInFilterRange(file: string, replayDate: unknown, startDate: Date | null, endDate: Date | null): boolean {
+  let fileTime: number | null = null;
 
   if (replayDate) {
     try {
       const d = new Date(replayDate as any);
-      if (!isNaN(d.getTime()) && d.getTime() >= cutoffTime) {
-        return true;
+      if (!isNaN(d.getTime())) {
+        fileTime = d.getTime();
       }
     } catch { }
   }
 
+  if (fileTime === null) {
   try {
-    const mtime = fs.statSync(file).mtime;
-    if (mtime.getTime() >= cutoffTime) return true;
+      fileTime = fs.statSync(file).mtime.getTime();
   } catch { }
+  }
 
-  // Fallback: check filename YYYY-MM-DD prefix (e.g. 2026-05-28 01.45.06...)
+  if (fileTime === null) {
   const fileName = path.basename(file);
   const match = fileName.match(/^(\d{4})[._-](\d{2})[._-](\d{2})/);
   if (match) {
-    const fileDate = new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]), 23, 59, 59);
-    if (!isNaN(fileDate.getTime()) && fileDate.getTime() >= cutoffTime) {
-      return true;
+      const fileDate = new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]), 12, 0, 0);
+      if (!isNaN(fileDate.getTime())) {
+        fileTime = fileDate.getTime();
+      }
     }
   }
 
-  return false;
+  if (fileTime === null) return true;
+
+  if (startDate && fileTime < startDate.getTime()) return false;
+  if (endDate && fileTime > endDate.getTime()) return false;
+
+  return true;
 }
 
 export async function handleListReplaysCommand(
@@ -2788,9 +2836,9 @@ export async function handleListReplaysCommand(
     return;
   }
   const folderPath = '/mnt/HotsBandayd';
-  const rawDateInput = interaction.options.getString(CommandIds.REPLAY_DATE);
-  const cutoffDate = parseCutoffDate(rawDateInput);
-  const targetDateStr = formatDateToMMDDYYYY(cutoffDate);
+  const rawStartInput = interaction.options.getString(CommandIds.START_DATE_OR_COUNT);
+  const rawEndInput = interaction.options.getString(CommandIds.END_DATE);
+  const filterParams = parseReplayFilterParams(rawStartInput, rawEndInput);
 
   let files: string[] = [];
   try {
@@ -2823,29 +2871,50 @@ export async function handleListReplaysCommand(
   const maxContentLength = 1700; // Buffer for 2000 character limit
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-  // Filter files by date using file mtime cutoff for fast pre-filtering
+  // Filter files by mtime cutoff for fast pre-filtering
   files = files.filter(file => {
     try {
       const fileStat = fs.statSync(file);
-      return fileStat.mtime.getTime() >= cutoffDate.getTime();
+      const mtime = fileStat.mtime.getTime();
+      if (filterParams.startDate && mtime < filterParams.startDate.getTime() - 86400000) {
+        return false;
+      }
+      if (filterParams.endDate && mtime > filterParams.endDate.getTime() + 86400000) {
+        return false;
+      }
+      return true;
     } catch {
       return true;
     }
   });
 
+  let headerMsg = 'Found the following custom .StormReplay files';
+  if (filterParams.maxFilesLimit !== null) {
+    headerMsg += ` (import limit: **${filterParams.maxFilesLimit}** files)`;
+  } else if (filterParams.startDate && filterParams.endDate) {
+    headerMsg += ` between **${formatDateToMMDDYYYY(filterParams.startDate)}** and **${formatDateToMMDDYYYY(filterParams.endDate)}**`;
+  } else if (filterParams.startDate) {
+    headerMsg += ` on or after **${formatDateToMMDDYYYY(filterParams.startDate)}**`;
+  }
+  headerMsg += ` in:\n\`${folderPath}\`\n\n`;
+
   let count = 0;
-  let currentChunk = `Found the following custom .StormReplay files on or after **${targetDateStr}** in:\n\`${folderPath}\`\n\n`;
+  let currentChunk = headerMsg;
   let isFirstMessage = true;
 
   for (const file of files) {
+    if (filterParams.maxFilesLimit !== null && count >= filterParams.maxFilesLimit) {
+      break;
+    }
+
     const fileName = path.basename(file);
     const replayData = await parseReplay(file);
 
-    // Only include Custom games (mode === -1) played on or after the cutoff date
+    // Only include Custom games (mode === -1) played within the date range
     if (
       replayData &&
       replayData.mode === -1 &&
-      isReplayOnOrAfterDate(file, replayData.date, cutoffDate)
+      isReplayInFilterRange(file, replayData.date, filterParams.startDate, filterParams.endDate)
     ) {
       count++;
       const replayId = saveReplayToDb(replayData);
@@ -2924,7 +2993,7 @@ export async function handleListReplaysCommand(
     }
   } else if (count === 0) {
     await interaction.editReply({
-      content: `No custom .StormReplay games found on or after **${targetDateStr}** in:\n\`${folderPath}\``,
+      content: `No custom .StormReplay games matched the criteria in:\n\`${folderPath}\``,
     });
   }
 }
