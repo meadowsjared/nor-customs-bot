@@ -62,6 +62,7 @@ export const HOTS_REPLAY_GAME_STATS_COLUMNS = [
   },
   { name: 'replay_id', dbType: SQLiteColumnType.INTEGER },
   { name: 'hots_account_id', dbType: SQLiteColumnType.INTEGER },
+  { name: 'discord_id', dbType: SQLiteColumnType.TEXT },
   { name: 'hots_battle_tag', dbType: SQLiteColumnType.TEXT },
   { name: 'ToonHandle', dbType: SQLiteColumnType.TEXT },
   { name: 'name', dbType: SQLiteColumnType.TEXT },
@@ -307,6 +308,10 @@ const initSchema = db.transaction(() => {
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_hots_replay_player_game_stats_account_id
     ON hots_replay_player_game_stats(hots_account_id)
+  `);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_hots_replay_player_game_stats_discord_id
+    ON hots_replay_player_game_stats(discord_id)
   `);
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_hots_replay_player_game_stats_battle_tag
@@ -735,9 +740,10 @@ export function saveReplayToDb(parsedReplay: ParsedReplay): number {
       const battleTag = `${player.name}#${player.tag}`;
       updatedBattleTags.add(battleTag);
 
-      // Lookup hots_accounts.id if it exists
-      const accountRow = db.prepare('SELECT id FROM hots_accounts WHERE hots_battle_tag = ?').get(battleTag) as { id: number } | undefined;
+      // Lookup hots_accounts id and discord_id if it exists
+      const accountRow = db.prepare('SELECT id, discord_id FROM hots_accounts WHERE hots_battle_tag = ?').get(battleTag) as { id: number; discord_id: string } | undefined;
       const hotsAccountId = accountRow?.id ?? null;
+      const discordId = accountRow?.discord_id ?? null;
 
       const playerTalents = player.talents || {};
       const gameStatsData = player.gameStats || {};
@@ -745,6 +751,7 @@ export function saveReplayToDb(parsedReplay: ParsedReplay): number {
       const playerValues = filteredStatsCols.map(col => {
         if (col.name === 'replay_id') return replayId;
         if (col.name === 'hots_account_id') return hotsAccountId;
+        if (col.name === 'discord_id') return discordId;
         if (col.name === 'hots_battle_tag') return battleTag;
         if (col.name === 'sprays') return Array.isArray(player.sprays) ? player.sprays.length : (player.sprays || 0);
         if (col.name === 'sprayTD') return Array.isArray(player.sprays) ? player.sprays.reduce((s: number, elem: any) => s + (elem.kills || 0), 0) : 0;
