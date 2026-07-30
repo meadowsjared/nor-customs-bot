@@ -1,16 +1,13 @@
 import Database from 'better-sqlite3';
-import { CommandIds } from '../constants';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const db = new Database('./store/nor_customs.db');
-import fs from 'fs';
 import { ColumnDefinition, generateCreateTableSQL, InterfaceFromSchema, SQLiteColumnType } from '../utils/sql';
 
-const HOTS_REPLAYS_MATCH_COLUMNS = [
+export const HOTS_REPLAYS_MATCH_COLUMNS = [
   {
     name: 'id',
     dbType: SQLiteColumnType.INTEGER,
-
     primaryKey: true,
     autoIncrement: true,
     skipImport: true,
@@ -21,12 +18,15 @@ const HOTS_REPLAYS_MATCH_COLUMNS = [
   { name: 'mode', dbType: SQLiteColumnType.INTEGER },
   { name: 'map', dbType: SQLiteColumnType.TEXT },
   { name: 'date', dbType: SQLiteColumnType.TEXT },
+  { name: 'rawDate', dbType: SQLiteColumnType.INTEGER },
+  { name: 'build', dbType: SQLiteColumnType.INTEGER },
   { name: 'region', dbType: SQLiteColumnType.INTEGER },
   { name: 'loopGameStart', dbType: SQLiteColumnType.INTEGER },
   { name: 'length', dbType: SQLiteColumnType.REAL }, // in seconds
   { name: 'team0Takedowns', dbType: SQLiteColumnType.INTEGER },
   { name: 'team1Takedowns', dbType: SQLiteColumnType.INTEGER },
   { name: 'winner', dbType: SQLiteColumnType.INTEGER },
+  { name: 'firstPick', dbType: SQLiteColumnType.INTEGER },
   { name: 'firstPickWin', dbType: SQLiteColumnType.INTEGER, isBoolean: true },
   { name: 'firstObjective', dbType: SQLiteColumnType.INTEGER },
   { name: 'firstObjectiveWin', dbType: SQLiteColumnType.INTEGER, isBoolean: true },
@@ -34,14 +34,25 @@ const HOTS_REPLAYS_MATCH_COLUMNS = [
   { name: 'firstKeep', dbType: SQLiteColumnType.INTEGER },
   { name: 'firstFortWin', dbType: SQLiteColumnType.INTEGER, isBoolean: true },
   { name: 'firstKeepWin', dbType: SQLiteColumnType.INTEGER, isBoolean: true },
-  {
-    name: 'players',
-    dbType: SQLiteColumnType.INTEGER,
-    skipImport: true,
-  }, // row number in hots_replay_players table
+  { name: 'team0Ban1', dbType: SQLiteColumnType.TEXT },
+  { name: 'team0Ban2', dbType: SQLiteColumnType.TEXT },
+  { name: 'team0Ban3', dbType: SQLiteColumnType.TEXT },
+  { name: 'team1Ban1', dbType: SQLiteColumnType.TEXT },
+  { name: 'team1Ban2', dbType: SQLiteColumnType.TEXT },
+  { name: 'team1Ban3', dbType: SQLiteColumnType.TEXT },
+  { name: 'team0Pick1', dbType: SQLiteColumnType.TEXT },
+  { name: 'team0Pick2', dbType: SQLiteColumnType.TEXT },
+  { name: 'team0Pick3', dbType: SQLiteColumnType.TEXT },
+  { name: 'team0Pick4', dbType: SQLiteColumnType.TEXT },
+  { name: 'team0Pick5', dbType: SQLiteColumnType.TEXT },
+  { name: 'team1Pick1', dbType: SQLiteColumnType.TEXT },
+  { name: 'team1Pick2', dbType: SQLiteColumnType.TEXT },
+  { name: 'team1Pick3', dbType: SQLiteColumnType.TEXT },
+  { name: 'team1Pick4', dbType: SQLiteColumnType.TEXT },
+  { name: 'team1Pick5', dbType: SQLiteColumnType.TEXT },
 ] as const satisfies readonly ColumnDefinition[];
 
-const HOTS_REPLAY_PLAYER_COLUMNS = [
+export const HOTS_REPLAY_GAME_STATS_COLUMNS = [
   {
     name: 'id',
     dbType: SQLiteColumnType.INTEGER,
@@ -49,29 +60,32 @@ const HOTS_REPLAY_PLAYER_COLUMNS = [
     autoIncrement: true,
     skipImport: true,
   },
-  { name: 'replay_id', dbType: SQLiteColumnType.INTEGER, skipImport: true }, // foreign key to hots_replays.id
-  { name: 'hero', dbType: SQLiteColumnType.TEXT },
+  { name: 'replay_id', dbType: SQLiteColumnType.INTEGER },
+  { name: 'hots_account_id', dbType: SQLiteColumnType.INTEGER },
+  { name: 'hots_battle_tag', dbType: SQLiteColumnType.TEXT },
+  { name: 'ToonHandle', dbType: SQLiteColumnType.TEXT },
   { name: 'name', dbType: SQLiteColumnType.TEXT },
+  { name: 'tag', dbType: SQLiteColumnType.INTEGER },
   { name: 'region', dbType: SQLiteColumnType.INTEGER },
   { name: 'realm', dbType: SQLiteColumnType.INTEGER },
-  { name: 'ToonHandle', dbType: SQLiteColumnType.TEXT },
-  { name: 'tag', dbType: SQLiteColumnType.INTEGER },
+  { name: 'hero', dbType: SQLiteColumnType.TEXT },
+  { name: 'internalHeroName', dbType: SQLiteColumnType.TEXT },
   { name: 'team', dbType: SQLiteColumnType.INTEGER },
-  {
-    name: 'gameStats',
-    dbType: SQLiteColumnType.INTEGER,
-    skipImport: true,
-  }, // row number in hots_replay_player_game_stats table
-] as const satisfies readonly ColumnDefinition[];
-
-const HOTS_REPLAY_GAME_STATS_COLUMNS = [
-  {
-    name: 'id',
-    dbType: SQLiteColumnType.INTEGER,
-    primaryKey: true,
-    autoIncrement: true,
-    skipImport: true,
-  },
+  { name: 'win', dbType: SQLiteColumnType.INTEGER, isBoolean: true },
+  { name: 'heroLevel', dbType: SQLiteColumnType.INTEGER },
+  { name: 'skin', dbType: SQLiteColumnType.TEXT },
+  { name: 'mount', dbType: SQLiteColumnType.TEXT },
+  { name: 'announcer', dbType: SQLiteColumnType.TEXT },
+  { name: 'silenced', dbType: SQLiteColumnType.INTEGER, isBoolean: true },
+  { name: 'voiceSilenced', dbType: SQLiteColumnType.INTEGER, isBoolean: true },
+  { name: 'Tier1Choice', dbType: SQLiteColumnType.TEXT },
+  { name: 'Tier2Choice', dbType: SQLiteColumnType.TEXT },
+  { name: 'Tier3Choice', dbType: SQLiteColumnType.TEXT },
+  { name: 'Tier4Choice', dbType: SQLiteColumnType.TEXT },
+  { name: 'Tier5Choice', dbType: SQLiteColumnType.TEXT },
+  { name: 'Tier6Choice', dbType: SQLiteColumnType.TEXT },
+  { name: 'Tier7Choice', dbType: SQLiteColumnType.TEXT },
+  { name: 'awards', dbType: SQLiteColumnType.TEXT },
   { name: 'Takedowns', dbType: SQLiteColumnType.INTEGER },
   { name: 'Deaths', dbType: SQLiteColumnType.INTEGER },
   { name: 'TownKills', dbType: SQLiteColumnType.INTEGER },
@@ -169,31 +183,50 @@ const HOTS_REPLAY_GAME_STATS_COLUMNS = [
   { name: 'damageDonePerDeath', dbType: SQLiteColumnType.REAL },
   { name: 'damageTakenPerDeath', dbType: SQLiteColumnType.REAL },
   { name: 'healingDonePerDeath', dbType: SQLiteColumnType.REAL },
-  { name: 'DPM', dbType: SQLiteColumnType.REAL }, // REAL
-  { name: 'HPM', dbType: SQLiteColumnType.REAL }, // REAL
-  { name: 'XPM', dbType: SQLiteColumnType.REAL }, // REAL
-  { name: 'KillParticipation', dbType: SQLiteColumnType.REAL }, // REAL
-  { name: 'length', dbType: SQLiteColumnType.REAL }, // REAL
-  { name: 'passiveXPRate', dbType: SQLiteColumnType.REAL }, // REAL
-  { name: 'passiveXPDiff', dbType: SQLiteColumnType.REAL }, // REAL
-  { name: 'passiveXPGain', dbType: SQLiteColumnType.REAL }, // REAL
+  { name: 'DPM', dbType: SQLiteColumnType.REAL },
+  { name: 'HPM', dbType: SQLiteColumnType.REAL },
+  { name: 'XPM', dbType: SQLiteColumnType.REAL },
+  { name: 'KillParticipation', dbType: SQLiteColumnType.REAL },
+  { name: 'length', dbType: SQLiteColumnType.REAL },
+  { name: 'passiveXPRate', dbType: SQLiteColumnType.REAL },
+  { name: 'passiveXPDiff', dbType: SQLiteColumnType.REAL },
+  { name: 'passiveXPGain', dbType: SQLiteColumnType.REAL },
   { name: 'aces', dbType: SQLiteColumnType.INTEGER },
   { name: 'wipes', dbType: SQLiteColumnType.INTEGER },
-  { name: 'timeWithHeroAdv', dbType: SQLiteColumnType.REAL }, // REAL
-  { name: 'pctWithHeroAdv', dbType: SQLiteColumnType.REAL }, // REAL
-  { name: 'levelAdvTime', dbType: SQLiteColumnType.REAL }, // REAL
-  { name: 'levelAdvPct', dbType: SQLiteColumnType.REAL }, // REAL
+  { name: 'timeWithHeroAdv', dbType: SQLiteColumnType.REAL },
+  { name: 'pctWithHeroAdv', dbType: SQLiteColumnType.REAL },
+  { name: 'levelAdvTime', dbType: SQLiteColumnType.REAL },
+  { name: 'levelAdvPct', dbType: SQLiteColumnType.REAL },
 ] as const satisfies readonly ColumnDefinition[];
 
 interface HotSReplay {
-  match: InterfaceFromSchema<typeof HOTS_REPLAYS_MATCH_COLUMNS>;
-  players: { [key: string]: InterfaceFromSchema<typeof HOTS_REPLAY_PLAYER_COLUMNS> };
+  match: Record<string, any>;
+  players: Record<string, Record<string, any>>;
 }
 
 export type HotSReplayGameStats = InterfaceFromSchema<typeof HOTS_REPLAY_GAME_STATS_COLUMNS>;
 
+function ensureTableColumns(tableName: string, columns: readonly ColumnDefinition[]) {
+  const existingCols: { name: string }[] = db.prepare(`PRAGMA table_info(${tableName})`).all() as { name: string }[];
+  const existingColNames = new Set(existingCols.map(c => c.name));
+
+  for (const col of columns) {
+    if (!existingColNames.has(col.name)) {
+      try {
+        let sql = `ALTER TABLE ${tableName} ADD COLUMN ${col.name} ${col.dbType}`;
+        if (col.defaultValue !== undefined) {
+          sql += ` DEFAULT ${typeof col.defaultValue === 'string' ? `'${col.defaultValue}'` : col.defaultValue}`;
+        }
+        db.exec(sql);
+      } catch (err) {
+        console.error(`Error adding column ${col.name} to ${tableName}:`, err);
+      }
+    }
+  }
+}
+
 const initSchema = db.transaction(() => {
-  // Ensure the settings table exists
+  // Settings table
   db.exec(`
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,
@@ -201,14 +234,16 @@ const initSchema = db.transaction(() => {
     )
   `);
 
-  // Create an index for better performance
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_settings_key
     ON settings(key)
   `);
 
+  // hots_replays
   const createHotsReplaysTableSQL = generateCreateTableSQL('hots_replays', HOTS_REPLAYS_MATCH_COLUMNS);
   db.exec(createHotsReplaysTableSQL);
+  ensureTableColumns('hots_replays', HOTS_REPLAYS_MATCH_COLUMNS);
+
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_hots_replays_name_date_type
     ON hots_replays(map, date, type)
@@ -218,25 +253,31 @@ const initSchema = db.transaction(() => {
     ON hots_replays(map, date, loopLength)
   `);
 
-  const createHotsReplayPlayersTableSQL = generateCreateTableSQL('hots_replay_players', HOTS_REPLAY_PLAYER_COLUMNS);
-  db.exec(createHotsReplayPlayersTableSQL);
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_hots_replay_players_id
-    ON hots_replay_players(id)
-  `);
+  // Remove legacy hots_replay_players table if it exists
+  db.exec('DROP TABLE IF EXISTS hots_replay_players');
 
+  // hots_replay_player_game_stats
   const createHotsReplayPlayerGameStatsTableSQL = generateCreateTableSQL(
     'hots_replay_player_game_stats',
     HOTS_REPLAY_GAME_STATS_COLUMNS
   );
   db.exec(createHotsReplayPlayerGameStatsTableSQL);
+  ensureTableColumns('hots_replay_player_game_stats', HOTS_REPLAY_GAME_STATS_COLUMNS);
+
   db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_hots_replay_player_game_stats_id
-    ON hots_replay_player_game_stats(id)
+    CREATE INDEX IF NOT EXISTS idx_hots_replay_player_game_stats_replay_id
+    ON hots_replay_player_game_stats(replay_id)
+  `);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_hots_replay_player_game_stats_account_id
+    ON hots_replay_player_game_stats(hots_account_id)
+  `);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_hots_replay_player_game_stats_battle_tag
+    ON hots_replay_player_game_stats(hots_battle_tag)
   `);
 });
 
-// Execute the transaction
 try {
   initSchema();
 } catch (error) {
@@ -289,26 +330,179 @@ export async function parseReplay(file: string) {
 }
 
 /**
+ * Recalculates and updates the SotS_* summary columns in hots_accounts for a given BattleTag
+ */
+
+function updateSotsStatsForAccount(battleTag: string) {
+  try {
+    const stats = db.prepare(`
+      SELECT 
+        COUNT(*) as totalGames,
+        AVG(win) as winPct,
+        AVG(SoloKill) as avgKills,
+        AVG(Assists) as avgAssists,
+        AVG(Deaths) as avgDeaths,
+        AVG(Takedowns) as avgTakedowns,
+        AVG(HeroDamage) as avgHeroDamage,
+        AVG(SiegeDamage) as avgSiegeDamage,
+        AVG(Healing) as avgHealing,
+        AVG(DamageTaken) as avgDamageTaken,
+        AVG(ExperienceContribution) as avgXP,
+        AVG(DPM) as avgDPM,
+        AVG(HPM) as avgHPM,
+        AVG(XPM) as avgXPM,
+        AVG(KDA) as avgKDA,
+        AVG(KillParticipation) as avgKillPart
+      FROM hots_replay_player_game_stats
+      WHERE hots_battle_tag = ?
+    `).get(battleTag) as Record<string, number> | undefined;
+
+    if (stats && stats.totalGames > 0) {
+      db.prepare(`
+        UPDATE hots_accounts SET
+          SotS_Games = ?,
+          SotS_Win_Pct = ?,
+          SotS_Kills = ?,
+          SotS_Assists = ?,
+          SotS_Deaths = ?,
+          SotS_Takedowns = ?,
+          SotS_Hero_Damage = ?,
+          SotS_Siege_Damage = ?,
+          SotS_Healing = ?,
+          SotS_Damage_Taken = ?,
+          SotS_XP_Contribution = ?,
+          SotS_DPM = ?,
+          SotS_HPM = ?,
+          SotS_XPM = ?,
+          SotS_KDA = ?,
+          SotS_Kill_Participation = ?
+        WHERE hots_battle_tag = ?
+      `).run(
+        stats.totalGames,
+        stats.winPct,
+        stats.avgKills,
+        stats.avgAssists,
+        stats.avgDeaths,
+        stats.avgTakedowns,
+        stats.avgHeroDamage,
+        stats.avgSiegeDamage,
+        stats.avgHealing,
+        stats.avgDamageTaken,
+        stats.avgXP,
+        stats.avgDPM,
+        stats.avgHPM,
+        stats.avgXPM,
+        stats.avgKDA,
+        stats.avgKillPart,
+        battleTag
+      );
+    }
+  } catch (err) {
+    console.error(`Error updating SotS stats for account ${battleTag}:`, err);
+  }
+}
+
+/**
  * Saves a parsed custom match into the database and returns its assigned replay ID.
  */
 export function saveReplayToDb(parsedReplay: ParsedReplay): number {
   const replay = parsedReplay.replayObj;
 
-  const allColumns: readonly ColumnDefinition[] = HOTS_REPLAYS_MATCH_COLUMNS.slice();
-  const filteredColumns = allColumns.filter(col => !col.skipImport);
-  const columnNames = filteredColumns.map(col => col.name);
-  const placeholders = filteredColumns.map(() => '?').join(', ');
+  const saveTransaction = db.transaction(() => {
+    // 1. Prepare match insert data
+    const matchData: Record<string, any> = { ...replay.match };
 
-  const values = filteredColumns.map(col => {
-    const rawValue = replay.match[col.name as keyof typeof replay.match];
-    if (rawValue === undefined || rawValue === null) return null;
-    if ((rawValue as unknown) instanceof Date) return (rawValue as unknown as Date).toISOString();
-    if (typeof rawValue === 'boolean') return rawValue ? 1 : 0;
-    if (typeof rawValue === 'number' || typeof rawValue === 'string' || typeof rawValue === 'bigint' || Buffer.isBuffer(rawValue)) return rawValue;
-    return String(rawValue);
+    // Extract draft bans & picks
+    if (matchData.bans) {
+      for (let team = 0; team <= 1; team++) {
+        const teamBans = matchData.bans[String(team)] || [];
+        for (let i = 0; i < 3; i++) {
+          matchData[`team${team}Ban${i + 1}`] = teamBans[i]?.hero || null;
+        }
+      }
+    }
+
+    if (matchData.picks) {
+      matchData.firstPick = matchData.picks.first ?? null;
+      for (let team = 0; team <= 1; team++) {
+        const teamPicks = matchData.picks[String(team)] || [];
+        for (let i = 0; i < 5; i++) {
+          matchData[`team${team}Pick${i + 1}`] = teamPicks[i] || null;
+        }
+      }
+    }
+
+    if (matchData.version && typeof matchData.version === 'object') {
+      matchData.build = matchData.version.m_build ?? null;
+    }
+
+    const filteredMatchCols = HOTS_REPLAYS_MATCH_COLUMNS.filter(col => !('skipImport' in col && (col as any).skipImport));
+    const matchColNames = filteredMatchCols.map(col => col.name);
+    const matchPlaceholders = filteredMatchCols.map(() => '?').join(', ');
+
+    const matchValues = filteredMatchCols.map(col => {
+      const rawValue = matchData[col.name];
+      if (rawValue === undefined || rawValue === null) return null;
+      if (rawValue instanceof Date) return rawValue.toISOString();
+      if (typeof rawValue === 'boolean') return rawValue ? 1 : 0;
+      if (typeof rawValue === 'number' || typeof rawValue === 'string' || typeof rawValue === 'bigint' || Buffer.isBuffer(rawValue)) return rawValue;
+      return String(rawValue);
+    });
+
+    const matchSql = `INSERT INTO hots_replays (${matchColNames.join(', ')}) VALUES (${matchPlaceholders}) ON CONFLICT(map, date, loopLength) DO UPDATE SET map=excluded.map RETURNING id`;
+    const matchRow = db.prepare(matchSql).get(matchValues) as { id: number };
+    const replayId = matchRow.id;
+
+    // Delete existing player game stats for this replay if re-importing
+    db.prepare('DELETE FROM hots_replay_player_game_stats WHERE replay_id = ?').run(replayId);
+
+    // 2. Insert player game stats for all players
+    const filteredStatsCols = HOTS_REPLAY_GAME_STATS_COLUMNS.filter(col => col.name !== 'id');
+    const statsColNames = filteredStatsCols.map(col => col.name);
+    const statsPlaceholders = filteredStatsCols.map(() => '?').join(', ');
+    const statsSql = `INSERT INTO hots_replay_player_game_stats (${statsColNames.join(', ')}) VALUES (${statsPlaceholders})`;
+    const insertStatsStmt = db.prepare(statsSql);
+
+    const players = Object.values(replay.players || {});
+    const updatedBattleTags = new Set<string>();
+
+    for (const player of players) {
+      const battleTag = `${player.name}#${player.tag}`;
+      updatedBattleTags.add(battleTag);
+
+      // Lookup hots_accounts.id if it exists
+      const accountRow = db.prepare('SELECT id FROM hots_accounts WHERE hots_battle_tag = ?').get(battleTag) as { id: number } | undefined;
+      const hotsAccountId = accountRow?.id ?? null;
+
+      const playerTalents = player.talents || {};
+      const gameStatsData = player.gameStats || {};
+
+      const playerValues = filteredStatsCols.map(col => {
+        if (col.name === 'replay_id') return replayId;
+        if (col.name === 'hots_account_id') return hotsAccountId;
+        if (col.name === 'hots_battle_tag') return battleTag;
+        const rawValue = col.name in player
+          ? player[col.name]
+          : (col.name in playerTalents ? playerTalents[col.name] : gameStatsData[col.name]);
+
+        if (rawValue === undefined || rawValue === null) return null;
+        if (rawValue instanceof Date) return rawValue.toISOString();
+        if (typeof rawValue === 'boolean') return rawValue ? 1 : 0;
+        if (typeof rawValue === 'object') return JSON.stringify(rawValue);
+        if (typeof rawValue === 'number' || typeof rawValue === 'string' || typeof rawValue === 'bigint' || Buffer.isBuffer(rawValue)) return rawValue;
+        return String(rawValue);
+      });
+
+      insertStatsStmt.run(playerValues);
+    }
+
+    // 3. Update SotS_* summary columns on hots_accounts for participating players
+    for (const bTag of updatedBattleTags) {
+      updateSotsStatsForAccount(bTag);
+    }
+
+    return replayId;
   });
 
-  const sql = `INSERT INTO hots_replays (${columnNames.join(', ')}) VALUES (${placeholders}) ON CONFLICT(map, date, loopLength) DO UPDATE SET map=excluded.map RETURNING id`;
-  const row = db.prepare(sql).get(values) as { id: number };
-  return row.id;
+  return saveTransaction();
 }
