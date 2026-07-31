@@ -85,7 +85,7 @@ function buildSummaryEmbed(
   const embed = new EmbedBuilder()
     .setTitle(
       isEnded
-        ? `🏆 ${title} Closed: ${winnerMap ? winnerMap.name : 'Tie / Winner'}`
+        ? `📊 ${title} — Final Standings`
         : `📊 ${title} — Live Standings${leaderMap ? `\nCurrent Leader: ${leaderMap.name}` : ''}`,
     )
     .setColor(isEnded ? 0x2ecc71 : 0xf1c40f)
@@ -104,13 +104,18 @@ function buildSummaryEmbed(
 
   const sortedTallies = [...tallies].sort((a, b) => b.count - a.count);
 
-  const lines = sortedTallies.map((t, idx) => {
+  const displayTallies = isEnded
+    ? sortedTallies.filter(t => t.count > 0)
+    : sortedTallies;
+
+  const lines = displayTallies.map((t, idx) => {
     const medal = idx === 0 && t.count > 0 ? '🥇 ' : idx === 1 && t.count > 0 ? '🥈 ' : idx === 2 && t.count > 0 ? '🥉 ' : '• ';
     const votersStr = t.voters.length > 0 ? ` (${t.voters.map(v => `@${v}`).join(', ')})` : '';
     return `${medal}**${t.mapName}**: ${t.count} vote${t.count === 1 ? '' : 's'}${votersStr}`;
   });
 
-  embed.setDescription(lines.join('\n'));
+  const descriptionText = lines.join('\n').trim();
+  embed.setDescription(descriptionText.length > 0 ? descriptionText : 'No votes were cast.');
 
   if (recentlyPlayedMaps.length > 0) {
     const recentlyPlayedStr = recentlyPlayedMaps.map(m => `• ~~${m.name}~~`).join('\n');
@@ -127,7 +132,8 @@ function buildSummaryEmbed(
  * Starts a new map vote session in the channel
  */
 export async function handleMapVoteCommand(interaction: ChatInputCommandInteraction<CacheType>) {
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  // Publicly defer reply so the command response itself becomes the map buttons message
+  await interaction.deferReply();
 
   const channel = interaction.channel;
   if (!channel || !('send' in channel)) {
@@ -137,7 +143,7 @@ export async function handleMapVoteCommand(interaction: ChatInputCommandInteract
 
   const userTitle = interaction.options.getString('title');
   const gameNumber = getGameNumberTonight();
-  const customTitle = userTitle ?? `Game ${gameNumber}`;
+  const customTitle = userTitle ? `${userTitle} - Game ${gameNumber}` : `Game ${gameNumber}`;
   const sessionId = Date.now().toString();
   const createdBy = interaction.user.id;
 
@@ -149,15 +155,8 @@ export async function handleMapVoteCommand(interaction: ChatInputCommandInteract
     talliesMap[t.mapId] = t.count;
   }
 
-  // 1. Post Single Map Buttons Message (Compact Grid of Map Buttons)
+  // 1. Build combined message (Header content, Standings embed, and Map Buttons)
   const buttonRows = buildMapVoteButtonRows(activeMaps, sessionId, talliesMap, false);
-  const buttonsMessage = await channel.send({
-    content: `# 🗺️ ${customTitle}\nClick a map button below to cast your vote!`,
-    components: buttonRows,
-  });
-  postedMessageIds.push(buttonsMessage.id);
-
-  // 2. Post Standings & Current Winning Map Image Banner Message
   const leaderMap = activeMaps.length > 0 ? activeMaps[0] : undefined;
   const { embed: summaryEmbed, files } = buildSummaryEmbed(
     customTitle,
@@ -167,27 +166,30 @@ export async function handleMapVoteCommand(interaction: ChatInputCommandInteract
     false,
   );
 
-  const summaryMessage = await channel.send({
+  const combinedMessage = await interaction.editReply({
+    content: `# 🗺️ ${customTitle}\nClick a map button below to cast your vote!`,
     embeds: [summaryEmbed],
+    components: buttonRows,
     files,
   });
-  postedMessageIds.push(summaryMessage.id);
+  postedMessageIds.push(combinedMessage.id);
 
-  // Store session in DB
-  startMapVoteSession(sessionId, channel.id, postedMessageIds, createdBy, customTitle);
-
-  // Reply ephemerally to the host with End Vote control button
+  // 3. Post End Vote Button Message in reply to Live Standings card
   const endBtn = new ButtonBuilder()
     .setCustomId(`mapvote:end:${sessionId}`)
     .setLabel('End Vote')
     .setStyle(ButtonStyle.Danger);
-
   const hostControlRow = new ActionRowBuilder<ButtonBuilder>().addComponents(endBtn);
 
-  await interaction.editReply({
-    content: `🗺️ **Map vote started in the channel!**\nUse the button below when you are ready to end the vote.`,
+  const controlMessage = await interaction.followUp({
+    content: '🏁 **Host Control:** Click below when ready to end the vote.',
+    flags: MessageFlags.Ephemeral,
     components: [hostControlRow],
   });
+  postedMessageIds.push(controlMessage.id);
+
+  // Store session in DB
+  startMapVoteSession(sessionId, channel.id, postedMessageIds, createdBy, customTitle);
 }
 
 /**
@@ -249,27 +251,48 @@ export async function handleVoteRemoveButtonClick(interaction: ButtonInteraction
   triggerSessionRefresh(interaction.channel, session);
 }
 
-const sessionRefreshTimers = new Map<string, NodeJS.Timeout>();
+interface RefreshState {
+  timer: NodeJS.Timeout | null;
+  firstVoteTime: number;
+}
+
+const sessionRefreshStates = new Map<string, RefreshState>();
 
 /**
- * Debounces channel message updates so rapid votes extend the 1-second waiting period.
- * When voting stops for 1 second, a single batch update refreshes Discord.
+ * Debounces channel message updates with a 1-second delay, but enforces a maximum
+ * wait time of 1.5 seconds during continuous voting spam so updates remain live.
  */
 function triggerSessionRefresh(channel: TextBasedChannel | null, session: MapVoteSession) {
   if (!channel || !('messages' in channel)) return;
 
-  // Reset the timer if another vote comes in while waiting, extending the 1-second delay
-  const existingTimer = sessionRefreshTimers.get(session.id);
-  if (existingTimer) {
-    clearTimeout(existingTimer);
+  const now = Date.now();
+  let state = sessionRefreshStates.get(session.id);
+
+  if (!state) {
+    state = { timer: null, firstVoteTime: now };
+    sessionRefreshStates.set(session.id, state);
   }
 
-  const timer = setTimeout(async () => {
-    sessionRefreshTimers.delete(session.id);
+  // If a timer is already counting down:
+  if (state.timer) {
+    // If we've been accumulating votes for >= 1.5 seconds (1500ms), force an immediate update!
+    if (now - state.firstVoteTime >= 1500) {
+      clearTimeout(state.timer);
+      state.timer = null;
+      sessionRefreshStates.delete(session.id);
+      refreshMapVoteSessionMessages(channel, session);
+      return;
+    }
+
+    // Otherwise, extend the 1-second debounce timer
+    clearTimeout(state.timer);
+  }
+
+  // Schedule / reset the 1-second debounce timer
+  state.timer = setTimeout(async () => {
+    sessionRefreshStates.delete(session.id);
     await refreshMapVoteSessionMessages(channel, session);
   }, 1000);
-
-  sessionRefreshTimers.set(session.id, timer);
 }
 
 /**
@@ -284,27 +307,38 @@ async function refreshMapVoteSessionMessages(channel: TextBasedChannel | null, s
     talliesMap[t.mapId] = t.count;
   }
 
-  // 1. Update Map Buttons Message
-  const buttonsMsgId = session.messageIds[0];
-  if (buttonsMsgId) {
+  // Update Combined Map Buttons & Standings Embed Message
+  const voteMsgId = session.messageIds[0];
+  if (voteMsgId) {
     try {
-      const buttonsMsg = await channel.messages.fetch(buttonsMsgId);
-      if (buttonsMsg) {
+      const voteMsg = await channel.messages.fetch(voteMsgId);
+      if (voteMsg) {
         const buttonRows = buildMapVoteButtonRows(activeMaps, session.id, talliesMap, false);
-        await buttonsMsg.edit({
+        const leaderMap = activeMaps.length > 0 ? activeMaps[0] : undefined;
+        const { embed: summaryEmbed, files } = buildSummaryEmbed(
+          session.title ?? 'Vote for the Next Map!',
+          tallies,
+          leaderMap,
+          recentlyPlayedMaps,
+          false,
+        );
+
+        await voteMsg.edit({
+          embeds: [summaryEmbed],
           components: buttonRows,
+          files,
         });
       }
     } catch (err) {
-      console.error(`Failed to refresh map buttons message ${buttonsMsgId}:`, err);
+      console.error(`Failed to refresh map vote message ${voteMsgId}:`, err);
     }
   }
 
-  // 2. Update Standings & Current Leaderboard Banner Message
-  const summaryMsgId = session.messageIds[1];
-  if (summaryMsgId) {
+  // If there was a legacy secondary summary message from an older session, handle gracefully
+  const legacySummaryMsgId = session.messageIds[1];
+  if (legacySummaryMsgId) {
     try {
-      const summaryMsg = await channel.messages.fetch(summaryMsgId);
+      const summaryMsg = await channel.messages.fetch(legacySummaryMsgId);
       if (summaryMsg) {
         const leaderMap = activeMaps.length > 0 ? activeMaps[0] : undefined;
         const { embed: summaryEmbed, files } = buildSummaryEmbed(
@@ -321,7 +355,7 @@ async function refreshMapVoteSessionMessages(channel: TextBasedChannel | null, s
         });
       }
     } catch (err) {
-      console.error('Failed to update map vote summary card:', err);
+      // Ignore legacy summary errors
     }
   }
 }
@@ -335,12 +369,17 @@ export async function handleEndMapVoteCommand(
 ) {
   if (interaction.isButton()) {
     await interaction.deferUpdate();
+    try {
+      await interaction.deleteReply();
+    } catch (err) {
+      // Ignore if already deleted
+    }
   } else {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   }
 
   const channel = interaction.channel;
-  if (!channel || !('messages' in channel)) {
+  if (!channel || !('send' in channel) || !('messages' in channel)) {
     await safeReply(interaction, { content: 'Could not access channel messages.', flags: MessageFlags.Ephemeral });
     return;
   }
@@ -397,45 +436,56 @@ export async function handleEndMapVoteCommand(
     talliesMap[t.mapId] = t.count;
   }
 
-  // Disable all map buttons on Message 1
-  const buttonsMsgId = session.messageIds[0];
-  if (buttonsMsgId) {
+  // 1. Remove map buttons from the original voting message
+  const voteMsgId = session.messageIds[0];
+  if (voteMsgId) {
     try {
-      const buttonsMsg = await channel.messages.fetch(buttonsMsgId);
-      if (buttonsMsg) {
-        const disabledRows = buildMapVoteButtonRows(activeMaps, session.id, talliesMap, true);
-        await buttonsMsg.edit({ components: disabledRows });
-      }
-    } catch (err) {
-      console.error(`Failed to disable buttons on message ${buttonsMsgId}:`, err);
-    }
-  }
-
-  // Update summary card with ended state & winning map banner image
-  const summaryMsgId = session.messageIds[1];
-  if (summaryMsgId) {
-    try {
-      const summaryMsg = await channel.messages.fetch(summaryMsgId);
-      if (summaryMsg) {
-        const { embed: summaryEmbed, files } = buildSummaryEmbed(
+      const voteMsg = await channel.messages.fetch(voteMsgId);
+      if (voteMsg) {
+        const { embed: summaryEmbed } = buildSummaryEmbed(
           session.title ?? 'Vote Ended',
           tallies,
-          winnerMap,
+          undefined,
           recentlyPlayedMaps,
           true,
-          winnerMap,
+          undefined,
         );
 
-        await summaryMsg.edit({
-          content: `# ${winnerText}`,
+        await voteMsg.edit({
           embeds: [summaryEmbed],
-          files,
+          components: [],
+          files: [],
         });
       }
     } catch (err) {
-      console.error('Failed to update summary message on end vote:', err);
+      console.error(`Failed to remove buttons on ended map vote message ${voteMsgId}:`, err);
     }
   }
 
-  await safeReply(interaction, { content: `Map vote ended! ${winnerText}`, flags: MessageFlags.Ephemeral });
+  // 2. Post a NEW public message announcing the vote closure and winning map ONLY IF votes were cast
+  if (winnerMap && maxVotes > 0) {
+    const closedTitle = `${session.title ?? 'Game 1'} : ${winnerMap.name}`;
+
+    const closedEmbed = new EmbedBuilder()
+      .setTitle(closedTitle)
+      .setDescription(winnerText)
+      .setColor(0x2ecc71)
+      .setTimestamp();
+
+    const files: AttachmentBuilder[] = [];
+    const imagePath = path.join(MAPS_ASSETS_DIR, winnerMap.imageFileName);
+    if (fs.existsSync(imagePath)) {
+      files.push(new AttachmentBuilder(imagePath, { name: winnerMap.imageFileName }));
+      closedEmbed.setImage(`attachment://${winnerMap.imageFileName}`);
+    }
+
+    await channel.send({
+      embeds: [closedEmbed],
+      files,
+    });
+  }
+
+  if (!interaction.isButton()) {
+    await safeReply(interaction, { content: `Map vote ended! ${winnerText}`, flags: MessageFlags.Ephemeral });
+  }
 }
