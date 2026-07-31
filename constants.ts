@@ -85,6 +85,7 @@ export const enum CommandIds {
   DELETE_ACCOUNT = 'delete-account',
   MAP_VOTE = 'map-vote',
   END_MAP_VOTE = 'end-map-vote',
+  CANCEL_MAP_VOTE = 'cancel-map-vote',
   VOTE_MAP_BTN = 'vote-map-btn',
   REMOVE_MAP_VOTE = 'remove-map-vote',
 }

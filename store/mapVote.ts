@@ -314,3 +314,11 @@ export function getUserVote(sessionId: string, userId: string): string | undefin
 export function endMapVoteSession(sessionId: string): void {
   db.prepare(`UPDATE map_vote_sessions SET active = 0 WHERE id = ?`).run(sessionId);
 }
+
+/**
+ * Completely deletes a map vote session and all associated user votes from the database.
+ */
+export function deleteMapVoteSession(sessionId: string): void {
+  db.prepare(`DELETE FROM map_votes WHERE session_id = ?`).run(sessionId);
+  db.prepare(`DELETE FROM map_vote_sessions WHERE id = ?`).run(sessionId);
+}

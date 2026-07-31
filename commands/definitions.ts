@@ -525,4 +525,9 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     description: 'End the active map vote and declare the winning map',
     defaultMemberPermissions: minimumAdminPermissions,
   },
+  {
+    name: CommandIds.CANCEL_MAP_VOTE,
+    description: 'Cancel the active map vote session and delete its message',
+    defaultMemberPermissions: minimumAdminPermissions,
+  },
 ];

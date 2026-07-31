@@ -61,6 +61,7 @@ import {
   handleVoteMapButtonClick,
   handleVoteRemoveButtonClick,
   handleEndMapVoteCommand,
+  handleCancelMapVoteCommand,
 } from './commands/mapVote';
 import { slashCommands } from './commands/definitions';
 import { readFileSync } from 'fs';
@@ -170,6 +171,9 @@ client.on('interactionCreate', async interaction => {
       return;
     } else if (action === 'end') {
       handleEndMapVoteCommand(interaction, sessionId);
+      return;
+    } else if (action === 'cancel') {
+      handleCancelMapVoteCommand(interaction, sessionId);
       return;
     }
   }
@@ -330,6 +334,9 @@ client.on('interactionCreate', async interaction => {
       break;
     case CommandIds.END_MAP_VOTE:
       handleEndMapVoteCommand(interaction);
+      break;
+    case CommandIds.CANCEL_MAP_VOTE:
+      handleCancelMapVoteCommand(interaction);
       break;
     default:
       await handleDefaultCommand(interaction, commandName);

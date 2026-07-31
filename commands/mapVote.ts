@@ -16,6 +16,7 @@ import {
 import { adminUserIds, CommandIds } from '../constants';
 import {
   castMapVote,
+  deleteMapVoteSession,
   endMapVoteSession,
   getActiveMapVoteSession,
   getGameNumberTonight,
@@ -128,6 +129,8 @@ function buildSummaryEmbed(
   return { embed, files };
 }
 
+const activeSessionInteractions = new Map<string, ChatInputCommandInteraction<CacheType>>();
+
 /**
  * Starts a new map vote session in the channel
  */
@@ -146,6 +149,9 @@ export async function handleMapVoteCommand(interaction: ChatInputCommandInteract
   const customTitle = userTitle ? `${userTitle} - Game ${gameNumber}` : `Game ${gameNumber}`;
   const sessionId = Date.now().toString();
   const createdBy = interaction.user.id;
+
+  // Store interaction reference to allow deleting ephemeral host control message later via webhook
+  activeSessionInteractions.set(sessionId, interaction);
 
   const { activeMaps, recentlyPlayedMaps, tallies } = getMapVoteSortedList(sessionId);
   const postedMessageIds: string[] = [];
@@ -174,15 +180,20 @@ export async function handleMapVoteCommand(interaction: ChatInputCommandInteract
   });
   postedMessageIds.push(combinedMessage.id);
 
-  // 3. Post End Vote Button Message in reply to Live Standings card
+  // 3. Post End Vote / Cancel Vote Host Control Message
   const endBtn = new ButtonBuilder()
     .setCustomId(`mapvote:end:${sessionId}`)
     .setLabel('End Vote')
     .setStyle(ButtonStyle.Danger);
-  const hostControlRow = new ActionRowBuilder<ButtonBuilder>().addComponents(endBtn);
+  const cancelBtn = new ButtonBuilder()
+    .setCustomId(`mapvote:cancel:${sessionId}`)
+    .setLabel('Cancel Vote')
+    .setStyle(ButtonStyle.Secondary);
+
+  const hostControlRow = new ActionRowBuilder<ButtonBuilder>().addComponents(endBtn, cancelBtn);
 
   const controlMessage = await interaction.followUp({
-    content: '🏁 **Host Control:** Click below when ready to end the vote.',
+    content: '🏁 **Host Control:** Click below when ready to end or cancel the vote.',
     flags: MessageFlags.Ephemeral,
     components: [hostControlRow],
   });
@@ -485,7 +496,115 @@ export async function handleEndMapVoteCommand(
     });
   }
 
+  // Delete ephemeral host control message via stored interaction webhook if ended via slash command
+  const startInteraction = activeSessionInteractions.get(session.id);
+  if (startInteraction) {
+    const controlMsgId = session.messageIds[1];
+    if (controlMsgId) {
+      try {
+        await startInteraction.webhook.deleteMessage(controlMsgId);
+      } catch (err) {
+        // Ignore if webhook expired or message already deleted
+      }
+    }
+    activeSessionInteractions.delete(session.id);
+  }
+
   if (!interaction.isButton()) {
     await safeReply(interaction, { content: `Map vote ended! ${winnerText}`, flags: MessageFlags.Ephemeral });
+  }
+}
+
+/**
+ * Cancels an active map vote session and deletes its messages
+ */
+export async function handleCancelMapVoteCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+  sessionIdParam?: string,
+) {
+  if (interaction.isButton()) {
+    await interaction.deferUpdate();
+    try {
+      await interaction.deleteReply();
+    } catch (err) {
+      // Ignore if already deleted
+    }
+  } else {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  }
+
+  const channel = interaction.channel;
+  if (!channel || !('messages' in channel)) {
+    if (!interaction.isButton()) {
+      await safeReply(interaction, { content: 'Could not access channel messages.', flags: MessageFlags.Ephemeral });
+    }
+    return;
+  }
+
+  let session: MapVoteSession | undefined;
+  if (sessionIdParam) {
+    session = getMapVoteSessionById(sessionIdParam);
+  } else {
+    session = getActiveMapVoteSession(channel.id);
+  }
+
+  if (!session || !session.active) {
+    if (!interaction.isButton()) {
+      await safeReply(interaction, {
+        content: 'No active map vote session found in this channel.',
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+    return;
+  }
+
+  // Permission check: Admin or creator
+  const userId = interaction.user.id;
+  const isAdmin = adminUserIds.includes(userId) || session.createdBy === userId;
+
+  if (!isAdmin) {
+    if (!interaction.isButton()) {
+      await safeReply(interaction, {
+        content: 'Only admins or the user who started the vote can cancel it.',
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+    return;
+  }
+
+  deleteMapVoteSession(session.id);
+
+  // Delete all messages stored for this session
+  for (const msgId of session.messageIds) {
+    if (!msgId) continue;
+    try {
+      const msg = await channel.messages.fetch(msgId);
+      if (msg) {
+        await msg.delete();
+      }
+    } catch (err) {
+      // Ignore if message was already deleted or is ephemeral
+    }
+  }
+
+  // Delete ephemeral host control message via stored interaction webhook if canceled via slash command
+  const startInteraction = activeSessionInteractions.get(session.id);
+  if (startInteraction) {
+    const controlMsgId = session.messageIds[1];
+    if (controlMsgId) {
+      try {
+        await startInteraction.webhook.deleteMessage(controlMsgId);
+      } catch (err) {
+        // Ignore if webhook expired or message already deleted
+      }
+    }
+    activeSessionInteractions.delete(session.id);
+  }
+
+  if (!interaction.isButton()) {
+    await safeReply(interaction, {
+      content: '🗑️ Map vote session canceled and messages deleted.',
+      flags: MessageFlags.Ephemeral,
+    });
   }
 }
