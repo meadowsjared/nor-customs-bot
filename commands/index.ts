@@ -2160,13 +2160,9 @@ export async function handleDeleteMessageCommand(
     return;
   }
   if ((await userIsAdmin(interaction)) === false) {
-    await safeReply(interaction, {
-      content: 'You do not have permission to use this command.',
-      flags: MessageFlags.Ephemeral,
-    });
     return;
   }
-  const messageId = interaction.options.getString('message_id', true);
+  const messageId = interaction.options.getString(CommandIds.MESSAGE_ID, true);
   const channel = interaction.channel;
 
   await deleteMessage(interaction, channel, messageId);
@@ -2177,27 +2173,51 @@ async function deleteMessage(
   channel: TextBasedChannel | null,
   messageId: string,
 ) {
-  if (!channel) {
-    await safeReply(interaction, {
-      content: 'Channel not found.',
-      flags: MessageFlags.Ephemeral,
-    });
-    return;
-  }
-
   try {
-    const message = await channel.messages.fetch(messageId);
-    if (message.embeds.length !== 0) {
-      // delete the embed
-      await message.edit({ embeds: [], content: '*[Message Deleted]*' });
+    let message: Message | null = null;
+
+    // Try fetching the message from the current channel first
+    if (channel) {
+      try {
+        message = await channel.messages.fetch(messageId);
+      } catch {
+        // Message not found in current channel
+      }
     }
+
+    // If not found in the current channel, search other text channels in the guild
+    if (!message && interaction.guild) {
+      const textChannels = interaction.guild.channels.cache.filter(
+        ch => ch.isTextBased() && ch.id !== channel?.id,
+      );
+      for (const [, ch] of textChannels) {
+        try {
+          message = await (ch as TextBasedChannel).messages.fetch(messageId);
+          break;
+        } catch {
+          // Keep searching
+        }
+      }
+    }
+
+    if (!message) {
+      await safeReply(interaction, {
+        content: `Failed to delete message. Could not find message with ID \`${messageId}\` in this channel or server.`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
     await message.delete();
+    deleteLobbyMessagesById([messageId]); // if the message was a lobby message, remove it from the stored messages
+
+    const preview = message.content
+      ? `"${message.content.length > 50 ? message.content.substring(0, 50) + '...' : message.content}"`
+      : `(ID: ${messageId})`;
     await safeReply(interaction, {
-      content: `Deleted message: ${message.content}`,
+      content: `Deleted message: ${preview}`,
       flags: MessageFlags.Ephemeral,
     });
-    await interaction.deleteReply();
-    deleteLobbyMessagesById([messageId]); // if the message was a lobby message, remove it from the stored messages
   } catch (error) {
     console.error('Error deleting message:', error);
     await safeReply(interaction, {
