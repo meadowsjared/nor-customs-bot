@@ -508,4 +508,21 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
       },
     ],
   },
+  {
+    name: CommandIds.MAP_VOTE,
+    description: 'Start a vote for the next map',
+    options: [
+      {
+        name: 'title',
+        description: 'Custom title for the map vote (optional)',
+        type: ApplicationCommandOptionType.String,
+        required: false,
+      },
+    ],
+  },
+  {
+    name: CommandIds.END_MAP_VOTE,
+    description: 'End the active map vote and declare the winning map',
+    defaultMemberPermissions: minimumAdminPermissions,
+  },
 ];

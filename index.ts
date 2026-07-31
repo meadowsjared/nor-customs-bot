@@ -56,6 +56,12 @@ import {
   handleChannelCommand,
   handleAdminDeleteHotsAccountCommand,
 } from './commands';
+import {
+  handleMapVoteCommand,
+  handleVoteMapButtonClick,
+  handleVoteRemoveButtonClick,
+  handleEndMapVoteCommand,
+} from './commands/mapVote';
 import { slashCommands } from './commands/definitions';
 import { readFileSync } from 'fs';
 import { join } from 'path';
@@ -293,6 +299,19 @@ client.on('interactionCreate', async interaction => {
     case `${CommandIds.ADMIN}_${CommandIds.ACTIVE}_${CommandIds.REFRESH}`:
       updateAdminActiveButtons(interaction, false, true);
       break;
+    case CommandIds.MAP_VOTE:
+      if (!interaction.isChatInputCommand()) {
+        await safeReply(interaction, {
+          content: 'This command can only be used as a slash command.',
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+      handleMapVoteCommand(interaction);
+      break;
+    case CommandIds.END_MAP_VOTE:
+      handleEndMapVoteCommand(interaction);
+      break;
     default:
       await handleDefaultCommand(interaction, commandName);
       break;
@@ -336,6 +355,20 @@ async function handleDefaultCommand(
     return;
   }
   const parts = commandName.split('_');
+
+  if (parts[0] === CommandIds.VOTE_MAP_BTN && interaction.isButton()) {
+    handleVoteMapButtonClick(interaction, parts[1], parts[2]);
+    return;
+  }
+  if (parts[0] === CommandIds.REMOVE_MAP_VOTE && interaction.isButton()) {
+    handleVoteRemoveButtonClick(interaction, parts[1]);
+    return;
+  }
+  if (parts[0] === CommandIds.END_MAP_VOTE && interaction.isButton()) {
+    handleEndMapVoteCommand(interaction, parts[1]);
+    return;
+  }
+
   if (parts.length === 2) {
     switch (parts[0]) {
       case CommandIds.JOIN:
