@@ -1379,6 +1379,8 @@ async function handleLookupCommandSub(
       const recentFormEmojis = matchStats.recentMatches.map(m => (m.win ? '🟩' : '🟥')).join(' ');
       const recentFormW = matchStats.recentMatches.filter(m => m.win).length;
       const recentFormL = matchStats.recentMatches.length - recentFormW;
+      const totalRecent = matchStats.recentMatches.length;
+      const recentWinRate = totalRecent > 0 ? ((recentFormW / totalRecent) * 100).toFixed(1) : '0.0';
 
       const topHeroesStr = matchStats.topHeroes.length > 0
         ? matchStats.topHeroes.map((h, i) => `${i + 1}. ${h.hero} (${h.games}G, ${h.winRate}% WR)`).join(' | ')
@@ -1393,7 +1395,7 @@ async function handleLookupCommandSub(
 
       statsSection = `\n📊 **Match Stats:**\n` +
         `• **Career Record:** ${matchStats.totalGames} Games | ${matchStats.wins}W - ${matchStats.losses}L (${matchStats.winRate}% WR)\n` +
-        `• **Recent Matches (${matchStats.recentMatches.length}):** ${recentFormEmojis}\n(${recentFormW}W - ${recentFormL}L, ${Math.round(recentFormW / (recentFormL + recentFormW))}% WR)\n` +
+        `• **Recent Matches (${matchStats.recentMatches.length}):** ${recentFormEmojis}\n(${recentFormW}W - ${recentFormL}L, ${recentWinRate}% WR)\n` +
         `• **Top Heroes:** ${topHeroesStr}` +
         (bmStr ? `\n• **BM Highlights:** ${bmStr}` : '');
     }
