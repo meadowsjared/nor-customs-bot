@@ -70,7 +70,7 @@ import {
 } from '../store/channels';
 import { DiscordUserNames, Player } from '../types/player';
 import { client } from '../index';
-import { parseReplay, saveReplayToDb } from '../store/hotsReplays';
+import { parseReplay, saveReplayToDb, getPlayerMatchStats } from '../store/hotsReplays';
 import path from 'path';
 import { validateBattleTag } from '../utils/heroesOfTheStorm';
 dotenv.config();
@@ -1373,11 +1373,36 @@ async function handleLookupCommandSub(
       return accountMMR > max ? accountMMR : max;
     }, 0);
 
+    const matchStats = getPlayerMatchStats(discordId);
+    let statsSection = '';
+    if (matchStats.totalGames > 0) {
+      const recentFormEmojis = matchStats.recentMatches.map(m => (m.win ? '🟩' : '🟥')).join(' ');
+      const recentFormW = matchStats.recentMatches.filter(m => m.win).length;
+      const recentFormL = matchStats.recentMatches.length - recentFormW;
+
+      const topHeroesStr = matchStats.topHeroes.length > 0
+        ? matchStats.topHeroes.map((h, i) => `${i + 1}. ${h.hero} (${h.games}G, ${h.winRate}% WR)`).join(' | ')
+        : 'N/A';
+
+      const bmStr = [
+        matchStats.bmStats.bsteps > 0 ? `${matchStats.bmStats.bsteps} B-Steps` : null,
+        matchStats.bmStats.sprays > 0 ? `${matchStats.bmStats.sprays} Sprays` : null,
+        matchStats.bmStats.dances > 0 ? `${matchStats.bmStats.dances} Dances` : null,
+        matchStats.bmStats.taunts > 0 ? `${matchStats.bmStats.taunts} Taunts` : null,
+      ].filter(Boolean).join(' | ');
+
+      statsSection = `\n\n📊 **Custom Match Stats:**\n` +
+        `• **Career Record:** ${matchStats.totalGames} Games | ${matchStats.wins}W - ${matchStats.losses}L (${matchStats.winRate}% WR)\n` +
+        `• **Recent Form (Last ${matchStats.recentMatches.length}):** ${recentFormEmojis} (${recentFormW}W - ${recentFormL}L)\n` +
+        `• **Top Heroes:** ${topHeroesStr}` +
+        (bmStr ? `\n• **BM Highlights:** ${bmStr}` : '');
+    }
+
     await safeReply(interaction, {
       content: `${`<@${discordId}>`}\nDiscord ID: \`${discordId}\`\ndiscordName: \`${discordData.discordName
         }\`\ndiscordGlobalName: \`${discordData.discordGlobalName}\`\nDisplay Name: \`${discordData.discordDisplayName
         }\`\n${player?.adjustment ? `Adjustment: ${player.adjustment}\n` : ''
-        }${message}\nMMR: ${MMR}\nHotS Accounts:\n${accounts}`,
+        }${message}\nMMR: ${MMR}\nHotS Accounts:\n${accounts}${statsSection}`,
       flags: safePing(MessageFlags.Ephemeral),
     });
   }

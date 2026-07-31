@@ -807,3 +807,98 @@ export function saveReplayToDb(parsedReplay: ParsedReplay): number {
 
   return saveTransaction();
 }
+
+export interface PlayerMatchStats {
+  totalGames: number;
+  wins: number;
+  losses: number;
+  winRate: number;
+  recentMatches: Array<{
+    date: string;
+    map: string;
+    hero: string;
+    win: boolean;
+    kills: number;
+    assists: number;
+    deaths: number;
+  }>;
+  topHeroes: Array<{
+    hero: string;
+    games: number;
+    wins: number;
+    winRate: number;
+  }>;
+  bmStats: {
+    bsteps: number;
+    sprays: number;
+    dances: number;
+    taunts: number;
+  };
+}
+
+export function getPlayerMatchStats(discordId: string): PlayerMatchStats {
+  type BmRow = { bsteps: number; sprays: number; dances: number; taunts: number };
+  const bmStats = db.prepare<[string], BmRow>(`
+    SELECT 
+      COALESCE(SUM(SotS_Bsteps), 0) as bsteps,
+      COALESCE(SUM(SotS_Sprays), 0) as sprays,
+      COALESCE(SUM(SotS_Dances), 0) as dances,
+      COALESCE(SUM(SotS_Taunts), 0) as taunts
+    FROM hots_accounts
+    WHERE discord_id = ?
+  `).get(discordId) || { bsteps: 0, sprays: 0, dances: 0, taunts: 0 };
+
+  const matchFilter = `(s.discord_id = ? OR s.hots_battle_tag IN (SELECT hots_battle_tag FROM hots_accounts WHERE discord_id = ?))`;
+
+  type OverallRow = { totalGames: number; wins: number; winRate: number };
+  const overall = db.prepare<[string, string], OverallRow>(`
+    SELECT 
+      COUNT(*) as totalGames,
+      SUM(CASE WHEN s.win = 1 THEN 1 ELSE 0 END) as wins,
+      ROUND(AVG(s.win) * 100, 1) as winRate
+    FROM hots_replay_player_game_stats s
+    WHERE ${matchFilter}
+  `).get(discordId, discordId) || { totalGames: 0, wins: 0, winRate: 0 };
+
+  const totalGames = overall.totalGames || 0;
+  const wins = overall.wins || 0;
+  const losses = totalGames - wins;
+  const winRate = totalGames > 0 ? (overall.winRate || 0) : 0;
+
+  type RecentMatchRow = { date: string; map: string; hero: string; win: number; kills: number; assists: number; deaths: number };
+  const recentMatchesRaw = db.prepare<[string, string], RecentMatchRow>(`
+    SELECT r.date, r.map, s.hero, s.win, s.SoloKill as kills, s.Assists as assists, s.Deaths as deaths
+    FROM hots_replay_player_game_stats s
+    JOIN hots_replays r ON s.replay_id = r.id
+    WHERE ${matchFilter}
+    ORDER BY r.date DESC
+    LIMIT 10
+  `).all(discordId, discordId);
+
+  const recentMatches = recentMatchesRaw.map(m => ({
+    ...m,
+    win: m.win === 1,
+  }));
+
+  type TopHeroRow = { hero: string; games: number; wins: number; winRate: number };
+  const topHeroes = db.prepare<[string, string], TopHeroRow>(`
+    SELECT s.hero, COUNT(*) as games, SUM(CASE WHEN s.win = 1 THEN 1 ELSE 0 END) as wins, ROUND(AVG(s.win) * 100, 1) as winRate
+    FROM hots_replay_player_game_stats s
+    WHERE ${matchFilter}
+    GROUP BY s.hero
+    ORDER BY games DESC
+    LIMIT 3
+  `).all(discordId, discordId);
+
+  return {
+    totalGames,
+    wins,
+    losses,
+    winRate,
+    recentMatches,
+    topHeroes,
+    bmStats,
+  };
+}
+
+
