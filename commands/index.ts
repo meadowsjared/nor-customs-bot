@@ -70,7 +70,7 @@ import {
 } from '../store/channels';
 import { DiscordUserNames, Player } from '../types/player';
 import { client } from '../index';
-import { parseReplay, saveReplayToDb, getPlayerMatchStats } from '../store/hotsReplays';
+import { parseReplay, saveReplayToDb, getPlayerMatchStats, optimizeDb } from '../store/hotsReplays';
 import path from 'path';
 import { validateBattleTag } from '../utils/heroesOfTheStorm';
 dotenv.config();
@@ -1391,9 +1391,9 @@ async function handleLookupCommandSub(
         matchStats.bmStats.taunts > 0 ? `${matchStats.bmStats.taunts} Taunts` : null,
       ].filter(Boolean).join(' | ');
 
-      statsSection = `\n\n📊 **Custom Match Stats:**\n` +
+      statsSection = `\n📊 **Match Stats:**\n` +
         `• **Career Record:** ${matchStats.totalGames} Games | ${matchStats.wins}W - ${matchStats.losses}L (${matchStats.winRate}% WR)\n` +
-        `• **Recent Form (Last ${matchStats.recentMatches.length}):** ${recentFormEmojis} (${recentFormW}W - ${recentFormL}L)\n` +
+        `• **Recent Matches (${matchStats.recentMatches.length}):** ${recentFormEmojis}\n(${recentFormW}W - ${recentFormL}L, ${Math.round(recentFormW / (recentFormL + recentFormW))}% WR)\n` +
         `• **Top Heroes:** ${topHeroesStr}` +
         (bmStr ? `\n• **BM Highlights:** ${bmStr}` : '');
     }
@@ -3029,6 +3029,10 @@ export async function handleImportReplaysCommand(
         }
       }
     }
+  }
+
+  if (count > 0) {
+    optimizeDb();
   }
 
   // After loop completes, append summary and send final chunk

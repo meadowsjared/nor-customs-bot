@@ -901,4 +901,16 @@ export function getPlayerMatchStats(discordId: string): PlayerMatchStats {
   };
 }
 
+export function optimizeDb(): void {
+  try {
+    console.log('Optimizing SQLite database (WAL checkpoint & VACUUM)...');
+    db.exec('PRAGMA wal_checkpoint(TRUNCATE);');
+    db.exec('VACUUM;');
+    console.log('Database optimization complete!');
+  } catch (error) {
+    console.error('Error optimizing database:', error);
+  }
+}
+
+
 
