@@ -86,6 +86,22 @@ export function getRecentlyPlayedMapNames(hours: number = 15): string[] {
 }
 
 /**
+ * Returns the game number for tonight based on replays played in the last N hours (default 15 hours).
+ */
+export function getGameNumberTonight(hours: number = 15): number {
+  try {
+    const cutoffDate = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+    const row = db
+      .prepare<[string], { count: number }>(`SELECT COUNT(*) as count FROM hots_replays WHERE date >= ?`)
+      .get(cutoffDate);
+    return (row?.count ?? 0) + 1;
+  } catch (err) {
+    console.error('Error fetching game number tonight:', err);
+    return 1;
+  }
+}
+
+/**
  * Queries play counts for each map directly from hots_replays table
  */
 export function getHistoricalPlayCounts(): Record<string, number> {
