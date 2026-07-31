@@ -35,7 +35,7 @@ const MAPS_ASSETS_DIR = path.resolve(process.cwd(), 'assets', 'maps');
  * Starts a new map vote session in the channel
  */
 export async function handleMapVoteCommand(interaction: ChatInputCommandInteraction<CacheType>) {
-  await interaction.deferReply();
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   const channel = interaction.channel;
   if (!channel || !('send' in channel)) {
@@ -44,82 +44,77 @@ export async function handleMapVoteCommand(interaction: ChatInputCommandInteract
   }
 
   const customTitle = interaction.options.getString('title') ?? 'Vote for the Next Map!';
-  const sessionId = `session_${Date.now()}`;
+  const sessionId = Date.now().toString();
   const createdBy = interaction.user.id;
 
   const { activeMaps, recentlyPlayedMaps, tallies } = getMapVoteSortedList(sessionId);
-
-  // Group active maps into chunks of 4
-  const mapGroups: MapDefinition[][] = [];
-  for (let i = 0; i < activeMaps.length; i += 4) {
-    mapGroups.push(activeMaps.slice(i, i + 4));
-  }
-
   const postedMessageIds: string[] = [];
+
   const talliesMap: Record<string, number> = {};
   for (const t of tallies) {
     talliesMap[t.mapId] = t.count;
   }
 
-  // Post map cards
-  for (let groupIdx = 0; groupIdx < mapGroups.length; groupIdx++) {
-    const group = mapGroups[groupIdx];
-    const embeds: EmbedBuilder[] = [];
+  // Header message
+  const headerMessage = await channel.send({
+    content: `# 🗺️ ${customTitle}\nClick the button under a map to cast your vote!`,
+  });
+  postedMessageIds.push(headerMessage.id);
+
+  // Post 1 standalone message per active map card
+  for (const mapDef of activeMaps) {
+    const voteCount = talliesMap[mapDef.id] ?? 0;
+    const countBadge = voteCount > 0 ? ` (${voteCount} vote${voteCount === 1 ? '' : 's'})` : '';
+    const imagePath = path.join(MAPS_ASSETS_DIR, mapDef.imageFileName);
+
+    const embed = new EmbedBuilder().setTitle(`🗺️ ${mapDef.name}${countBadge}`).setColor(0x3498db);
     const files: AttachmentBuilder[] = [];
-    const buttonRow = new ActionRowBuilder<ButtonBuilder>();
 
-    for (const mapDef of group) {
-      const voteCount = talliesMap[mapDef.id] ?? 0;
-      const countBadge = voteCount > 0 ? ` (${voteCount} vote${voteCount === 1 ? '' : 's'})` : '';
-      const imagePath = path.join(MAPS_ASSETS_DIR, mapDef.imageFileName);
-
-      const embed = new EmbedBuilder().setTitle(`🗺️ ${mapDef.name}${countBadge}`).setColor(0x3498db);
-
-      if (fs.existsSync(imagePath)) {
-        files.push(new AttachmentBuilder(imagePath, { name: mapDef.imageFileName }));
-        embed.setImage(`attachment://${mapDef.imageFileName}`);
-      }
-
-      embeds.push(embed);
-
-      const btnLabel = `Vote ${mapDef.name}${voteCount > 0 ? ` (${voteCount})` : ''}`;
-      const btn = new ButtonBuilder()
-        .setCustomId(`${CommandIds.VOTE_MAP_BTN}_${sessionId}_${mapDef.id}`)
-        .setLabel(btnLabel.length > 80 ? btnLabel.substring(0, 77) + '...' : btnLabel)
-        .setStyle(voteCount > 0 ? ButtonStyle.Success : ButtonStyle.Primary);
-
-      buttonRow.addComponents(btn);
+    if (fs.existsSync(imagePath)) {
+      files.push(new AttachmentBuilder(imagePath, { name: mapDef.imageFileName }));
+      embed.setImage(`attachment://${mapDef.imageFileName}`);
     }
 
-    const groupMessage = await (groupIdx === 0
-      ? interaction.editReply({
-          content: `# 🗺️ ${customTitle}\nSelect a map below to cast your vote!`,
-          embeds,
-          files,
-          components: [buttonRow],
-        })
-      : channel.send({
-          embeds,
-          files,
-          components: [buttonRow],
-        }));
+    const btnLabel = `Vote ${mapDef.name}${voteCount > 0 ? ` (${voteCount})` : ''}`;
+    const btn = new ButtonBuilder()
+      .setCustomId(`mapvote:vote:${sessionId}:${mapDef.id}`)
+      .setLabel(btnLabel.length > 80 ? btnLabel.substring(0, 77) + '...' : btnLabel)
+      .setStyle(voteCount > 0 ? ButtonStyle.Success : ButtonStyle.Primary);
 
-    postedMessageIds.push(groupMessage.id);
+    const buttonRow = new ActionRowBuilder<ButtonBuilder>().addComponents(btn);
+
+    const cardMsg = await channel.send({
+      embeds: [embed],
+      files,
+      components: [buttonRow],
+    });
+
+    postedMessageIds.push(cardMsg.id);
   }
 
   // Post Standings Summary card
   const summaryEmbed = buildSummaryEmbed(customTitle, tallies, recentlyPlayedMaps, false);
-  const controlRow = buildControlRow(sessionId, false);
-
   const summaryMessage = await channel.send({
     embeds: [summaryEmbed],
-    components: [controlRow],
   });
 
   postedMessageIds.push(summaryMessage.id);
 
   // Store session in DB
   startMapVoteSession(sessionId, channel.id, postedMessageIds, createdBy, customTitle);
+
+  // Reply ephemerally to the host with the End Vote control button
+  const endBtn = new ButtonBuilder()
+    .setCustomId(`mapvote:end:${sessionId}`)
+    .setLabel('End Vote')
+    .setStyle(ButtonStyle.Danger);
+
+  const hostControlRow = new ActionRowBuilder<ButtonBuilder>().addComponents(endBtn);
+
+  await interaction.editReply({
+    content: `🗺️ **Map vote started in the channel!**\nAll ${activeMaps.length} map cards have been posted.\nUse the button below when you are ready to end the vote.`,
+    components: [hostControlRow],
+  });
 }
 
 /**
@@ -147,7 +142,6 @@ function buildSummaryEmbed(
     }
   }
 
-  // Sort tallies descending by vote count
   const sortedTallies = [...tallies].sort((a, b) => b.count - a.count);
 
   const lines = sortedTallies.map((t, idx) => {
@@ -167,25 +161,6 @@ function buildSummaryEmbed(
   }
 
   return embed;
-}
-
-/**
- * Builds control row for summary card
- */
-function buildControlRow(sessionId: string, isEnded: boolean): ActionRowBuilder<ButtonBuilder> {
-  const removeBtn = new ButtonBuilder()
-    .setCustomId(`${CommandIds.REMOVE_MAP_VOTE}_${sessionId}`)
-    .setLabel('Remove My Vote')
-    .setStyle(ButtonStyle.Secondary)
-    .setDisabled(isEnded);
-
-  const endBtn = new ButtonBuilder()
-    .setCustomId(`${CommandIds.END_MAP_VOTE}_${sessionId}`)
-    .setLabel('End Vote')
-    .setStyle(ButtonStyle.Danger)
-    .setDisabled(isEnded);
-
-  return new ActionRowBuilder<ButtonBuilder>().addComponents(removeBtn, endBtn);
 }
 
 /**
@@ -216,9 +191,21 @@ export async function handleVoteMapButtonClick(interaction: ButtonInteraction<Ca
     ? `✅ Changed your vote to **${mapDef.name}**!`
     : `✅ Your vote for **${mapDef.name}** has been recorded!`;
 
-  await safeReply(interaction, { content: confirmationMsg, flags: MessageFlags.Ephemeral });
+  // Ephemeral Remove My Vote button sent to voter
+  const removeBtn = new ButtonBuilder()
+    .setCustomId(`mapvote:remove:${sessionId}`)
+    .setLabel('Remove My Vote')
+    .setStyle(ButtonStyle.Secondary);
 
-  // Update & re-order messages
+  const removeRow = new ActionRowBuilder<ButtonBuilder>().addComponents(removeBtn);
+
+  await safeReply(interaction, {
+    content: confirmationMsg,
+    components: [removeRow],
+    flags: MessageFlags.Ephemeral,
+  });
+
+  // Re-order and refresh public map card messages
   await refreshMapVoteSessionMessages(interaction.channel, session);
 }
 
@@ -253,49 +240,37 @@ async function refreshMapVoteSessionMessages(channel: TextBasedChannel | null, s
     talliesMap[t.mapId] = t.count;
   }
 
-  const mapGroups: MapDefinition[][] = [];
-  for (let i = 0; i < activeMaps.length; i += 4) {
-    mapGroups.push(activeMaps.slice(i, i + 4));
-  }
-
-  // Update card messages
-  for (let groupIdx = 0; groupIdx < mapGroups.length && groupIdx < session.messageIds.length - 1; groupIdx++) {
-    const msgId = session.messageIds[groupIdx];
-    const group = mapGroups[groupIdx];
+  // Update map cards (starting at index 1 after header message)
+  for (let idx = 0; idx < activeMaps.length && idx + 1 < session.messageIds.length - 1; idx++) {
+    const msgId = session.messageIds[idx + 1];
+    const mapDef = activeMaps[idx];
 
     try {
       const msg = await channel.messages.fetch(msgId);
       if (!msg) continue;
 
-      const embeds: EmbedBuilder[] = [];
+      const voteCount = talliesMap[mapDef.id] ?? 0;
+      const countBadge = voteCount > 0 ? ` (${voteCount} vote${voteCount === 1 ? '' : 's'})` : '';
+      const imagePath = path.join(MAPS_ASSETS_DIR, mapDef.imageFileName);
+
+      const embed = new EmbedBuilder().setTitle(`🗺️ ${mapDef.name}${countBadge}`).setColor(voteCount > 0 ? 0x2ecc71 : 0x3498db);
       const files: AttachmentBuilder[] = [];
-      const buttonRow = new ActionRowBuilder<ButtonBuilder>();
 
-      for (const mapDef of group) {
-        const voteCount = talliesMap[mapDef.id] ?? 0;
-        const countBadge = voteCount > 0 ? ` (${voteCount} vote${voteCount === 1 ? '' : 's'})` : '';
-        const imagePath = path.join(MAPS_ASSETS_DIR, mapDef.imageFileName);
-
-        const embed = new EmbedBuilder().setTitle(`🗺️ ${mapDef.name}${countBadge}`).setColor(voteCount > 0 ? 0x2ecc71 : 0x3498db);
-
-        if (fs.existsSync(imagePath)) {
-          files.push(new AttachmentBuilder(imagePath, { name: mapDef.imageFileName }));
-          embed.setImage(`attachment://${mapDef.imageFileName}`);
-        }
-
-        embeds.push(embed);
-
-        const btnLabel = `Vote ${mapDef.name}${voteCount > 0 ? ` (${voteCount})` : ''}`;
-        const btn = new ButtonBuilder()
-          .setCustomId(`${CommandIds.VOTE_MAP_BTN}_${session.id}_${mapDef.id}`)
-          .setLabel(btnLabel.length > 80 ? btnLabel.substring(0, 77) + '...' : btnLabel)
-          .setStyle(voteCount > 0 ? ButtonStyle.Success : ButtonStyle.Primary);
-
-        buttonRow.addComponents(btn);
+      if (fs.existsSync(imagePath)) {
+        files.push(new AttachmentBuilder(imagePath, { name: mapDef.imageFileName }));
+        embed.setImage(`attachment://${mapDef.imageFileName}`);
       }
 
+      const btnLabel = `Vote ${mapDef.name}${voteCount > 0 ? ` (${voteCount})` : ''}`;
+      const btn = new ButtonBuilder()
+        .setCustomId(`mapvote:vote:${session.id}:${mapDef.id}`)
+        .setLabel(btnLabel.length > 80 ? btnLabel.substring(0, 77) + '...' : btnLabel)
+        .setStyle(voteCount > 0 ? ButtonStyle.Success : ButtonStyle.Primary);
+
+      const buttonRow = new ActionRowBuilder<ButtonBuilder>().addComponents(btn);
+
       await msg.edit({
-        embeds,
+        embeds: [embed],
         files,
         components: [buttonRow],
       });
@@ -316,11 +291,9 @@ async function refreshMapVoteSessionMessages(channel: TextBasedChannel | null, s
           recentlyPlayedMaps,
           false,
         );
-        const controlRow = buildControlRow(session.id, false);
 
         await summaryMsg.edit({
           embeds: [summaryEmbed],
-          components: [controlRow],
         });
       }
     } catch (err) {
@@ -389,38 +362,8 @@ export async function handleEndMapVoteCommand(
     winnerText = 'No votes were cast.';
   }
 
-  // Update summary card with ended state & winner image if applicable
-  const summaryMsgId = session.messageIds[session.messageIds.length - 1];
-  let files: AttachmentBuilder[] = [];
-
-  if (winnerMap) {
-    const winnerPath = path.join(MAPS_ASSETS_DIR, winnerMap.imageFileName);
-    if (fs.existsSync(winnerPath)) {
-      files.push(new AttachmentBuilder(winnerPath, { name: winnerMap.imageFileName }));
-    }
-  }
-
-  const summaryEmbed = buildSummaryEmbed(session.title ?? 'Vote Ended', tallies, recentlyPlayedMaps, true, winnerMap);
-  const controlRow = buildControlRow(session.id, true);
-
-  if (summaryMsgId) {
-    try {
-      const summaryMsg = await channel.messages.fetch(summaryMsgId);
-      if (summaryMsg) {
-        await summaryMsg.edit({
-          content: `# ${winnerText}`,
-          embeds: [summaryEmbed],
-          files,
-          components: [controlRow],
-        });
-      }
-    } catch (err) {
-      console.error('Failed to update summary message on end vote:', err);
-    }
-  }
-
-  // Disable buttons on the card group messages
-  for (let i = 0; i < session.messageIds.length - 1; i++) {
+  // Disable buttons on all card messages in public channel
+  for (let i = 1; i < session.messageIds.length - 1; i++) {
     const msgId = session.messageIds[i];
     try {
       const cardMsg = await channel.messages.fetch(msgId);
@@ -441,5 +384,33 @@ export async function handleEndMapVoteCommand(
     }
   }
 
-  await safeReply(interaction, { content: `Map vote ended! ${winnerText}` });
+  // Update summary card with ended state & winner image
+  const summaryMsgId = session.messageIds[session.messageIds.length - 1];
+  let files: AttachmentBuilder[] = [];
+
+  if (winnerMap) {
+    const winnerPath = path.join(MAPS_ASSETS_DIR, winnerMap.imageFileName);
+    if (fs.existsSync(winnerPath)) {
+      files.push(new AttachmentBuilder(winnerPath, { name: winnerMap.imageFileName }));
+    }
+  }
+
+  const summaryEmbed = buildSummaryEmbed(session.title ?? 'Vote Ended', tallies, recentlyPlayedMaps, true, winnerMap);
+
+  if (summaryMsgId) {
+    try {
+      const summaryMsg = await channel.messages.fetch(summaryMsgId);
+      if (summaryMsg) {
+        await summaryMsg.edit({
+          content: `# ${winnerText}`,
+          embeds: [summaryEmbed],
+          files,
+        });
+      }
+    } catch (err) {
+      console.error('Failed to update summary message on end vote:', err);
+    }
+  }
+
+  await safeReply(interaction, { content: `Map vote ended! ${winnerText}`, flags: MessageFlags.Ephemeral });
 }

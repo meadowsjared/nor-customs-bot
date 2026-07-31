@@ -155,6 +155,25 @@ function getCommandName(
 
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand() && !interaction.isButton()) return;
+
+  if (interaction.isButton() && interaction.customId.startsWith('mapvote:')) {
+    const parts = interaction.customId.split(':');
+    const action = parts[1];
+    const sessionId = parts[2];
+    const mapId = parts[3];
+
+    if (action === 'vote') {
+      handleVoteMapButtonClick(interaction, sessionId, mapId);
+      return;
+    } else if (action === 'remove') {
+      handleVoteRemoveButtonClick(interaction, sessionId);
+      return;
+    } else if (action === 'end') {
+      handleEndMapVoteCommand(interaction, sessionId);
+      return;
+    }
+  }
+
   const commandName = getCommandName(interaction);
 
   switch (commandName) {
