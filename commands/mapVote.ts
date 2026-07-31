@@ -57,34 +57,48 @@ export async function handleMapVoteCommand(interaction: ChatInputCommandInteract
 
   // Header message
   const headerMessage = await channel.send({
-    content: `# 🗺️ ${customTitle}\nClick the button under a map to cast your vote!`,
+    content: `# 🗺️ ${customTitle}\nClick the button for a map below to cast your vote!`,
   });
   postedMessageIds.push(headerMessage.id);
 
-  // Post 1 standalone message per active map card
-  for (const mapDef of activeMaps) {
-    const voteCount = talliesMap[mapDef.id] ?? 0;
-    const countBadge = voteCount > 0 ? ` (${voteCount} vote${voteCount === 1 ? '' : 's'})` : '';
-    const imagePath = path.join(MAPS_ASSETS_DIR, mapDef.imageFileName);
+  // Group active maps into chunks of 4 per message card
+  const mapGroups: MapDefinition[][] = [];
+  for (let i = 0; i < activeMaps.length; i += 4) {
+    mapGroups.push(activeMaps.slice(i, i + 4));
+  }
 
-    const embed = new EmbedBuilder().setTitle(`🗺️ ${mapDef.name}${countBadge}`).setColor(0x3498db);
+  // Post map group messages (1 message per 4 maps)
+  for (let groupIdx = 0; groupIdx < mapGroups.length; groupIdx++) {
+    const group = mapGroups[groupIdx];
+    const embeds: EmbedBuilder[] = [];
     const files: AttachmentBuilder[] = [];
+    const buttonRow = new ActionRowBuilder<ButtonBuilder>();
 
-    if (fs.existsSync(imagePath)) {
-      files.push(new AttachmentBuilder(imagePath, { name: mapDef.imageFileName }));
-      embed.setImage(`attachment://${mapDef.imageFileName}`);
+    for (const mapDef of group) {
+      const voteCount = talliesMap[mapDef.id] ?? 0;
+      const countBadge = voteCount > 0 ? ` (${voteCount} vote${voteCount === 1 ? '' : 's'})` : '';
+      const imagePath = path.join(MAPS_ASSETS_DIR, mapDef.imageFileName);
+
+      const embed = new EmbedBuilder().setTitle(`🗺️ ${mapDef.name}${countBadge}`).setColor(voteCount > 0 ? 0x2ecc71 : 0x3498db);
+
+      if (fs.existsSync(imagePath)) {
+        files.push(new AttachmentBuilder(imagePath, { name: mapDef.imageFileName }));
+        embed.setImage(`attachment://${mapDef.imageFileName}`);
+      }
+
+      embeds.push(embed);
+
+      const btnLabel = `Vote ${mapDef.name}${voteCount > 0 ? ` (${voteCount})` : ''}`;
+      const btn = new ButtonBuilder()
+        .setCustomId(`mapvote:vote:${sessionId}:${mapDef.id}`)
+        .setLabel(btnLabel.length > 80 ? btnLabel.substring(0, 77) + '...' : btnLabel)
+        .setStyle(voteCount > 0 ? ButtonStyle.Success : ButtonStyle.Primary);
+
+      buttonRow.addComponents(btn);
     }
 
-    const btnLabel = `Vote ${mapDef.name}${voteCount > 0 ? ` (${voteCount})` : ''}`;
-    const btn = new ButtonBuilder()
-      .setCustomId(`mapvote:vote:${sessionId}:${mapDef.id}`)
-      .setLabel(btnLabel.length > 80 ? btnLabel.substring(0, 77) + '...' : btnLabel)
-      .setStyle(voteCount > 0 ? ButtonStyle.Success : ButtonStyle.Primary);
-
-    const buttonRow = new ActionRowBuilder<ButtonBuilder>().addComponents(btn);
-
     const cardMsg = await channel.send({
-      embeds: [embed],
+      embeds,
       files,
       components: [buttonRow],
     });
@@ -229,7 +243,7 @@ export async function handleVoteRemoveButtonClick(interaction: ButtonInteraction
 }
 
 /**
- * Re-evaluates sorted map order and edits all session messages in Discord
+ * Re-evaluates sorted map order and edits session group messages in Discord
  */
 async function refreshMapVoteSessionMessages(channel: TextBasedChannel | null, session: MapVoteSession) {
   if (!channel || !('messages' in channel)) return;
@@ -240,37 +254,50 @@ async function refreshMapVoteSessionMessages(channel: TextBasedChannel | null, s
     talliesMap[t.mapId] = t.count;
   }
 
-  // Update map cards (starting at index 1 after header message)
-  for (let idx = 0; idx < activeMaps.length && idx + 1 < session.messageIds.length - 1; idx++) {
-    const msgId = session.messageIds[idx + 1];
-    const mapDef = activeMaps[idx];
+  // Group active maps into chunks of 4 maps per message card
+  const mapGroups: MapDefinition[][] = [];
+  for (let i = 0; i < activeMaps.length; i += 4) {
+    mapGroups.push(activeMaps.slice(i, i + 4));
+  }
+
+  // Update card messages (starting at index 1 after header message)
+  for (let groupIdx = 0; groupIdx < mapGroups.length && groupIdx + 1 < session.messageIds.length - 1; groupIdx++) {
+    const msgId = session.messageIds[groupIdx + 1];
+    const group = mapGroups[groupIdx];
 
     try {
       const msg = await channel.messages.fetch(msgId);
       if (!msg) continue;
 
-      const voteCount = talliesMap[mapDef.id] ?? 0;
-      const countBadge = voteCount > 0 ? ` (${voteCount} vote${voteCount === 1 ? '' : 's'})` : '';
-      const imagePath = path.join(MAPS_ASSETS_DIR, mapDef.imageFileName);
-
-      const embed = new EmbedBuilder().setTitle(`🗺️ ${mapDef.name}${countBadge}`).setColor(voteCount > 0 ? 0x2ecc71 : 0x3498db);
+      const embeds: EmbedBuilder[] = [];
       const files: AttachmentBuilder[] = [];
+      const buttonRow = new ActionRowBuilder<ButtonBuilder>();
 
-      if (fs.existsSync(imagePath)) {
-        files.push(new AttachmentBuilder(imagePath, { name: mapDef.imageFileName }));
-        embed.setImage(`attachment://${mapDef.imageFileName}`);
+      for (const mapDef of group) {
+        const voteCount = talliesMap[mapDef.id] ?? 0;
+        const countBadge = voteCount > 0 ? ` (${voteCount} vote${voteCount === 1 ? '' : 's'})` : '';
+        const imagePath = path.join(MAPS_ASSETS_DIR, mapDef.imageFileName);
+
+        const embed = new EmbedBuilder().setTitle(`🗺️ ${mapDef.name}${countBadge}`).setColor(voteCount > 0 ? 0x2ecc71 : 0x3498db);
+
+        if (fs.existsSync(imagePath)) {
+          files.push(new AttachmentBuilder(imagePath, { name: mapDef.imageFileName }));
+          embed.setImage(`attachment://${mapDef.imageFileName}`);
+        }
+
+        embeds.push(embed);
+
+        const btnLabel = `Vote ${mapDef.name}${voteCount > 0 ? ` (${voteCount})` : ''}`;
+        const btn = new ButtonBuilder()
+          .setCustomId(`mapvote:vote:${session.id}:${mapDef.id}`)
+          .setLabel(btnLabel.length > 80 ? btnLabel.substring(0, 77) + '...' : btnLabel)
+          .setStyle(voteCount > 0 ? ButtonStyle.Success : ButtonStyle.Primary);
+
+        buttonRow.addComponents(btn);
       }
 
-      const btnLabel = `Vote ${mapDef.name}${voteCount > 0 ? ` (${voteCount})` : ''}`;
-      const btn = new ButtonBuilder()
-        .setCustomId(`mapvote:vote:${session.id}:${mapDef.id}`)
-        .setLabel(btnLabel.length > 80 ? btnLabel.substring(0, 77) + '...' : btnLabel)
-        .setStyle(voteCount > 0 ? ButtonStyle.Success : ButtonStyle.Primary);
-
-      const buttonRow = new ActionRowBuilder<ButtonBuilder>().addComponents(btn);
-
       await msg.edit({
-        embeds: [embed],
+        embeds,
         files,
         components: [buttonRow],
       });
@@ -362,7 +389,7 @@ export async function handleEndMapVoteCommand(
     winnerText = 'No votes were cast.';
   }
 
-  // Disable buttons on all card messages in public channel
+  // Disable buttons on all group messages
   for (let i = 1; i < session.messageIds.length - 1; i++) {
     const msgId = session.messageIds[i];
     try {
