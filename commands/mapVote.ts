@@ -226,8 +226,8 @@ export async function handleVoteMapButtonClick(interaction: ButtonInteraction<Ca
     castMapVote(sessionId, interaction.user.id, userName, mapId);
   }
 
-  // Refresh public map buttons & live standings message
-  await refreshMapVoteSessionMessages(interaction.channel, session);
+  // Trigger throttled refresh (max once per second per session)
+  triggerSessionRefresh(interaction.channel, session);
 }
 
 /**
@@ -246,7 +246,30 @@ export async function handleVoteRemoveButtonClick(interaction: ButtonInteraction
   }
 
   removeMapVote(sessionId, interaction.user.id);
-  await refreshMapVoteSessionMessages(interaction.channel, session);
+  triggerSessionRefresh(interaction.channel, session);
+}
+
+const sessionRefreshTimers = new Map<string, NodeJS.Timeout>();
+
+/**
+ * Debounces channel message updates so rapid votes extend the 1-second waiting period.
+ * When voting stops for 1 second, a single batch update refreshes Discord.
+ */
+function triggerSessionRefresh(channel: TextBasedChannel | null, session: MapVoteSession) {
+  if (!channel || !('messages' in channel)) return;
+
+  // Reset the timer if another vote comes in while waiting, extending the 1-second delay
+  const existingTimer = sessionRefreshTimers.get(session.id);
+  if (existingTimer) {
+    clearTimeout(existingTimer);
+  }
+
+  const timer = setTimeout(async () => {
+    sessionRefreshTimers.delete(session.id);
+    await refreshMapVoteSessionMessages(channel, session);
+  }, 1000);
+
+  sessionRefreshTimers.set(session.id, timer);
 }
 
 /**
