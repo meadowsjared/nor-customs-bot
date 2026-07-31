@@ -83,6 +83,10 @@ export const enum CommandIds {
   MESSAGE_ID = 'message-id',
   FIELD1 = 'field1',
   DELETE_ACCOUNT = 'delete-account',
+  MAP_VOTE = 'map-vote',
+  END_MAP_VOTE = 'end-map-vote',
+  VOTE_MAP_BTN = 'vote-map-btn',
+  REMOVE_MAP_VOTE = 'remove-map-vote',
 }
 
 export const roleMap: Record<string, string> = {
