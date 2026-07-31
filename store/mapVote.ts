@@ -45,13 +45,6 @@ export const HOTS_MAPS: MapDefinition[] = [
   { id: 'blackhearts_bay', name: "Blackheart's Bay", imageFileName: 'blackhearts_bay.png' },
 ];
 
-/**
- * Returns map definitions ordered by play frequency.
- */
-export function getSortedMapList(): MapDefinition[] {
-  return HOTS_MAPS;
-}
-
 interface SessionRow {
   id: string;
   channel_id: string;
@@ -71,8 +64,104 @@ interface VoteRow {
   voted_at: string;
 }
 
+interface ReplayMapRow {
+  map: string;
+  count: number;
+}
+
 /**
- * Creates a new active map vote session, marking any existing session in the channel as inactive.
+ * Returns names of maps played in the last N hours (default 15 hours).
+ */
+export function getRecentlyPlayedMapNames(hours: number = 15): string[] {
+  try {
+    const cutoffDate = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+    const rows = db
+      .prepare<[string], { map: string }>(`SELECT DISTINCT map FROM hots_replays WHERE date >= ?`)
+      .all(cutoffDate);
+    return rows.map(r => r.map);
+  } catch (err) {
+    console.error('Error fetching recently played maps:', err);
+    return [];
+  }
+}
+
+/**
+ * Queries play counts for each map directly from hots_replays table
+ */
+export function getHistoricalPlayCounts(): Record<string, number> {
+  const countsMap: Record<string, number> = {};
+  try {
+    const rows = db
+      .prepare<[], ReplayMapRow>(`SELECT map, COUNT(*) as count FROM hots_replays GROUP BY map`)
+      .all();
+    for (const r of rows) {
+      if (r.map) {
+        countsMap[r.map.toLowerCase()] = r.count;
+      }
+    }
+  } catch (err) {
+    console.error('Error querying hots_replays counts:', err);
+  }
+  return countsMap;
+}
+
+/**
+ * Returns active maps (excluding maps played in the last 15 hours),
+ * sorted by current session votes DESC, then historical play count DESC.
+ */
+export function getMapVoteSortedList(sessionId?: string): {
+  activeMaps: MapDefinition[];
+  recentlyPlayedMaps: MapDefinition[];
+  tallies: MapVoteTally[];
+} {
+  const tallies = sessionId ? getMapVoteResults(sessionId) : [];
+  const talliesByMapId: Record<string, MapVoteTally> = {};
+  for (const t of tallies) {
+    talliesByMapId[t.mapId] = t;
+  }
+
+  const recentlyPlayedNames = getRecentlyPlayedMapNames(15).map(n => n.toLowerCase());
+  const historicalCounts = getHistoricalPlayCounts();
+
+  const activeMaps: MapDefinition[] = [];
+  const recentlyPlayedMaps: MapDefinition[] = [];
+
+  for (const mapDef of HOTS_MAPS) {
+    const lowerName = mapDef.name.toLowerCase();
+    if (recentlyPlayedNames.includes(lowerName)) {
+      recentlyPlayedMaps.push(mapDef);
+    } else {
+      activeMaps.push(mapDef);
+    }
+  }
+
+  // Sort active maps:
+  // 1. Current votes in session DESC
+  // 2. Historical play count DESC
+  // 3. Base HOTS_MAPS index
+  activeMaps.sort((a, b) => {
+    const currentVotesA = talliesByMapId[a.id]?.count ?? 0;
+    const currentVotesB = talliesByMapId[b.id]?.count ?? 0;
+
+    if (currentVotesB !== currentVotesA) {
+      return currentVotesB - currentVotesA;
+    }
+
+    const histA = historicalCounts[a.name.toLowerCase()] ?? 0;
+    const histB = historicalCounts[b.name.toLowerCase()] ?? 0;
+
+    if (histB !== histA) {
+      return histB - histA;
+    }
+
+    return HOTS_MAPS.indexOf(a) - HOTS_MAPS.indexOf(b);
+  });
+
+  return { activeMaps, recentlyPlayedMaps, tallies };
+}
+
+/**
+ * Creates a new active map vote session
  */
 export function startMapVoteSession(
   sessionId: string,
@@ -81,7 +170,6 @@ export function startMapVoteSession(
   createdBy: string,
   title?: string,
 ): MapVoteSession {
-  // Mark old sessions in this channel inactive
   db.prepare(`UPDATE map_vote_sessions SET active = 0 WHERE channel_id = ?`).run(channelId);
 
   const createdAt = new Date();
@@ -103,7 +191,7 @@ export function startMapVoteSession(
 }
 
 /**
- * Retrieves the currently active vote session in a channel.
+ * Retrieves the active vote session in a channel.
  */
 export function getActiveMapVoteSession(channelId: string): MapVoteSession | undefined {
   const row = db
