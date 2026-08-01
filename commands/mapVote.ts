@@ -227,6 +227,12 @@ export async function handleMapVoteCommand(interaction: ChatInputCommandInteract
     return;
   }
 
+  // Auto-close any active map vote session in this channel
+  const prevSession = getActiveMapVoteSession(channel.id);
+  if (prevSession) {
+    await closeAndLockMapVoteSession(channel, prevSession);
+  }
+
   const userTitle = interaction.options.getString('title');
   const gameNumber = getGameNumberTonight();
   const customTitle = userTitle ? `${userTitle} - Game ${gameNumber}` : `Game ${gameNumber}`;
