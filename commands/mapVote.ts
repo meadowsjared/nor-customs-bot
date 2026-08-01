@@ -26,6 +26,7 @@ import {
   HOTS_MAPS,
   removeMapVote,
   startMapVoteSession,
+  updateMapVoteSessionMessageIds,
 } from '../store/mapVote';
 import { MapDefinition, MapVoteSession, MapVoteTally } from '../types/mapVote';
 import { safeReply } from './index';
@@ -491,10 +492,12 @@ export async function handleEndMapVoteCommand(
       closedEmbed.setImage(`attachment://${winnerMap.imageFileName}`);
     }
 
-    await channel.send({
+    const winningMapAnnouncementMsg = await channel.send({
       embeds: [closedEmbed],
       files,
     });
+    session.messageIds.push(winningMapAnnouncementMsg.id);
+    updateMapVoteSessionMessageIds(session.id, session.messageIds);
   }
 
   // Delete ephemeral host control message via stored interaction webhook if ended via slash command

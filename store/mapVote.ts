@@ -230,6 +230,13 @@ export function getActiveMapVoteSession(channelId: string): MapVoteSession | und
 }
 
 /**
+ * Updates the stored message IDs for a vote session.
+ */
+export function updateMapVoteSessionMessageIds(sessionId: string, messageIds: string[]): void {
+  db.prepare(`UPDATE map_vote_sessions SET message_ids = ? WHERE id = ?`).run(JSON.stringify(messageIds), sessionId);
+}
+
+/**
  * Retrieves a session by its ID.
  */
 export function getMapVoteSessionById(sessionId: string): MapVoteSession | undefined {
