@@ -511,7 +511,7 @@ export async function handleEndMapVoteCommand(
     return;
   }
 
-  const { activeMaps, recentlyPlayedMaps, tallies } = getMapVoteSortedList(session.id);
+  const { tallies } = getMapVoteSortedList(session.id);
 
   // Determine winner(s)
   const maxVotes = Math.max(...tallies.map(t => t.count));
