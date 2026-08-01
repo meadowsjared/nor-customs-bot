@@ -463,6 +463,7 @@ export async function handleEndMapVoteCommand(
         );
 
         await voteMsg.edit({
+          content: `# 🗺️ ${session.title ?? 'Vote'}\n🔒 **Voting has closed.**`,
           embeds: [summaryEmbed],
           components: [],
           files: [],
