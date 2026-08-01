@@ -139,21 +139,8 @@ function buildSummaryEmbed(
   // limit it to 10 maps, because discord has a limit of 10 images per embed
   mapsToDisplay = mapsToDisplay.slice(0, 10);
 
-  for (let i = 0; i < mapsToDisplay.length; i++) {
-    const mapDef = mapsToDisplay[i];
-    const attachment = createMapAttachment(mapDef);
-    if (attachment) {
-      files.push(attachment);
-      if (i === 0) {
-        mainEmbed.setImage(`attachment://${mapDef.imageFileName}`);
-      } else {
-        const extraEmbed = new EmbedBuilder()
-          .setColor(isEnded ? (topTiedTallies.length > 1 ? 0xf1c40f : 0x2ecc71) : 0xf1c40f)
-          .setImage(`attachment://${mapDef.imageFileName}`);
-        embeds.push(extraEmbed);
-      }
-    }
-  }
+  const color = isEnded ? (topTiedTallies.length > 1 ? 0xf1c40f : 0x2ecc71) : 0xf1c40f;
+  attachMapImages(mapsToDisplay, files, color, mainEmbed, embeds);
 
   const sortedTallies = [...tallies].sort((a, b) => b.count - a.count);
 
@@ -580,23 +567,10 @@ export async function handleEndMapVoteCommand(
         .setColor(color);
 
       const tiedWinnersToDisplay = winners.slice(0, 10);
-      for (let i = 0; i < tiedWinnersToDisplay.length; i++) {
-        const tiedMap = HOTS_MAPS.find(m => m.id === tiedWinnersToDisplay[i].mapId);
-        if (tiedMap) {
-          const attachment = createMapAttachment(tiedMap);
-          if (attachment) {
-            files.push(attachment);
-            if (i === 0) {
-              closedEmbed.setImage(`attachment://${tiedMap.imageFileName}`);
-            } else {
-              const extraEmbed = new EmbedBuilder()
-                .setColor(color)
-                .setImage(`attachment://${tiedMap.imageFileName}`);
-              closedEmbeds.push(extraEmbed);
-            }
-          }
-        }
-      }
+      const tiedMaps = tiedWinnersToDisplay
+        .map(t => HOTS_MAPS.find(m => m.id === t.mapId))
+        .filter((m): m is MapDefinition => m !== undefined);
+      attachMapImages(tiedMaps, files, color, closedEmbed, closedEmbeds);
     }
 
     const winningMapAnnouncementMsg = await channel.send({
@@ -706,5 +680,29 @@ async function deleteEphemeralHostControlMessage(session: MapVoteSession) {
       }
     }
     activeSessionInteractions.delete(session.id);
+  }
+}
+
+function attachMapImages(
+  maps: MapDefinition[],
+  files: AttachmentBuilder[],
+  color: number,
+  mainEmbed: EmbedBuilder,
+  embeds: EmbedBuilder[],
+) {
+  for (let i = 0; i < maps.length; i++) {
+    const map = maps[i];
+    const attachment = createMapAttachment(map);
+    if (attachment) {
+      files.push(attachment);
+      if (i === 0) {
+        mainEmbed.setImage(`attachment://${map.imageFileName}`);
+      } else {
+        const extraEmbed = new EmbedBuilder()
+          .setColor(color)
+          .setImage(`attachment://${map.imageFileName}`);
+        embeds.push(extraEmbed);
+      }
+    }
   }
 }
