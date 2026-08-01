@@ -541,7 +541,9 @@ export async function handleEndMapVoteCommand(
     let closedTitle = '';
     let color = 0x2ecc71;
     const files: AttachmentBuilder[] = [];
+    const closedEmbeds: EmbedBuilder[] = [];
     const closedEmbed = new EmbedBuilder().setTimestamp();
+    closedEmbeds.push(closedEmbed);
 
     if (winners.length === 1) {
       const winnerMap = HOTS_MAPS.find(m => m.id === winners[0].mapId);
@@ -567,10 +569,29 @@ export async function handleEndMapVoteCommand(
         .setTitle(closedTitle)
         .setDescription(`🤝 **Tie for 1st place!** (${maxVotes} vote${maxVotes === 1 ? '' : 's'} each)\n\n**Tied Maps:**\n${tiedListStr}`)
         .setColor(color);
+
+      const tiedWinnersToDisplay = winners.slice(0, 10);
+      for (let i = 0; i < tiedWinnersToDisplay.length; i++) {
+        const tiedMap = HOTS_MAPS.find(m => m.id === tiedWinnersToDisplay[i].mapId);
+        if (tiedMap) {
+          const imagePath = path.join(MAPS_ASSETS_DIR, tiedMap.imageFileName);
+          if (fs.existsSync(imagePath)) {
+            files.push(new AttachmentBuilder(imagePath, { name: tiedMap.imageFileName }));
+            if (i === 0) {
+              closedEmbed.setImage(`attachment://${tiedMap.imageFileName}`);
+            } else {
+              const extraEmbed = new EmbedBuilder()
+                .setColor(color)
+                .setImage(`attachment://${tiedMap.imageFileName}`);
+              closedEmbeds.push(extraEmbed);
+            }
+          }
+        }
+      }
     }
 
     const winningMapAnnouncementMsg = await channel.send({
-      embeds: [closedEmbed],
+      embeds: closedEmbeds,
       files,
     });
     session.messageIds.push(winningMapAnnouncementMsg.id);
