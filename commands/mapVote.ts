@@ -79,6 +79,10 @@ function createMapAttachment(mapDef: MapDefinition): AttachmentBuilder | null {
   return null;
 }
 
+function isSessionAdminOrCreator(session: MapVoteSession, userId: string): boolean {
+  return adminUserIds.includes(userId) || session.createdBy === userId;
+}
+
 /**
  * Builds the live standings summary embed featuring the current #1 leading map's image
  */
@@ -508,10 +512,7 @@ export async function handleEndMapVoteCommand(
   }
 
   // Permission check: Admin or creator
-  const userId = interaction.user.id;
-  const isAdmin = adminUserIds.includes(userId) || session.createdBy === userId;
-
-  if (!isAdmin) {
+  if (!isSessionAdminOrCreator(session, interaction.user.id)) {
     await safeReply(interaction, {
       content: 'Only admins or the user who started the vote can end it.',
       flags: MessageFlags.Ephemeral,
@@ -669,10 +670,7 @@ export async function handleCancelMapVoteCommand(
   }
 
   // Permission check: Admin or creator
-  const userId = interaction.user.id;
-  const isAdmin = adminUserIds.includes(userId) || session.createdBy === userId;
-
-  if (!isAdmin) {
+  if (!isSessionAdminOrCreator(session, interaction.user.id)) {
     if (!interaction.isButton()) {
       await safeReply(interaction, {
         content: 'Only admins or the user who started the vote can cancel it.',
