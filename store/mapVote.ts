@@ -230,6 +230,41 @@ export function getActiveMapVoteSession(channelId: string): MapVoteSession | und
 }
 
 /**
+ * Retrieves the newest vote session in a channel (active or ended).
+ * If no session is found for the channel, falls back to the newest session overall.
+ */
+export function getNewestMapVoteSession(channelId?: string): MapVoteSession | undefined {
+  let row: SessionRow | undefined;
+  if (channelId) {
+    row = db
+      .prepare<[string], SessionRow>(
+        `SELECT * FROM map_vote_sessions WHERE channel_id = ? ORDER BY created_at DESC LIMIT 1`,
+      )
+      .get(channelId);
+  }
+
+  if (!row) {
+    row = db
+      .prepare<[], SessionRow>(
+        `SELECT * FROM map_vote_sessions ORDER BY created_at DESC LIMIT 1`,
+      )
+      .get();
+  }
+
+  if (!row) return undefined;
+
+  return {
+    id: row.id,
+    channelId: row.channel_id,
+    messageIds: JSON.parse(row.message_ids || '[]'),
+    createdBy: row.created_by,
+    createdAt: new Date(row.created_at),
+    active: row.active === 1,
+    title: row.title ?? undefined,
+  };
+}
+
+/**
  * Updates the stored message IDs for a vote session.
  */
 export function updateMapVoteSessionMessageIds(sessionId: string, messageIds: string[]): void {

@@ -22,6 +22,7 @@ import {
   getGameNumberTonight,
   getMapVoteSessionById,
   getMapVoteSortedList,
+  getNewestMapVoteSession,
   getUserVote,
   HOTS_MAPS,
   removeMapVote,
@@ -520,7 +521,7 @@ export async function handleEndMapVoteCommand(
 }
 
 /**
- * Cancels an active map vote session and deletes its messages
+ * Cancels an active map vote session (or newest session if ended) and deletes its messages
  */
 export async function handleCancelMapVoteCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
@@ -549,13 +550,13 @@ export async function handleCancelMapVoteCommand(
   if (sessionIdParam) {
     session = getMapVoteSessionById(sessionIdParam);
   } else {
-    session = getActiveMapVoteSession(channel.id);
+    session = getActiveMapVoteSession(channel.id) ?? getNewestMapVoteSession(channel.id);
   }
 
-  if (!session || !session.active) {
+  if (!session) {
     if (!interaction.isButton()) {
       await safeReply(interaction, {
-        content: 'No active map vote session found in this channel.',
+        content: 'No map vote session found in this channel.',
         flags: MessageFlags.Ephemeral,
       });
     }
