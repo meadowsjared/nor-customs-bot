@@ -81,27 +81,62 @@ function buildSummaryEmbed(
   recentlyPlayedMaps: MapDefinition[],
   isEnded: boolean,
   winnerMap?: MapDefinition,
-): { embed: EmbedBuilder; files: AttachmentBuilder[] } {
+): { embeds: EmbedBuilder[]; files: AttachmentBuilder[] } {
   const totalVotes = tallies.reduce((sum, t) => sum + t.count, 0);
-  const displayMap = isEnded ? winnerMap : leaderMap;
 
-  const embed = new EmbedBuilder()
+  const maxVotes = Math.max(...tallies.map(t => t.count));
+  const topTiedTallies = maxVotes > 0 ? tallies.filter(t => t.count === maxVotes) : [];
+
+  let leaderHeader = '';
+  if (topTiedTallies.length === 1) {
+    leaderHeader = `\nCurrent Leader: ${topTiedTallies[0].mapName}`;
+  } else if (topTiedTallies.length > 1) {
+    leaderHeader = `\nTied Leaders: ${topTiedTallies.map(t => t.mapName).join(', ')}`;
+  }
+
+  const mainEmbed = new EmbedBuilder()
     .setTitle(
       isEnded
         ? `📊 ${title} — Final Standings`
-        : `📊 ${title} — Live Standings${leaderMap ? `\nCurrent Leader: ${leaderMap.name}` : ''}`,
+        : `📊 ${title} — Live Standings${leaderHeader}`,
     )
-    .setColor(isEnded ? 0x2ecc71 : 0xf1c40f)
+    .setColor(isEnded ? (topTiedTallies.length > 1 ? 0xf1c40f : 0x2ecc71) : 0xf1c40f)
     .setFooter({ text: `Total Votes: ${totalVotes}` })
     .setTimestamp();
 
   const files: AttachmentBuilder[] = [];
+  const embeds: EmbedBuilder[] = [mainEmbed];
 
-  if (displayMap) {
-    const imagePath = path.join(MAPS_ASSETS_DIR, displayMap.imageFileName);
+  let mapsToDisplay: MapDefinition[] = [];
+  if (isEnded) {
+    if (winnerMap) {
+      mapsToDisplay = [winnerMap];
+    } else if (topTiedTallies.length > 0) {
+      mapsToDisplay = topTiedTallies
+        .map(t => HOTS_MAPS.find(m => m.id === t.mapId))
+        .filter((m): m is MapDefinition => m !== undefined);
+    }
+  } else {
+    if (topTiedTallies.length > 0) {
+      mapsToDisplay = topTiedTallies
+        .map(t => HOTS_MAPS.find(m => m.id === t.mapId))
+        .filter((m): m is MapDefinition => m !== undefined);
+    }
+  }
+
+  for (let i = 0; i < mapsToDisplay.length; i++) {
+    const mapDef = mapsToDisplay[i];
+    const imagePath = path.join(MAPS_ASSETS_DIR, mapDef.imageFileName);
     if (fs.existsSync(imagePath)) {
-      files.push(new AttachmentBuilder(imagePath, { name: displayMap.imageFileName }));
-      embed.setImage(`attachment://${displayMap.imageFileName}`);
+      files.push(new AttachmentBuilder(imagePath, { name: mapDef.imageFileName }));
+      if (i === 0) {
+        mainEmbed.setImage(`attachment://${mapDef.imageFileName}`);
+      } else {
+        const extraEmbed = new EmbedBuilder()
+          .setColor(isEnded ? (topTiedTallies.length > 1 ? 0xf1c40f : 0x2ecc71) : 0xf1c40f)
+          .setImage(`attachment://${mapDef.imageFileName}`);
+        embeds.push(extraEmbed);
+      }
     }
   }
 
@@ -111,24 +146,32 @@ function buildSummaryEmbed(
     ? sortedTallies.filter(t => t.count > 0)
     : sortedTallies;
 
-  const lines = displayTallies.map((t, idx) => {
-    const medal = idx === 0 && t.count > 0 ? '🥇 ' : idx === 1 && t.count > 0 ? '🥈 ' : idx === 2 && t.count > 0 ? '🥉 ' : '• ';
+  const uniqueVoteCounts = Array.from(new Set(sortedTallies.map(t => t.count).filter(c => c > 0))).sort((a, b) => b - a);
+
+  const lines = displayTallies.map((t) => {
+    let medal = '• ';
+    if (t.count > 0) {
+      const rank = uniqueVoteCounts.indexOf(t.count) + 1;
+      if (rank === 1) medal = '🥇 ';
+      else if (rank === 2) medal = '🥈 ';
+      else if (rank === 3) medal = '🥉 ';
+    }
     const votersStr = t.voters.length > 0 ? ` (${t.voters.map(v => `@${v}`).join(', ')})` : '';
     return `${medal}**${t.mapName}**: ${t.count} vote${t.count === 1 ? '' : 's'}${votersStr}`;
   });
 
   const descriptionText = lines.join('\n').trim();
-  embed.setDescription(descriptionText.length > 0 ? descriptionText : 'No votes were cast.');
+  mainEmbed.setDescription(descriptionText.length > 0 ? descriptionText : 'No votes were cast.');
 
   if (recentlyPlayedMaps.length > 0) {
     const recentlyPlayedStr = recentlyPlayedMaps.map(m => `• ~~${m.name}~~`).join('\n');
-    embed.addFields({
+    mainEmbed.addFields({
       name: '🚫 Recently Played (Last 15 hrs - Excluded)',
       value: recentlyPlayedStr,
     });
   }
 
-  return { embed, files };
+  return { embeds, files };
 }
 
 const activeSessionInteractions = new Map<string, ChatInputCommandInteraction<CacheType>>();
@@ -166,7 +209,7 @@ export async function handleMapVoteCommand(interaction: ChatInputCommandInteract
   // 1. Build combined message (Header content, Standings embed, and Map Buttons)
   const buttonRows = buildMapVoteButtonRows(activeMaps, sessionId, talliesMap, false);
   const leaderMap = activeMaps.length > 0 ? activeMaps[0] : undefined;
-  const { embed: summaryEmbed, files } = buildSummaryEmbed(
+  const { embeds: summaryEmbeds, files } = buildSummaryEmbed(
     customTitle,
     tallies,
     leaderMap,
@@ -176,7 +219,7 @@ export async function handleMapVoteCommand(interaction: ChatInputCommandInteract
 
   const combinedMessage = await interaction.editReply({
     content: `# 🗺️ ${customTitle}\nClick a map button below to cast your vote!`,
-    embeds: [summaryEmbed],
+    embeds: summaryEmbeds,
     components: buttonRows,
     files,
   });
@@ -328,7 +371,7 @@ async function refreshMapVoteSessionMessages(channel: TextBasedChannel | null, s
       if (voteMsg) {
         const buttonRows = buildMapVoteButtonRows(activeMaps, session.id, talliesMap, false);
         const leaderMap = activeMaps.length > 0 ? activeMaps[0] : undefined;
-        const { embed: summaryEmbed, files } = buildSummaryEmbed(
+        const { embeds: summaryEmbeds, files } = buildSummaryEmbed(
           session.title ?? 'Vote for the Next Map!',
           tallies,
           leaderMap,
@@ -337,7 +380,7 @@ async function refreshMapVoteSessionMessages(channel: TextBasedChannel | null, s
         );
 
         await voteMsg.edit({
-          embeds: [summaryEmbed],
+          embeds: summaryEmbeds,
           components: buttonRows,
           files,
         });
@@ -354,7 +397,7 @@ async function refreshMapVoteSessionMessages(channel: TextBasedChannel | null, s
       const summaryMsg = await channel.messages.fetch(legacySummaryMsgId);
       if (summaryMsg) {
         const leaderMap = activeMaps.length > 0 ? activeMaps[0] : undefined;
-        const { embed: summaryEmbed, files } = buildSummaryEmbed(
+        const { embeds: summaryEmbeds, files } = buildSummaryEmbed(
           session.title ?? 'Vote for the Next Map!',
           tallies,
           leaderMap,
@@ -363,7 +406,7 @@ async function refreshMapVoteSessionMessages(channel: TextBasedChannel | null, s
         );
 
         await summaryMsg.edit({
-          embeds: [summaryEmbed],
+          embeds: summaryEmbeds,
           files,
         });
       }
@@ -455,7 +498,7 @@ export async function handleEndMapVoteCommand(
     try {
       const voteMsg = await channel.messages.fetch(voteMsgId);
       if (voteMsg) {
-        const { embed: summaryEmbed } = buildSummaryEmbed(
+        const { embeds: summaryEmbeds } = buildSummaryEmbed(
           session.title ?? 'Vote Ended',
           tallies,
           undefined,
@@ -466,7 +509,7 @@ export async function handleEndMapVoteCommand(
 
         await voteMsg.edit({
           content: `# 🗺️ ${session.title ?? 'Vote'}\n🔒 **Voting has closed.**`,
-          embeds: [summaryEmbed],
+          embeds: summaryEmbeds,
           components: [],
           files: [],
         });
@@ -476,21 +519,37 @@ export async function handleEndMapVoteCommand(
     }
   }
 
-  // 2. Post a NEW public message announcing the vote closure and winning map ONLY IF votes were cast
-  if (winnerMap && maxVotes > 0) {
-    const closedTitle = `${session.title ?? 'Game 1'} : ${winnerMap.name}`;
-
-    const closedEmbed = new EmbedBuilder()
-      .setTitle(closedTitle)
-      .setDescription(winnerText)
-      .setColor(0x2ecc71)
-      .setTimestamp();
-
+  // 2. Post a NEW public message announcing the vote closure and winning map/tie ONLY IF votes were cast
+  if (winners.length > 0 && maxVotes > 0) {
+    let closedTitle = '';
+    let color = 0x2ecc71;
     const files: AttachmentBuilder[] = [];
-    const imagePath = path.join(MAPS_ASSETS_DIR, winnerMap.imageFileName);
-    if (fs.existsSync(imagePath)) {
-      files.push(new AttachmentBuilder(imagePath, { name: winnerMap.imageFileName }));
-      closedEmbed.setImage(`attachment://${winnerMap.imageFileName}`);
+    const closedEmbed = new EmbedBuilder().setTimestamp();
+
+    if (winners.length === 1) {
+      const winnerMap = HOTS_MAPS.find(m => m.id === winners[0].mapId);
+      closedTitle = `${session.title ?? 'Game 1'} : ${winnerMap?.name ?? winners[0].mapName}`;
+      closedEmbed
+        .setTitle(closedTitle)
+        .setDescription(`🏆 **Winning Map: ${winners[0].mapName}** with ${winners[0].count} vote${winners[0].count === 1 ? '' : 's'}!`)
+        .setColor(color);
+
+      if (winnerMap) {
+        const imagePath = path.join(MAPS_ASSETS_DIR, winnerMap.imageFileName);
+        if (fs.existsSync(imagePath)) {
+          files.push(new AttachmentBuilder(imagePath, { name: winnerMap.imageFileName }));
+          closedEmbed.setImage(`attachment://${winnerMap.imageFileName}`);
+        }
+      }
+    } else {
+      color = 0xf1c40f;
+      closedTitle = `${session.title ?? 'Game 1'} : Tie (${winners.map(w => w.mapName).join(' vs ')})`;
+      const tiedListStr = winners.map(w => `• **${w.mapName}** (${w.count} vote${w.count === 1 ? '' : 's'})`).join('\n');
+
+      closedEmbed
+        .setTitle(closedTitle)
+        .setDescription(`🤝 **Tie for 1st place!** (${maxVotes} vote${maxVotes === 1 ? '' : 's'} each)\n\n**Tied Maps:**\n${tiedListStr}`)
+        .setColor(color);
     }
 
     const winningMapAnnouncementMsg = await channel.send({
