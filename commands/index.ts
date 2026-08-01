@@ -1374,37 +1374,177 @@ async function handleLookupCommandSub(
     }, 0);
 
     const matchStats = getPlayerMatchStats(discordId);
-    let statsSection = '';
+
+    const embed = new EmbedBuilder()
+      .setTitle(`Player Lookup: ${discordData.discordDisplayName || discordData.discordName}`)
+      .setColor(0x3498db)
+      .setDescription(`<@${discordId}>\n${message}`)
+      .addFields(
+        {
+          name: '👤 Discord Info',
+          value: `• **Discord ID:** \`${discordId}\`\n• **discordName:** \`${discordData.discordName}\`\n• **discordGlobalName:** \`${discordData.discordGlobalName}\`\n• **Display Name:** \`${discordData.discordDisplayName}\`${player?.adjustment ? `\n• **Adjustment:** ${player.adjustment}` : ''}`,
+          inline: false,
+        },
+        {
+          name: '🎮 HotS Accounts & MMR',
+          value: `**Highest MMR:** ${MMR}\n${accounts}`,
+          inline: false,
+        }
+      );
+
     if (matchStats.totalGames > 0) {
-      const recentFormEmojis = matchStats.recentMatches.map(m => (m.win ? '🟩' : '🟥')).join(' ');
+      const now = new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+
+      const buildEmojis = (matches: typeof matchStats.recentMatches) => {
+        return matches.map(m => {
+          if (!m.date) return m.win ? '🟩' : '🟥';
+          const matchDate = new Date(m.date);
+          if (isNaN(matchDate.getTime())) return m.win ? '🟩' : '🟥';
+
+          const year = matchDate.getFullYear();
+          const month = matchDate.getMonth() + 1;
+          const day = matchDate.getDate();
+
+          const matchDayStart = new Date(year, month - 1, day).getTime();
+          const diffDays = Math.round((todayStart - matchDayStart) / (1000 * 60 * 60 * 24));
+          const relativeStr = diffDays <= 0 ? 'Today' : diffDays === 1 ? 'Yesterday' : `${diffDays}_days_ago`;
+
+          const dateStr = matchDate.toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: '2-digit',
+          }).replace(/[\s,]+/g, '_');
+
+          const prettyDate = `${dateStr}_${relativeStr}`;
+
+          const gcalUrl = `<http://calendar.google.com/u/0/r/day/${year}/${month}/${day}?${prettyDate}>`;
+          return `[${m.win ? '🟩' : '🟥'}](${gcalUrl})`;
+        }).join(' ');
+      };
+
       const recentFormW = matchStats.recentMatches.filter(m => m.win).length;
       const recentFormL = matchStats.recentMatches.length - recentFormW;
       const totalRecent = matchStats.recentMatches.length;
       const recentWinRate = totalRecent > 0 ? ((recentFormW / totalRecent) * 100).toFixed(1) : '0.0';
 
+      const matchStatsValue = `• **Career Record:** ${matchStats.totalGames} Games | ${matchStats.wins}W - ${matchStats.losses}L (${matchStats.winRate}% WR)`;
+      const recentStats = `(${recentFormW}W - ${recentFormL}L, ${recentWinRate}% WR)`;
+
       const topHeroesStr = matchStats.topHeroes.length > 0
-        ? matchStats.topHeroes.map((h, i) => `${i + 1}. ${h.hero} (${h.games}G, ${h.winRate}% WR)`).join(' | ')
+        ? matchStats.topHeroes.map((h, i) => `${i + 1}. **${h.hero}** (${h.games}G, ${h.winRate}% WR)`).join('\n')
         : 'N/A';
 
-      const bmStr = [
-        matchStats.bmStats.bsteps > 0 ? `${matchStats.bmStats.bsteps} B-Steps` : null,
-        matchStats.bmStats.sprays > 0 ? `${matchStats.bmStats.sprays} Sprays` : null,
-        matchStats.bmStats.dances > 0 ? `${matchStats.bmStats.dances} Dances` : null,
-        matchStats.bmStats.taunts > 0 ? `${matchStats.bmStats.taunts} Taunts` : null,
-      ].filter(Boolean).join(' | ');
+      const formatBmCategory = (label: string, count: number, td: number, deaths: number) => {
+        if (count <= 0 && td <= 0 && deaths <= 0) return null;
+        let details = `${count} ${label}`;
+        const extras: string[] = [];
+        if (td > 0) extras.push(`${td} ${label.slice(0, -1)} TD`);
+        if (deaths > 0) extras.push(`${deaths} ${label.slice(0, -1)} Deaths`);
+        if (extras.length > 0) {
+          details += `, ${extras.join(', ')}`;
+        }
+        return details;
+      };
 
-      statsSection = `\n📊 **Match Stats:**\n` +
-        `• **Career Record:** ${matchStats.totalGames} Games | ${matchStats.wins}W - ${matchStats.losses}L (${matchStats.winRate}% WR)\n` +
-        `• **Recent Matches (${matchStats.recentMatches.length}):** ${recentFormEmojis}\n(${recentFormW}W - ${recentFormL}L, ${recentWinRate}% WR)\n` +
-        `• **Top Heroes:** ${topHeroesStr}` +
-        (bmStr ? `\n• **BM Highlights:** ${bmStr}` : '');
+      const bmStr = [
+        formatBmCategory('B-Steps', matchStats.bmStats.bsteps, matchStats.bmStats.bstepTd, matchStats.bmStats.bstepDeaths),
+        formatBmCategory('Sprays', matchStats.bmStats.sprays, matchStats.bmStats.sprayTd, matchStats.bmStats.sprayDeaths),
+        formatBmCategory('Dances', matchStats.bmStats.dances, matchStats.bmStats.danceTd, matchStats.bmStats.danceDeaths),
+        formatBmCategory('Taunts', matchStats.bmStats.taunts, matchStats.bmStats.tauntTd, matchStats.bmStats.tauntDeaths),
+      ].filter(Boolean).join('\n');
+
+      embed.addFields({
+        name: '📊 Match Stats',
+        value: matchStatsValue.slice(0, 1024),
+        inline: false,
+      });
+
+      const recentFormEmojis = buildEmojis(matchStats.recentMatches);
+      const fullRecentValue = `${recentFormEmojis}\n${recentStats}`;
+
+      if (fullRecentValue.length <= 1024) {
+        embed.addFields({
+          name: `Recent Matches (${matchStats.recentMatches.length})`,
+          value: fullRecentValue,
+        });
+      } else if (recentFormEmojis.length <= 1024) {
+        embed.addFields(
+          {
+            name: `Recent Matches (${matchStats.recentMatches.length})`,
+            value: recentFormEmojis,
+          },
+          {
+            name: '',
+            value: recentStats,
+          }
+        );
+      } else {
+        const total = matchStats.recentMatches.length;
+        let numChunks = 1;
+
+        while (numChunks <= total) {
+          const baseSize = Math.floor(total / numChunks);
+          const remainder = total % numChunks;
+          let allFit = true;
+          let offset = 0;
+
+          for (let i = 0; i < numChunks; i++) {
+            const chunkSize = baseSize + (i < remainder ? 1 : 0);
+            const chunk = matchStats.recentMatches.slice(offset, offset + chunkSize);
+            offset += chunkSize;
+
+            if (buildEmojis(chunk).length >= 1024) {
+              allFit = false;
+              break;
+            }
+          }
+
+          if (allFit) break;
+          numChunks++;
+        }
+
+        const baseSize = Math.floor(total / numChunks);
+        const remainder = total % numChunks;
+        let offset = 0;
+        let chunkIdx = 0;
+
+        while (chunkIdx < numChunks) {
+          const chunkSize = baseSize + (chunkIdx < remainder ? 1 : 0);
+          const chunk = matchStats.recentMatches.slice(offset, offset + chunkSize);
+          offset += chunkSize;
+
+          embed.addFields({
+            name: chunkIdx === 0 ? `Recent Matches (${matchStats.recentMatches.length})` : '',
+            value: buildEmojis(chunk),
+          });
+
+          chunkIdx++;
+        }
+
+        embed.addFields({
+          name: '',
+          value: recentStats,
+        });
+      }
+
+      embed.addFields({
+        name: '⭐ Top Heroes',
+        value: topHeroesStr.slice(0, 1024),
+        inline: true,
+      });
+
+      if (bmStr) {
+        embed.addFields({
+          name: '💃 BM Highlights',
+          value: bmStr.slice(0, 1024),
+          inline: true,
+        });
+      }
     }
 
     await safeReply(interaction, {
-      content: `${`<@${discordId}>`}\nDiscord ID: \`${discordId}\`\ndiscordName: \`${discordData.discordName
-        }\`\ndiscordGlobalName: \`${discordData.discordGlobalName}\`\nDisplay Name: \`${discordData.discordDisplayName
-        }\`\n${player?.adjustment ? `Adjustment: ${player.adjustment}\n` : ''
-        }${message}\nMMR: ${MMR}\nHotS Accounts:\n${accounts}${statsSection}`,
+      embeds: [embed],
       flags: safePing(MessageFlags.Ephemeral),
     });
   }

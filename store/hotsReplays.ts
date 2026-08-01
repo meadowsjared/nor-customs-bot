@@ -830,23 +830,57 @@ export interface PlayerMatchStats {
   }>;
   bmStats: {
     bsteps: number;
-    sprays: number;
-    dances: number;
+    bstepTd: number;
+    bstepDeaths: number;
     taunts: number;
+    tauntTd: number;
+    tauntDeaths: number;
+    sprays: number;
+    sprayTd: number;
+    sprayDeaths: number;
+    dances: number;
+    danceTd: number;
+    danceDeaths: number;
   };
 }
 
 export function getPlayerMatchStats(discordId: string): PlayerMatchStats {
-  type BmRow = { bsteps: number; sprays: number; dances: number; taunts: number };
+  type BmRow = {
+    bsteps: number;
+    bstepTd: number;
+    bstepDeaths: number;
+    taunts: number;
+    tauntTd: number;
+    tauntDeaths: number;
+    sprays: number;
+    sprayTd: number;
+    sprayDeaths: number;
+    dances: number;
+    danceTd: number;
+    danceDeaths: number;
+  };
   const bmStats = db.prepare<[string], BmRow>(`
     SELECT 
       COALESCE(SUM(SotS_Bsteps), 0) as bsteps,
+      COALESCE(SUM(SotS_Bstep_TD), 0) as bstepTd,
+      COALESCE(SUM(SotS_Bstep_Deaths), 0) as bstepDeaths,
+      COALESCE(SUM(SotS_Taunts), 0) as taunts,
+      COALESCE(SUM(SotS_Taunt_TD), 0) as tauntTd,
+      COALESCE(SUM(SotS_Taunt_Deaths), 0) as tauntDeaths,
       COALESCE(SUM(SotS_Sprays), 0) as sprays,
+      COALESCE(SUM(SotS_Spray_TD), 0) as sprayTd,
+      COALESCE(SUM(SotS_Spray_Deaths), 0) as sprayDeaths,
       COALESCE(SUM(SotS_Dances), 0) as dances,
-      COALESCE(SUM(SotS_Taunts), 0) as taunts
+      COALESCE(SUM(SotS_Dance_TD), 0) as danceTd,
+      COALESCE(SUM(SotS_Dance_Deaths), 0) as danceDeaths
     FROM hots_accounts
     WHERE discord_id = ?
-  `).get(discordId) || { bsteps: 0, sprays: 0, dances: 0, taunts: 0 };
+  `).get(discordId) || {
+    bsteps: 0, bstepTd: 0, bstepDeaths: 0,
+    taunts: 0, tauntTd: 0, tauntDeaths: 0,
+    sprays: 0, sprayTd: 0, sprayDeaths: 0,
+    dances: 0, danceTd: 0, danceDeaths: 0,
+  };
 
   const matchFilter = `(s.discord_id = ? OR s.hots_battle_tag IN (SELECT hots_battle_tag FROM hots_accounts WHERE discord_id = ?))`;
 
