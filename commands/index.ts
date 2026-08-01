@@ -3122,8 +3122,8 @@ export async function handleImportReplaysCommand(
       let entryStr = `${count.toLocaleString('en-US')}. ${fileName}\n`;
       entryStr += `  - Replay ID: ${replayId} Map: ${replayData.map}, Date: ${replayDate}, Duration: ${durationMin}m ${durationSec}s\n`;
       entryStr += `  - Winner: ${replayData.winner} Takedowns: ${replayData.team0Takedowns.toLocaleString('en-US')} - ${replayData.team1Takedowns.toLocaleString('en-US')}, Players:\n`;
-      entryStr += `    Blue Team: ${replayData.team0Players}${blueWin}\n`;
-      entryStr += `    Red Team: ${replayData.team1Players}${redWin}\n`;
+      entryStr += `    Blue Team: ${blueWin} ${replayData.team0Players}\n`;
+      entryStr += `    Red Team: ${redWin} ${replayData.team1Players}\n`;
 
       // // write the replayData to a file
       // const replayDataPath = path.join('/mnt/NorCustoms', `${fileName}.json`);
