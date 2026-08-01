@@ -144,3 +144,6 @@ SELECT r.date, r.map, p.discord_display_name, s.hots_battle_tag, s.hero, CASE WH
 
 # include win rate in the previous query:
 SELECT p.discord_id, p.discord_name, COUNT(s.id) as Games, SUM(s.win) as Wins, ROUND(AVG(s.win) * 100, 1) || '%' as WinRate, COALESCE(SUM(s.dances), 0) as Dances, COALESCE(SUM(s.danceTD), 0) as DanceTD, COALESCE(SUM(s.danceDeaths), 0) as DanceDeaths, COALESCE(SUM(s.bsteps), 0) as Bsteps, COALESCE(SUM(s.bstepTD), 0) as BstepTD, COALESCE(SUM(s.bstepDeaths), 0) as BstepDeaths, COALESCE(SUM(s.taunts), 0) as Taunts, COALESCE(SUM(s.tauntTD), 0) as TauntTD, COALESCE(SUM(s.tauntDeaths), 0) as TauntDeaths, COALESCE(SUM(s.sprays), 0) as Sprays, COALESCE(SUM(s.sprayTD), 0) as SprayTD, COALESCE(SUM(s.sprayDeaths), 0) as SprayDeaths FROM players p LEFT JOIN hots_replay_player_game_stats s ON p.discord_id = s.discord_id WHERE s.discord_id IS NOT NULL GROUP BY p.discord_id HAVING AVG(s.win) > 0 ORDER BY AVG(s.win) ASC LIMIT 10;
+
+# check database voting sessions:
+SELECT * FROM map_votes LEFT JOIN map_vote_sessions AS p ON p.id = session_id;
