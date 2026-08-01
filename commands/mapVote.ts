@@ -177,6 +177,41 @@ function buildSummaryEmbed(
   return { embeds, files };
 }
 
+/**
+ * Ends a map vote session in SQLite database and locks its main Discord message.
+ */
+async function closeAndLockMapVoteSession(channel: TextBasedChannel | null, session: MapVoteSession): Promise<void> {
+  endMapVoteSession(session.id);
+
+  if (!channel || !('messages' in channel)) return;
+  const voteMsgId = session.messageIds[0];
+  if (!voteMsgId) return;
+
+  try {
+    const voteMsg = await channel.messages.fetch(voteMsgId);
+    if (voteMsg) {
+      const { recentlyPlayedMaps, tallies } = getMapVoteSortedList(session.id);
+      const { embeds: summaryEmbeds } = buildSummaryEmbed(
+        session.title ?? 'Vote Ended',
+        tallies,
+        undefined,
+        recentlyPlayedMaps,
+        true,
+        undefined,
+      );
+
+      await voteMsg.edit({
+        content: `# 🗺️ ${session.title ?? 'Vote'}\n🔒 **Voting has closed.**`,
+        embeds: summaryEmbeds,
+        components: [],
+        files: [],
+      });
+    }
+  } catch (err) {
+    console.error(`Failed to lock ended map vote message ${voteMsgId}:`, err);
+  }
+}
+
 const activeSessionInteractions = new Map<string, ChatInputCommandInteraction<CacheType>>();
 
 /**
@@ -470,8 +505,6 @@ export async function handleEndMapVoteCommand(
     return;
   }
 
-  endMapVoteSession(session.id);
-
   const { activeMaps, recentlyPlayedMaps, tallies } = getMapVoteSortedList(session.id);
 
   // Determine winner(s)
@@ -495,32 +528,7 @@ export async function handleEndMapVoteCommand(
     talliesMap[t.mapId] = t.count;
   }
 
-  // 1. Remove map buttons from the original voting message
-  const voteMsgId = session.messageIds[0];
-  if (voteMsgId) {
-    try {
-      const voteMsg = await channel.messages.fetch(voteMsgId);
-      if (voteMsg) {
-        const { embeds: summaryEmbeds } = buildSummaryEmbed(
-          session.title ?? 'Vote Ended',
-          tallies,
-          undefined,
-          recentlyPlayedMaps,
-          true,
-          undefined,
-        );
-
-        await voteMsg.edit({
-          content: `# 🗺️ ${session.title ?? 'Vote'}\n🔒 **Voting has closed.**`,
-          embeds: summaryEmbeds,
-          components: [],
-          files: [],
-        });
-      }
-    } catch (err) {
-      console.error(`Failed to remove buttons on ended map vote message ${voteMsgId}:`, err);
-    }
-  }
+  await closeAndLockMapVoteSession(channel, session);
 
   // 2. Post a NEW public message announcing the vote closure and winning map/tie ONLY IF votes were cast
   if (winners.length > 0 && maxVotes > 0) {
