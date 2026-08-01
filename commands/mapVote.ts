@@ -71,6 +71,14 @@ function buildMapVoteButtonRows(
   return rows;
 }
 
+function createMapAttachment(mapDef: MapDefinition): AttachmentBuilder | null {
+  const imagePath = path.join(MAPS_ASSETS_DIR, mapDef.imageFileName);
+  if (fs.existsSync(imagePath)) {
+    return new AttachmentBuilder(imagePath, { name: mapDef.imageFileName });
+  }
+  return null;
+}
+
 /**
  * Builds the live standings summary embed featuring the current #1 leading map's image
  */
@@ -129,9 +137,9 @@ function buildSummaryEmbed(
 
   for (let i = 0; i < mapsToDisplay.length; i++) {
     const mapDef = mapsToDisplay[i];
-    const imagePath = path.join(MAPS_ASSETS_DIR, mapDef.imageFileName);
-    if (fs.existsSync(imagePath)) {
-      files.push(new AttachmentBuilder(imagePath, { name: mapDef.imageFileName }));
+    const attachment = createMapAttachment(mapDef);
+    if (attachment) {
+      files.push(attachment);
       if (i === 0) {
         mainEmbed.setImage(`attachment://${mapDef.imageFileName}`);
       } else {
@@ -554,9 +562,9 @@ export async function handleEndMapVoteCommand(
         .setColor(color);
 
       if (winnerMap) {
-        const imagePath = path.join(MAPS_ASSETS_DIR, winnerMap.imageFileName);
-        if (fs.existsSync(imagePath)) {
-          files.push(new AttachmentBuilder(imagePath, { name: winnerMap.imageFileName }));
+        const attachment = createMapAttachment(winnerMap);
+        if (attachment) {
+          files.push(attachment);
           closedEmbed.setImage(`attachment://${winnerMap.imageFileName}`);
         }
       }
@@ -574,9 +582,9 @@ export async function handleEndMapVoteCommand(
       for (let i = 0; i < tiedWinnersToDisplay.length; i++) {
         const tiedMap = HOTS_MAPS.find(m => m.id === tiedWinnersToDisplay[i].mapId);
         if (tiedMap) {
-          const imagePath = path.join(MAPS_ASSETS_DIR, tiedMap.imageFileName);
-          if (fs.existsSync(imagePath)) {
-            files.push(new AttachmentBuilder(imagePath, { name: tiedMap.imageFileName }));
+          const attachment = createMapAttachment(tiedMap);
+          if (attachment) {
+            files.push(attachment);
             if (i === 0) {
               closedEmbed.setImage(`attachment://${tiedMap.imageFileName}`);
             } else {
