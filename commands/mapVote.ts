@@ -607,7 +607,7 @@ export async function handleEndMapVoteCommand(
     updateMapVoteSessionMessageIds(session.id, session.messageIds);
   }
 
-  await deleteEphemeralHostControlMessage(session, channel);
+  await deleteEphemeralHostControlMessage(session);
 
   if (!interaction.isButton()) {
     await safeReply(interaction, { content: `Map vote ended! ${winnerText}`, flags: MessageFlags.Ephemeral });
@@ -683,7 +683,7 @@ export async function handleCancelMapVoteCommand(
     }
   }
 
-  await deleteEphemeralHostControlMessage(session, channel);
+  await deleteEphemeralHostControlMessage(session);
 
   if (!interaction.isButton()) {
     await safeReply(interaction, {
@@ -693,8 +693,8 @@ export async function handleCancelMapVoteCommand(
   }
 }
 
-async function deleteEphemeralHostControlMessage(session: MapVoteSession, channel: TextBasedChannel) {
-  // Delete ephemeral host control message via stored interaction webhook if canceled via slash command
+async function deleteEphemeralHostControlMessage(session: MapVoteSession) {
+  // Delete ephemeral host control message via stored interaction webhook if canceled/ended via slash command
   const startInteraction = activeSessionInteractions.get(session.id);
   if (startInteraction) {
     const controlMsgId = session.messageIds[1];
