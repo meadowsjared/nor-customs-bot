@@ -195,7 +195,7 @@ export async function handleMapVoteCommand(interaction: ChatInputCommandInteract
   const hostControlRow = new ActionRowBuilder<ButtonBuilder>().addComponents(endBtn, cancelBtn);
 
   const controlMessage = await interaction.followUp({
-    content: '🏁 **Host Control:** Click below when ready to end or cancel the vote.',
+    content: 'Click below when ready to end or cancel the vote.',
     flags: MessageFlags.Ephemeral,
     components: [hostControlRow],
   });
