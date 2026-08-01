@@ -844,7 +844,7 @@ export interface PlayerMatchStats {
   };
 }
 
-export function getPlayerMatchStats(discordId: string): PlayerMatchStats {
+export function getPlayerMatchStats(discordId: string, limit: number = 13): PlayerMatchStats {
   type BmRow = {
     bsteps: number;
     bstepTd: number;
@@ -900,14 +900,14 @@ export function getPlayerMatchStats(discordId: string): PlayerMatchStats {
   const winRate = totalGames > 0 ? (overall.winRate || 0) : 0;
 
   type RecentMatchRow = { date: string; map: string; hero: string; win: number; kills: number; assists: number; deaths: number };
-  const recentMatchesRaw = db.prepare<[string, string], RecentMatchRow>(`
+  const recentMatchesRaw = db.prepare<[string, string, number], RecentMatchRow>(`
     SELECT r.date, r.map, s.hero, s.win, s.SoloKill as kills, s.Assists as assists, s.Deaths as deaths
     FROM hots_replay_player_game_stats s
     JOIN hots_replays r ON s.replay_id = r.id
     WHERE ${matchFilter}
     ORDER BY r.date DESC
-    LIMIT 10
-  `).all(discordId, discordId);
+    LIMIT ?
+  `).all(discordId, discordId, limit);
 
   const recentMatches = recentMatchesRaw.map(m => ({
     ...m,

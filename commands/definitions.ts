@@ -232,6 +232,14 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
         description: 'The Heroes of the Storm battle tag of the player (including the # and number)',
         required: false,
       },
+      {
+        name: CommandIds.RECENT_MATCHES_LIMIT,
+        type: ApplicationCommandOptionType.Integer,
+        description: 'Number of recent matches to include (default: 13)',
+        required: false,
+        minValue: 1,
+        maxValue: 100,
+      },
     ],
   },
   {

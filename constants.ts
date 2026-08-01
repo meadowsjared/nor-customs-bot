@@ -58,6 +58,7 @@ export const enum CommandIds {
   PLAYERS_ALL_PAGE_SORT = 'players-all-page-sort',
   TWITCH = 'twitch',
   LOOKUP = 'lookup',
+  RECENT_MATCHES_LIMIT = 'num_recents',
   DELETE_PLAYER = 'delete-player',
   DELETE_HOTS_ACCOUNT = 'delete-hots-account',
   ADMIN = 'admin',

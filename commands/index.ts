@@ -1373,7 +1373,8 @@ async function handleLookupCommandSub(
       return accountMMR > max ? accountMMR : max;
     }, 0);
 
-    const matchStats = getPlayerMatchStats(discordId);
+    const limit = interaction.options.getInteger(CommandIds.RECENT_MATCHES_LIMIT, false) ?? 13;
+    const matchStats = getPlayerMatchStats(discordId, limit);
 
     const embed = new EmbedBuilder()
       .setTitle(`Player Lookup: ${discordData.discordDisplayName || discordData.discordName}`)
