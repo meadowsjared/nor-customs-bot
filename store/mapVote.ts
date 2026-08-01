@@ -212,6 +212,18 @@ export function startMapVoteSession(
   };
 }
 
+function mapSessionRowToSession(row: SessionRow): MapVoteSession {
+  return {
+    id: row.id,
+    channelId: row.channel_id,
+    messageIds: JSON.parse(row.message_ids || '[]'),
+    createdBy: row.created_by,
+    createdAt: new Date(row.created_at),
+    active: row.active === 1,
+    title: row.title ?? undefined,
+  };
+}
+
 /**
  * Retrieves the active vote session in a channel.
  */
@@ -222,17 +234,7 @@ export function getActiveMapVoteSession(channelId: string): MapVoteSession | und
     )
     .get(channelId);
 
-  if (!row) return undefined;
-
-  return {
-    id: row.id,
-    channelId: row.channel_id,
-    messageIds: JSON.parse(row.message_ids || '[]'),
-    createdBy: row.created_by,
-    createdAt: new Date(row.created_at),
-    active: row.active === 1,
-    title: row.title ?? undefined,
-  };
+  return row ? mapSessionRowToSession(row) : undefined;
 }
 
 /**
@@ -257,17 +259,7 @@ export function getNewestMapVoteSession(channelId?: string): MapVoteSession | un
       .get();
   }
 
-  if (!row) return undefined;
-
-  return {
-    id: row.id,
-    channelId: row.channel_id,
-    messageIds: JSON.parse(row.message_ids || '[]'),
-    createdBy: row.created_by,
-    createdAt: new Date(row.created_at),
-    active: row.active === 1,
-    title: row.title ?? undefined,
-  };
+  return row ? mapSessionRowToSession(row) : undefined;
 }
 
 /**
@@ -282,16 +274,7 @@ export function updateMapVoteSessionMessageIds(sessionId: string, messageIds: st
  */
 export function getMapVoteSessionById(sessionId: string): MapVoteSession | undefined {
   const row = db.prepare<[string], SessionRow>(`SELECT * FROM map_vote_sessions WHERE id = ?`).get(sessionId);
-  if (!row) return undefined;
-  return {
-    id: row.id,
-    channelId: row.channel_id,
-    messageIds: JSON.parse(row.message_ids || '[]'),
-    createdBy: row.created_by,
-    createdAt: new Date(row.created_at),
-    active: row.active === 1,
-    title: row.title ?? undefined,
-  };
+  return row ? mapSessionRowToSession(row) : undefined;
 }
 
 /**
