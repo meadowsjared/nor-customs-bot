@@ -151,6 +151,12 @@ export function getMapVoteSortedList(sessionId?: string): {
     }
   }
 
+  // Fallback: If all maps were played in the last 15 hours, do not exclude any maps
+  if (activeMaps.length === 0) {
+    activeMaps.push(...recentlyPlayedMaps);
+    recentlyPlayedMaps.length = 0;
+  }
+
   // Sort active maps:
   // 1. Current votes in session DESC
   // 2. Historical play count DESC
