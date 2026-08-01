@@ -124,6 +124,9 @@ function buildSummaryEmbed(
     }
   }
 
+  // limit it to 10 maps, because discord has a limit of 10 images per embed
+  mapsToDisplay = mapsToDisplay.slice(0, 10);
+
   for (let i = 0; i < mapsToDisplay.length; i++) {
     const mapDef = mapsToDisplay[i];
     const imagePath = path.join(MAPS_ASSETS_DIR, mapDef.imageFileName);
