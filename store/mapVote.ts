@@ -102,13 +102,13 @@ export function getGameNumberTonight(hours: number = 15): number {
 }
 
 /**
- * Queries play counts for each map directly from hots_replays table
+ * Queries play counts for each map directly from hots_replays table, ordered by count DESC
  */
 export function getHistoricalPlayCounts(): Record<string, number> {
   const countsMap: Record<string, number> = {};
   try {
     const rows = db
-      .prepare<[], ReplayMapRow>(`SELECT map, COUNT(*) as count FROM hots_replays GROUP BY map`)
+      .prepare<[], ReplayMapRow>(`SELECT map, COUNT(*) as count FROM hots_replays GROUP BY map ORDER BY count DESC`)
       .all();
     for (const r of rows) {
       if (r.map) {
