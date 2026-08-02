@@ -61,6 +61,7 @@ export const enum CommandIds {
   RECENT_MATCHES_LIMIT = 'num_recents',
   MIN_HERO_GAMES = 'min_hero_games',
   NUM_HEROES = 'num_heroes',
+  PUBLISH = 'publish',
   DELETE_PLAYER = 'delete-player',
   DELETE_HOTS_ACCOUNT = 'delete-hots-account',
   ADMIN = 'admin',

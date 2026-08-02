@@ -4,8 +4,10 @@ import {
   ButtonInteraction,
   CacheType,
   ChatInputCommandInteraction,
+  EmbedBuilder,
   MessageCreateOptions,
   MessageFlags,
+  MessagePayload,
   ModalSubmitInteraction,
 } from 'discord.js';
 import { botChannelName } from '../constants';
@@ -25,17 +27,11 @@ export async function announce(
     | ChatInputCommandInteraction<CacheType>
     | ButtonInteraction<CacheType>
     | ModalSubmitInteraction<CacheType>,
-  message: string,
-  flags?: InteractionReplyOptionsFlags,
-  components?: ActionRowBuilder<ButtonBuilder>[]
+  options: string | MessagePayload | MessageCreateOptions
 ) {
   const channel = interaction.guild?.channels.cache.find(ch => ch.name === botChannelName);
   if (channel?.isTextBased()) {
-    return await channel.send({
-      content: message,
-      flags,
-      components,
-    });
+    return await channel.send(options);
   }
   return undefined;
 }

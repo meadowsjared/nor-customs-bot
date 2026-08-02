@@ -176,9 +176,11 @@ export async function handleNewGameCommand(
   const lobbyStatusMessage = generateLobbyStatusMessage(previousPlayersMessage);
 
   // announce in the channel that a new game has started and all players have been marked as inactive, so they need to hit the button if they are going to play
-  const sentMessage = await announce(interaction, lobbyStatusMessage, safePing(undefined), [
-    new ActionRowBuilder<ButtonBuilder>().addComponents(imPlayingBtn),
-  ]);
+  const sentMessage = await announce(interaction, {
+    content: lobbyStatusMessage,
+    flags: safePing(undefined),
+    components: [new ActionRowBuilder<ButtonBuilder>().addComponents(imPlayingBtn)],
+  });
 
   // Store the message ID so we can update it later
   if (sentMessage) {
@@ -1554,10 +1556,19 @@ async function handleLookupCommandSub(
       }
     }
 
-    await safeReply(interaction, {
-      embeds: [embed],
-      flags: safePing(MessageFlags.Ephemeral),
-    });
+    const publish = interaction.options.getString(CommandIds.PUBLISH) === 'true';
+
+    if (publish) {
+      // send the message publicly
+      await announce(interaction, {
+        embeds: [embed],
+      });
+    } else {
+      await safeReply(interaction, {
+        embeds: [embed],
+        flags: safePing(MessageFlags.Ephemeral),
+      });
+    }
   }
   // save the player to the database if they are not already there
   if (!player) {

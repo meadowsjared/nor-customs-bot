@@ -255,6 +255,18 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
         minValue: 1,
         maxValue: 100,
       },
+      {
+        name: CommandIds.PUBLISH,
+        type: ApplicationCommandOptionType.String,
+        description: 'Post the lookup results publicly instead of ephemeral',
+        required: false,
+        choices: [
+          {
+            name: 'true',
+            value: 'true',
+          },
+        ],
+      },
     ],
   },
   {
@@ -299,6 +311,18 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
         required: false,
         minValue: 1,
         maxValue: 100,
+      },
+      {
+        name: CommandIds.PUBLISH,
+        type: ApplicationCommandOptionType.String,
+        description: 'Post the lookup results publicly instead of ephemeral',
+        required: false,
+        choices: [
+          {
+            name: 'true',
+            value: 'true',
+          },
+        ],
       },
     ],
   },
