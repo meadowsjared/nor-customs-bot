@@ -120,15 +120,7 @@ function buildSummaryEmbed(
   const embeds: EmbedBuilder[] = [mainEmbed];
 
   let mapsToDisplay: MapDefinition[] = [];
-  if (isEnded) {
-    if (winnerMap) {
-      mapsToDisplay = [winnerMap];
-    } else if (topTiedTallies.length > 0) {
-      mapsToDisplay = topTiedTallies
-        .map(t => HOTS_MAPS.find(m => m.id === t.mapId))
-        .filter((m): m is MapDefinition => m !== undefined);
-    }
-  } else {
+  if (!isEnded) {
     if (topTiedTallies.length > 0) {
       mapsToDisplay = topTiedTallies
         .map(t => HOTS_MAPS.find(m => m.id === t.mapId))
