@@ -340,6 +340,15 @@ export async function parseReplay(file: string) {
       return null;
     }
 
+    let mapName = replay.match.map;
+    if (mapName === 'Garden of Terror') {
+      const fileNameLower = file.toLowerCase();
+      if (fileNameLower.includes('classic')) {
+        mapName = 'Garden of Terror Classic';
+        replay.match.map = mapName;
+      }
+    }
+
     const players = Object.values(replay.players).map(player => player);
     const team0Players = players
       .filter(p => p.team === 0)
@@ -355,7 +364,7 @@ export async function parseReplay(file: string) {
       date: replay.match.date,
       type: replay.match.type,
       mode: replay.match.mode,
-      map: replay.match.map,
+      map: mapName,
       length: replay.match.length,
       winner: replay.match.winner,
       team0Takedowns: replay.match.team0Takedowns,
@@ -681,14 +690,6 @@ export function saveReplayToDb(parsedReplay: ParsedReplay): number {
   const saveTransaction = db.transaction(() => {
     // 1. Prepare match insert data
     const matchData: Record<string, any> = { ...replay.match };
-
-    // Check if map is Garden of Terror Classic from filename
-    if (matchData.map === 'Garden of Terror') {
-      const fileNameLower = (matchData.filename || parsedReplay.file || '').toLowerCase();
-      if (fileNameLower.includes('classic')) {
-        matchData.map = 'Garden of Terror Classic';
-      }
-    }
 
     // Extract draft bans & picks
     if (matchData.bans) {
