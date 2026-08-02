@@ -548,14 +548,6 @@ export async function handleEndMapVoteCommand(
         .setTitle(closedTitle)
         .setDescription(`🏆 **Winning Map: ${winners[0].mapName}** with ${winners[0].count} vote${winners[0].count === 1 ? '' : 's'}!`)
         .setColor(color);
-
-      if (winnerMap) {
-        const attachment = createMapAttachment(winnerMap);
-        if (attachment) {
-          files.push(attachment);
-          closedEmbed.setImage(`attachment://${winnerMap.imageFileName}`);
-        }
-      }
     } else {
       color = 0xf1c40f;
       closedTitle = `${session.title ?? 'Game 1'} : Tie (${winners.map(w => w.mapName).join(' vs ')})`;
@@ -565,13 +557,13 @@ export async function handleEndMapVoteCommand(
         .setTitle(closedTitle)
         .setDescription(`🤝 **Tie for 1st place!** (${maxVotes} vote${maxVotes === 1 ? '' : 's'} each)\n\n**Tied Maps:**\n${tiedListStr}`)
         .setColor(color);
-
-      const tiedWinnersToDisplay = winners.slice(0, 10);
-      const tiedMaps = tiedWinnersToDisplay
-        .map(t => HOTS_MAPS.find(m => m.id === t.mapId))
-        .filter((m): m is MapDefinition => m !== undefined);
-      attachMapImages(tiedMaps, files, color, closedEmbed, closedEmbeds);
     }
+
+    const winnersToDisplay = winners.slice(0, 10);
+    const winnerMaps = winnersToDisplay
+      .map(t => HOTS_MAPS.find(m => m.id === t.mapId))
+      .filter((m): m is MapDefinition => m !== undefined);
+    attachMapImages(winnerMaps, files, color, closedEmbed, closedEmbeds);
 
     const winningMapAnnouncementMsg = await channel.send({
       embeds: closedEmbeds,
