@@ -23,8 +23,8 @@ import {
   getMapVoteSessionById,
   getMapVoteSortedList,
   getNewestMapVoteSession,
+  getSortedHotsMaps,
   getUserVote,
-  HOTS_MAPS,
   removeMapVote,
   startMapVoteSession,
   updateMapVoteSessionMessageIds,
@@ -120,10 +120,11 @@ function buildSummaryEmbed(
   const embeds: EmbedBuilder[] = [mainEmbed];
 
   let mapsToDisplay: MapDefinition[] = [];
+  const sortedMaps = getSortedHotsMaps();
   if (!isEnded) {
     if (topTiedTallies.length > 0) {
       mapsToDisplay = topTiedTallies
-        .map(t => HOTS_MAPS.find(m => m.id === t.mapId))
+        .map(t => sortedMaps.find(m => m.id === t.mapId))
         .filter((m): m is MapDefinition => m !== undefined);
     }
   }
@@ -299,7 +300,7 @@ export async function handleVoteMapButtonClick(interaction: ButtonInteraction<Ca
     return;
   }
 
-  const mapDef = HOTS_MAPS.find(m => m.id === mapId);
+  const mapDef = getSortedHotsMaps().find(m => m.id === mapId);
   if (!mapDef) {
     await interaction.followUp({
       content: 'Unknown map.',
@@ -508,8 +509,9 @@ export async function handleEndMapVoteCommand(
   let winnerMap: MapDefinition | undefined;
   let winnerText = '';
 
+  const sortedMaps = getSortedHotsMaps();
   if (winners.length === 1) {
-    winnerMap = HOTS_MAPS.find(m => m.id === winners[0].mapId);
+    winnerMap = sortedMaps.find(m => m.id === winners[0].mapId);
     winnerText = `🏆 **Winning Map: ${winners[0].mapName}** with ${winners[0].count} vote${winners[0].count === 1 ? '' : 's'}!`;
   } else if (winners.length > 1) {
     winnerText = `🤝 **Tie between:** ${winners.map(w => `**${w.mapName}**`).join(', ')} (${maxVotes} votes each)!`;
@@ -534,7 +536,7 @@ export async function handleEndMapVoteCommand(
     closedEmbeds.push(closedEmbed);
 
     if (winners.length === 1) {
-      const winnerMap = HOTS_MAPS.find(m => m.id === winners[0].mapId);
+      const winnerMap = sortedMaps.find(m => m.id === winners[0].mapId);
       closedTitle = `${session.title ?? 'Game 1'} : ${winnerMap?.name ?? winners[0].mapName}`;
       closedEmbed
         .setTitle(closedTitle)
@@ -553,7 +555,7 @@ export async function handleEndMapVoteCommand(
 
     const winnersToDisplay = winners.slice(0, 10);
     const winnerMaps = winnersToDisplay
-      .map(t => HOTS_MAPS.find(m => m.id === t.mapId))
+      .map(t => sortedMaps.find(m => m.id === t.mapId))
       .filter((m): m is MapDefinition => m !== undefined);
     attachMapImages(winnerMaps, files, color, closedEmbed, closedEmbeds);
 

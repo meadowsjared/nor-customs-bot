@@ -122,6 +122,21 @@ export function getHistoricalPlayCounts(): Record<string, number> {
 }
 
 /**
+ * Returns HOTS_MAPS dynamically sorted by historical play count DESC from hots_replays.
+ */
+export function getSortedHotsMaps(): MapDefinition[] {
+  const historicalCounts = getHistoricalPlayCounts();
+  return [...HOTS_MAPS].sort((a, b) => {
+    const countA = historicalCounts[a.name.toLowerCase()] ?? 0;
+    const countB = historicalCounts[b.name.toLowerCase()] ?? 0;
+    if (countB !== countA) {
+      return countB - countA;
+    }
+    return HOTS_MAPS.indexOf(a) - HOTS_MAPS.indexOf(b);
+  });
+}
+
+/**
  * Returns active maps (excluding maps played in the last 15 hours),
  * sorted by current session votes DESC, then historical play count DESC.
  */
@@ -142,7 +157,8 @@ export function getMapVoteSortedList(sessionId?: string): {
   const activeMaps: MapDefinition[] = [];
   const recentlyPlayedMaps: MapDefinition[] = [];
 
-  for (const mapDef of HOTS_MAPS) {
+  const sortedMaps = getSortedHotsMaps();
+  for (const mapDef of sortedMaps) {
     const lowerName = mapDef.name.toLowerCase();
     if (recentlyPlayedNames.includes(lowerName)) {
       recentlyPlayedMaps.push(mapDef);
@@ -160,7 +176,7 @@ export function getMapVoteSortedList(sessionId?: string): {
   // Sort active maps:
   // 1. Current votes in session DESC
   // 2. Historical play count DESC
-  // 3. Base HOTS_MAPS index
+  // 3. Base sortedMaps index
   activeMaps.sort((a, b) => {
     const currentVotesA = talliesByMapId[a.id]?.count ?? 0;
     const currentVotesB = talliesByMapId[b.id]?.count ?? 0;
@@ -176,7 +192,7 @@ export function getMapVoteSortedList(sessionId?: string): {
       return histB - histA;
     }
 
-    return HOTS_MAPS.indexOf(a) - HOTS_MAPS.indexOf(b);
+    return sortedMaps.indexOf(a) - sortedMaps.indexOf(b);
   });
 
   return { activeMaps, recentlyPlayedMaps, tallies };
@@ -309,7 +325,9 @@ export function getMapVoteResults(sessionId: string): MapVoteTally[] {
 
   const talliesMap: Record<string, { count: number; voters: string[] }> = {};
 
-  for (const mapDef of HOTS_MAPS) {
+  const sortedMaps = getSortedHotsMaps();
+
+  for (const mapDef of sortedMaps) {
     talliesMap[mapDef.id] = { count: 0, voters: [] };
   }
 
@@ -321,7 +339,7 @@ export function getMapVoteResults(sessionId: string): MapVoteTally[] {
     talliesMap[vote.map_id].voters.push(vote.user_name);
   }
 
-  return HOTS_MAPS.map(mapDef => ({
+  return sortedMaps.map(mapDef => ({
     mapId: mapDef.id,
     mapName: mapDef.name,
     count: talliesMap[mapDef.id].count,
