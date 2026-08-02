@@ -153,3 +153,6 @@ SELECT * FROM map_votes LEFT JOIN map_vote_sessions AS p ON p.id = session_id;
 
 # get the map popularity
 SELECT map, COUNT(*) AS count FROM hots_replays GROUP BY map ORDER BY count DESC;
+
+# import replays 
+/import-replays start_date_or_count:08/05/2020 end_date:8/17/2024
