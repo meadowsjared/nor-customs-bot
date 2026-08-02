@@ -59,6 +59,8 @@ export const enum CommandIds {
   TWITCH = 'twitch',
   LOOKUP = 'lookup',
   RECENT_MATCHES_LIMIT = 'num_recents',
+  MIN_HERO_GAMES = 'min_hero_games',
+  NUM_HEROES = 'num_heroes',
   DELETE_PLAYER = 'delete-player',
   DELETE_HOTS_ACCOUNT = 'delete-hots-account',
   ADMIN = 'admin',

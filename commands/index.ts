@@ -1374,7 +1374,9 @@ async function handleLookupCommandSub(
     }, 0);
 
     const limit = interaction.options.getInteger(CommandIds.RECENT_MATCHES_LIMIT, false) ?? 13;
-    const matchStats = getPlayerMatchStats(discordId, limit);
+    const minHeroGames = interaction.options.getInteger(CommandIds.MIN_HERO_GAMES, false) ?? 5;
+    const numHeroes = interaction.options.getInteger(CommandIds.NUM_HEROES, false) ?? 3;
+    const matchStats = getPlayerMatchStats(discordId, limit, minHeroGames, numHeroes);
 
     const embed = new EmbedBuilder()
       .setTitle(`Player Lookup: ${discordData.discordDisplayName || discordData.discordName}`)
@@ -1433,7 +1435,11 @@ async function handleLookupCommandSub(
       const recentStats = `(${recentFormW}W - ${recentFormL}L, ${recentWinRate}% WR)`;
 
       const topHeroesStr = matchStats.topHeroes.length > 0
-        ? matchStats.topHeroes.map((h, i) => `${i + 1}. **${h.hero}** (${h.games}G, ${h.winRate}% WR)`).join('\n')
+        ? matchStats.topHeroes.map((h, i) => `${i + 1}. **${h.hero}**\n(${h.games}G, ${h.winRate}% WR)`).join('\n')
+        : 'N/A';
+
+      const bestHeroesStr = matchStats.bestHeroes.length > 0
+        ? matchStats.bestHeroes.map((h, i) => `${i + 1}. **${h.hero}**\n(${h.games}G, ${h.winRate}% WR)`).join('\n')
         : 'N/A';
 
       const formatBmCategory = (label: string, count: number, td: number, deaths: number) => {
@@ -1530,11 +1536,15 @@ async function handleLookupCommandSub(
       }
 
       embed.addFields({
-        name: '⭐ Top Heroes',
+        name: '⭐ Top Played Heroes',
         value: topHeroesStr.slice(0, 1024),
         inline: true,
       });
-
+      embed.addFields({
+        name: '🏆 Best Heroes',
+        value: bestHeroesStr.slice(0, 1024),
+        inline: true,
+      });
       if (bmStr) {
         embed.addFields({
           name: '💃 BM Highlights',

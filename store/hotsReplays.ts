@@ -837,6 +837,12 @@ export interface PlayerMatchStats {
     wins: number;
     winRate: number;
   }>;
+  bestHeroes: Array<{
+    hero: string;
+    games: number;
+    wins: number;
+    winRate: number;
+  }>;
   bmStats: {
     bsteps: number;
     bstepTd: number;
@@ -853,7 +859,12 @@ export interface PlayerMatchStats {
   };
 }
 
-export function getPlayerMatchStats(discordId: string, limit: number = 13): PlayerMatchStats {
+export function getPlayerMatchStats(
+  discordId: string,
+  limit: number = 13,
+  minBestHeroGames: number = 5,
+  numHeroesLimit: number = 3,
+): PlayerMatchStats {
   type BmRow = {
     bsteps: number;
     bstepTd: number;
@@ -924,14 +935,24 @@ export function getPlayerMatchStats(discordId: string, limit: number = 13): Play
   }));
 
   type TopHeroRow = { hero: string; games: number; wins: number; winRate: number };
-  const topHeroes = db.prepare<[string, string], TopHeroRow>(`
+  const topHeroes = db.prepare<[string, string, number], TopHeroRow>(`
     SELECT s.hero, COUNT(*) as games, SUM(CASE WHEN s.win = 1 THEN 1 ELSE 0 END) as wins, ROUND(AVG(s.win) * 100, 1) as winRate
     FROM hots_replay_player_game_stats s
     WHERE ${matchFilter}
     GROUP BY s.hero
     ORDER BY games DESC
-    LIMIT 3
-  `).all(discordId, discordId);
+    LIMIT ?
+  `).all(discordId, discordId, numHeroesLimit);
+
+  const bestHeroes = db.prepare<[string, string, number, number], TopHeroRow>(`
+    SELECT s.hero, COUNT(*) as games, SUM(CASE WHEN s.win = 1 THEN 1 ELSE 0 END) as wins, ROUND(AVG(s.win) * 100, 1) as winRate
+    FROM hots_replay_player_game_stats s
+    WHERE ${matchFilter}
+    GROUP BY s.hero
+    HAVING COUNT(*) >= ?
+    ORDER BY AVG(s.win) DESC, COUNT(*) DESC
+    LIMIT ?
+  `).all(discordId, discordId, minBestHeroGames, numHeroesLimit);
 
   return {
     totalGames,
@@ -940,6 +961,7 @@ export function getPlayerMatchStats(discordId: string, limit: number = 13): Play
     winRate,
     recentMatches,
     topHeroes,
+    bestHeroes,
     bmStats,
   };
 }
