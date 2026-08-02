@@ -147,3 +147,6 @@ SELECT p.discord_id, p.discord_name, COUNT(s.id) as Games, SUM(s.win) as Wins, R
 
 # check database voting sessions:
 SELECT * FROM map_votes LEFT JOIN map_vote_sessions AS p ON p.id = session_id;
+
+# get the map popularity
+SELECT map, COUNT(*) AS count FROM hots_replays GROUP BY map ORDER BY count DESC;
