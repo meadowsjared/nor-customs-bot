@@ -682,6 +682,14 @@ export function saveReplayToDb(parsedReplay: ParsedReplay): number {
     // 1. Prepare match insert data
     const matchData: Record<string, any> = { ...replay.match };
 
+    // Check if map is Garden of Terror Classic from filename
+    if (matchData.map === 'Garden of Terror') {
+      const fileNameLower = (matchData.filename || parsedReplay.file || '').toLowerCase();
+      if (fileNameLower.includes('classic')) {
+        matchData.map = 'Garden of Terror Classic';
+      }
+    }
+
     // Extract draft bans & picks
     if (matchData.bans) {
       for (let team = 0; team <= 1; team++) {
