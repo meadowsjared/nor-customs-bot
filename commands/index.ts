@@ -2955,7 +2955,7 @@ function parseReplayFilterParams(rawStartInput?: string | null, rawEndInput?: st
     }
   } else {
     // Default max files to 1 if no input provided
-    maxFilesLimit = 1;
+    maxFilesLimit = 8;
   }
 
   if (rawEndInput && rawEndInput.trim() !== '') {
