@@ -23,7 +23,6 @@ db.exec(`
     previousPlayersList TEXT DEFAULT ''
   );
 `);
-//DELETE FROM lobby_messages WHERE messageType = 'new_game';
 
 /**
  * Saves a Discord VoiceChannel to the local store.
