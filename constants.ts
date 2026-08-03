@@ -20,6 +20,7 @@ export const adminUserIds = [
 // create an enum for the commands
 export const enum CommandIds {
   NEW_GAME = 'new_game',
+  MAKE_TEAMS = 'make_teams',
   SET_TEAMS = 'set_teams',
   DRAFT = 'draft',
   SWAP_PLAYERS = 'swap_players',

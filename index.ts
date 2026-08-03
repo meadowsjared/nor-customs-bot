@@ -44,7 +44,7 @@ import {
   handleAdminPrimaryCommand,
   handleLookupByDiscordIdCommand,
   handleAdminAddHotsAccountByDiscordIdCommand,
-  handleDraftTeamsCommand,
+  handleMakeTeamsCommand,
   handlePublishTeamsCommand,
   handleSwapTeamsCommand,
   handleImportReplaysCommand,
@@ -189,9 +189,9 @@ client.on('interactionCreate', async interaction => {
       // Handle load teams command
       handleSetTeamsCommand(interaction);
       break;
-    case CommandIds.DRAFT:
-      // Handle draft command
-      handleDraftTeamsCommand(interaction);
+    case CommandIds.MAKE_TEAMS:
+      // Handle make teams command (MMR auto-balanced teams)
+      handleMakeTeamsCommand(interaction);
       break;
     case CommandIds.SWAP_PLAYERS:
       // Handle swap command

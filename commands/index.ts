@@ -352,19 +352,20 @@ export async function handleSetTeamsCommand(
 }
 
 /**
- * Handles the /draft command interaction, which creates teams from the active players.
+ * Handles the /make_teams command interaction, which creates proposed teams from the active players by MMR.
  * The teams are created by sorting the players by their MMR and alternating them between the two teams.
  * The teams are then saved to the database and a message is generated to show who is on what team.
  * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
  * @returns Promise<void>
  */
-export async function handleDraftTeamsCommand(
+export async function handleMakeTeamsCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ) {
   if (interaction.isButton()) {
     console.error('Interaction is not a command or button interaction');
     return;
   }
+
   const publish = interaction.options.getBoolean('publish', false) ?? false;
   const activePlayers = getActivePlayers();
   if (activePlayers.length < 1) {

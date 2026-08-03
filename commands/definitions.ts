@@ -84,6 +84,19 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     defaultMemberPermissions: minimumAdminPermissions,
   },
   {
+    name: CommandIds.MAKE_TEAMS,
+    description: 'Create proposed teams using MMR balancing',
+    defaultMemberPermissions: minimumAdminPermissions,
+    options: [
+      {
+        name: 'publish',
+        type: ApplicationCommandOptionType.Boolean,
+        description: 'Whether to instantly publish the teams',
+        required: false,
+      },
+    ],
+  },
+  {
     name: CommandIds.SET_TEAMS,
     description: 'Load teams data',
     defaultMemberPermissions: minimumAdminPermissions,
@@ -93,19 +106,6 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
         type: ApplicationCommandOptionType.String,
         description: 'The team data from the spreadsheet',
         required: true,
-      },
-    ],
-  },
-  {
-    name: CommandIds.DRAFT,
-    description: 'Draft players into teams',
-    defaultMemberPermissions: minimumAdminPermissions,
-    options: [
-      {
-        name: 'publish',
-        type: ApplicationCommandOptionType.Boolean,
-        description: 'Whether to instantly publish the draft',
-        required: false,
       },
     ],
   },
