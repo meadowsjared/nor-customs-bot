@@ -263,19 +263,6 @@ function ensureTableColumns(tableName: string, columns: readonly ColumnDefinitio
 }
 
 const initSchema = db.transaction(() => {
-  // Settings table
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS settings (
-      key TEXT PRIMARY KEY,
-      value TEXT NOT NULL
-    )
-  `);
-
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_settings_key
-    ON settings(key)
-  `);
-
   // hots_replays
   const createHotsReplaysTableSQL = generateCreateTableSQL('hots_replays', HOTS_REPLAYS_MATCH_COLUMNS);
   db.exec(createHotsReplaysTableSQL);
