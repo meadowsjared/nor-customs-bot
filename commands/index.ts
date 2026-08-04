@@ -379,15 +379,18 @@ export async function handleMakeTeamsCommand(
   const sortedPlayers = [...activePlayers].sort((a, b) => {
     return getPlayerMMR(b) - getPlayerMMR(a);
   });
-  // go through the sorted players, and alternate adding them to each team
+  // go through the sorted players, and alternate adding them to each team using snake draft (1, 2, 2, 1, 1, 2, 2, 1)
   const team1: { player: Player; index: number }[] = [];
   const team2: { player: Player; index: number }[] = [];
   const spectators: { player: Player; index: number }[] = [];
   for (let i = 0; i < sortedPlayers.length; i++) {
-    if (((i % 2 === 0 && i !== 0) || i === 1) && team2.length < 5) {
+    const isTeam2Turn = i % 4 === 1 || i % 4 === 2;
+    if (isTeam2Turn && team2.length < 5) {
       team2.push({ player: sortedPlayers[i], index: i });
     } else if (team1.length < 5) {
       team1.push({ player: sortedPlayers[i], index: i });
+    } else if (team2.length < 5) {
+      team2.push({ player: sortedPlayers[i], index: i });
     } else {
       spectators.push({ player: sortedPlayers[i], index: i });
     }
