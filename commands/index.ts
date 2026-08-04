@@ -289,7 +289,7 @@ export async function handleSetTeamsCommand(
     .filter(n => !isNaN(n));
   // now that we have the new team assignments
   const activePlayers = getActivePlayers();
-  activePlayers.sort((a, b) => (b.mmr ?? 0) - (a.mmr ?? 0));
+  activePlayers.sort((a, b) => getPlayerMMR(b) - getPlayerMMR(a));
   activePlayers.forEach((p, index) => (p.draftRank = index));
   if (team1Input.length > activePlayers.length) {
     // the maximum length is the total number of players
@@ -377,9 +377,7 @@ export async function handleMakeTeamsCommand(
   }
   // sort the players by their MMR
   const sortedPlayers = [...activePlayers].sort((a, b) => {
-    const aMmr = getPlayerMMR(a);
-    const bMmr = getPlayerMMR(b);
-    return bMmr - aMmr;
+    return getPlayerMMR(b) - getPlayerMMR(a);
   });
   // go through the sorted players, and alternate adding them to each team
   const team1: { player: Player; index: number }[] = [];
@@ -451,7 +449,7 @@ async function generateTeamsMessage(
   const activePlayers = getActivePlayers();
   team1.sort((a, b) => a.index - b.index);
   team2.sort((a, b) => a.index - b.index);
-  activePlayers.sort((a, b) => (b.mmr ?? 0) - (a.mmr ?? 0));
+  activePlayers.sort((a, b) => getPlayerMMR(b) - getPlayerMMR(a));
   activePlayers.forEach((p, index) => (p.draftRank = index));
   const team1List = team1
     .map(
@@ -600,7 +598,7 @@ export async function handleSwapTeamsCommand(
   /** this is a 1-based index */
   const playerBNumber = interaction.options.getInteger('player-b', true) - 1;
   const activePlayers = getActivePlayers();
-  activePlayers.sort((a, b) => (b.mmr ?? 0) - (a.mmr ?? 0));
+  activePlayers.sort((a, b) => (getPlayerMMR(b) - getPlayerMMR(a)));
   // we don't need to recalculate the draftRank here
   // because it should be calculated when the draft command is run,
   // and the swap command should only be used after a draft command,
@@ -632,8 +630,8 @@ export async function handleSwapTeamsCommand(
   if (playerA.team === playerB.team) {
     await safeReply(interaction, {
       content: `Both players are on the same team. Cannot swap.
-Player A: \`team: ${playerA.team}\` \`${playerANumber + 1}: ${playerA.mmr}\` <@${playerA.discordId}>
-Player B: \`team: ${playerB.team}\` \`${playerBNumber + 1}: ${playerB.mmr}\` <@${playerB.discordId}>`,
+Player A: \`team: ${playerA.team}\` \`${playerANumber + 1}: ${getPlayerMMR(playerA)}\` <@${playerA.discordId}>
+Player B: \`team: ${playerB.team}\` \`${playerBNumber + 1}: ${getPlayerMMR(playerB)}\` <@${playerB.discordId}>`,
       flags: MessageFlags.Ephemeral,
     });
     return;
