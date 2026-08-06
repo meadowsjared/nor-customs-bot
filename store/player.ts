@@ -38,7 +38,7 @@ const initSchema = db.transaction(() => {
       adjustment INTEGER,
       active INTEGER NOT NULL,
       team INTEGER CHECK(team IN (1, 2, 3)),
-      draft_rank INTEGER,
+      lobby_rank INTEGER,
       draft_order INTEGER,
       last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
@@ -48,6 +48,12 @@ const initSchema = db.transaction(() => {
     db.exec('ALTER TABLE players ADD COLUMN draft_order INTEGER;');
   } catch {
     // Column already exists
+  }
+
+  try {
+    db.exec('ALTER TABLE players RENAME COLUMN draft_rank TO lobby_rank;');
+  } catch {
+    // Column already renamed or draft_rank does not exist
   }
 
   const createHotsAccountsSQL = generateCreateTableSQL('hots_accounts', HOTS_ACCOUNTS_COLUMNS);
@@ -184,7 +190,7 @@ function getPlayerFromRow(row: FlatPlayer, accounts: HotsAccountRow[]): Player {
     role: row.role,
     active: row.active === 1,
     team: row.team ?? undefined, // Ensure team is undefined if null
-    draftRank: row.draft_rank ?? NaN,
+    lobbyRank: row.lobby_rank ?? NaN,
     draftOrder: row.draft_order ?? NaN,
     adjustment: row.adjustment,
     mmr:
@@ -672,7 +678,7 @@ async function updatePrimaryAccountInDb(
  */
 export function markAllPlayersInactive(): void {
   const stmt = db.prepare(
-    'UPDATE players SET active = 0, team = NULL, draft_rank = NULL WHERE active = 1 OR team IS NOT NULL',
+    'UPDATE players SET active = 0, team = NULL, lobby_rank = NULL WHERE active = 1 OR team IS NOT NULL',
   );
   stmt.run();
 }
@@ -811,13 +817,13 @@ function addDummyHotsAccount(discordId: string, hotsBattleTag: string) {
  * @returns void
  */
 export function clearTeams(): void {
-  const stmt = db.prepare('UPDATE players SET team = NULL, draft_rank = NULL');
+  const stmt = db.prepare('UPDATE players SET team = NULL, lobby_rank = NULL');
   stmt.run();
 }
 
 /**
  * Sets the teams for the players in the database using player objects.
- * This function first clears any existing team assignments and draft ranks,
+ * This function first clears any existing team assignments and lobby ranks,
  * then assigns players to team 1 and team 2 based on the provided arrays.
  * @param team1 Array of Player objects for team 1.
  * @param team2 Array of Player objects for team 2.
@@ -825,19 +831,19 @@ export function clearTeams(): void {
  */
 export function setTeamsFromPlayers(team1: Player[], team2: Player[], spectators: Player[]): void {
   const transaction = db.transaction(() => {
-    const clearStmt = db.prepare('UPDATE players SET team = NULL, draft_rank = NULL');
+    const clearStmt = db.prepare('UPDATE players SET team = NULL, lobby_rank = NULL');
     clearStmt.run();
     team1.forEach(p => {
-      const updateStmt = db.prepare('UPDATE players SET team = ?, draft_rank = ? WHERE discord_id = ?');
-      updateStmt.run(1, p.draftRank, p.discordId);
+      const updateStmt = db.prepare('UPDATE players SET team = ?, lobby_rank = ? WHERE discord_id = ?');
+      updateStmt.run(1, p.lobbyRank, p.discordId);
     });
     team2.forEach(p => {
-      const updateStmt = db.prepare('UPDATE players SET team = ?, draft_rank = ? WHERE discord_id = ?');
-      updateStmt.run(2, p.draftRank, p.discordId);
+      const updateStmt = db.prepare('UPDATE players SET team = ?, lobby_rank = ? WHERE discord_id = ?');
+      updateStmt.run(2, p.lobbyRank, p.discordId);
     });
     spectators.forEach(p => {
-      const updateStmt = db.prepare('UPDATE players SET team = ?, draft_rank = ? WHERE discord_id = ?');
-      updateStmt.run(null, p.draftRank, p.discordId);
+      const updateStmt = db.prepare('UPDATE players SET team = ?, lobby_rank = ? WHERE discord_id = ?');
+      updateStmt.run(null, p.lobbyRank, p.discordId);
     });
   });
   transaction();
@@ -930,7 +936,7 @@ export function getSortedActivePlayers(forceRefesh = false) {
     let currentRank = 1;
     activePlayersCache.data.forEach(p => {
       if (p.team !== undefined && p.team !== null) {
-        p.draftRank = currentRank++;
+        p.lobbyRank = currentRank++;
       }
     });
     return activePlayersCache.data;

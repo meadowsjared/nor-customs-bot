@@ -28,7 +28,7 @@ UPDATE players SET team = 1 WHERE discord_id IN ('243668219712372736','174577718
 UPDATE players SET team = 2 WHERE discord_id IN ('168240037924831232','85523383193698304','226434789387927552','235235346864930816','845713006796734495');
 
 mark all players as inactive:
-UPDATE players SET active = 0, team = NULL, draft_rank = NULL WHERE active = 1 OR team IS NOT NULL;
+UPDATE players SET active = 0, team = NULL, lobby_rank = NULL WHERE active = 1 OR team IS NOT NULL;
 
 get all active players:
 SELECT * FROM players WHERE active = 1 ORDER BY active, team;
@@ -114,8 +114,8 @@ DROP TABLE hots_accounts_old;
 
 # restart the app again to ensure the indexes are recreated now that the old table is gone
 
-# get all players with a team or draft rank, ordered by team and draft rank:
-SELECT * FROM players WHERE team IS NOT NULL OR draft_rank IS NOT NULL ORDER BY team, draft_rank;
+# get all players with a team or lobby rank, ordered by team and lobby rank:
+SELECT * FROM players WHERE team IS NOT NULL OR lobby_rank IS NOT NULL ORDER BY team, lobby_rank;
 
 Found 4 accounts in CSV but missing from database:
  1: IlIlIlIlIlIl#21459          IlIlIlIlIlIl

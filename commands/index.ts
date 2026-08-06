@@ -293,7 +293,7 @@ export async function handleSetTeamsCommand(
     .filter(n => !isNaN(n));
   // now that we have the new team assignments
   const sortedPlayers = getSortedActivePlayers();
-  sortedPlayers.forEach((p, index) => (p.draftRank = index));
+  sortedPlayers.forEach((p, index) => (p.lobbyRank = index));
   if (team1Input.length > sortedPlayers.length) {
     // the maximum length is the total number of players
     await safeReply(interaction, {
@@ -335,11 +335,11 @@ export async function handleSetTeamsCommand(
       return acc;
     }, []);
   // now we have the two teams, we need to set them in the database
-  // go through sortedPlayers, and assign draftRank
-  const newTeam1: Player[] = sortedPlayers.filter(p => team1Input.includes(p.draftRank));
-  const newTeam2: Player[] = sortedPlayers.filter(p => team2InputEffective.includes(p.draftRank));
+  // go through sortedPlayers, and assign lobbyRank
+  const newTeam1: Player[] = sortedPlayers.filter(p => team1Input.includes(p.lobbyRank));
+  const newTeam2: Player[] = sortedPlayers.filter(p => team2InputEffective.includes(p.lobbyRank));
   const newSpectators: Player[] = sortedPlayers.filter(
-    p => !team1Input.includes(p.draftRank) && !team2InputEffective.includes(p.draftRank),
+    p => !team1Input.includes(p.lobbyRank) && !team2InputEffective.includes(p.lobbyRank),
   );
 
   // set the teams in the database
@@ -1136,11 +1136,11 @@ async function generateTeamsMessage(
     return;
   }
   const activePlayers = getSortedActivePlayers();
-  activePlayers.forEach((p, index) => (p.draftRank = index));
+  activePlayers.forEach((p, index) => (p.lobbyRank = index));
   const team1List = team1
     .map(
       p =>
-        `\`${p.draftRank + 1}: ${p.mmr}\` ${`<@${p.discordId}>`} ${p.usernames.accounts
+        `\`${p.lobbyRank + 1}: ${p.mmr}\` ${`<@${p.discordId}>`} ${p.usernames.accounts
           ?.find(account => account.isPrimary)
           ?.hotsBattleTag.replace(/#.*$/, '')} \`${getPlayerRolesFormatted(p.role)}\``,
     )
@@ -1148,7 +1148,7 @@ async function generateTeamsMessage(
   const team2List = team2
     .map(
       p =>
-        `\`${p.draftRank + 1}: ${p.mmr}\` ${`<@${p.discordId}>`} ${p.usernames.accounts
+        `\`${p.lobbyRank + 1}: ${p.mmr}\` ${`<@${p.discordId}>`} ${p.usernames.accounts
           ?.find(account => account.isPrimary)
           ?.hotsBattleTag.replace(/#.*$/, '')} \`${getPlayerRolesFormatted(p.role)}\``,
     )
@@ -1159,7 +1159,7 @@ async function generateTeamsMessage(
   const spectatorList = spectators
     .map(
       p =>
-        `\`${p.draftRank + 1}: ${p.mmr}\` ${`<@${p.discordId}>`} ${p.usernames.accounts
+        `\`${p.lobbyRank + 1}: ${p.mmr}\` ${`<@${p.discordId}>`} ${p.usernames.accounts
           ?.find(account => account.isPrimary)
           ?.hotsBattleTag.replace(/#.*$/, '')}`,
     )
@@ -1284,17 +1284,17 @@ export async function handleSwapTeamsCommand(
   /** this is a 1-based index */
   const playerBNumber = interaction.options.getInteger('player-b', true) - 1;
   const activePlayers = getSortedActivePlayers();
-  // we don't need to recalculate the draftRank here
-  // because it should be calculated when the draft command is run,
-  // and the swap command should only be used after a draft command,
-  // so the draftRank should already be set correctly.
+  // we don't need to recalculate the lobbyRank here
+  // because it should be calculated when the team command is run,
+  // and the swap command should only be used after a team command,
+  // so the lobbyRank should already be set correctly.
   // If we recalculate it here,
   // it could cause issues if the MMR of the players has
-  // changed since the draft command was run.
-  // activePlayers.forEach((p, index) => (p.draftRank = index));
+  // changed since the team command was run.
+  // activePlayers.forEach((p, index) => (p.lobbyRank = index));
   // get the discord_id of the two players
-  const playerA = activePlayers.find(p => (p.draftRank ?? NaN) === playerANumber);
-  const playerB = activePlayers.find(p => (p.draftRank ?? NaN) === playerBNumber);
+  const playerA = activePlayers.find(p => (p.lobbyRank ?? NaN) === playerANumber);
+  const playerB = activePlayers.find(p => (p.lobbyRank ?? NaN) === playerBNumber);
   // now we have the teams, and we know who to swap
   if (
     playerANumber < 0 ||
@@ -1945,7 +1945,7 @@ ${validationResult.rules}
         usernames: { ...discordData },
         active: false,
         team: undefined,
-        draftRank: NaN,
+        lobbyRank: NaN,
         draftOrder: NaN,
         adjustment: null,
         mmr: 0,
@@ -2293,7 +2293,7 @@ async function handleLookupCommandSub(
         },
         active: false,
         team: undefined,
-        draftRank: NaN,
+        lobbyRank: NaN,
         draftOrder: NaN,
         adjustment: null,
         mmr: 0,
@@ -2457,7 +2457,7 @@ export async function handleJoinCommand(
     role,
     active: true,
     team: undefined,
-    draftRank: NaN,
+    lobbyRank: NaN,
     draftOrder: NaN,
     adjustment: null,
     mmr: 0,
