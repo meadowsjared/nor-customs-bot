@@ -1054,7 +1054,7 @@ export async function handleDraftTeamAssignCommand(
       return;
     }
 
-    const draftOrder = player.draftOrder ?? getNextDraftOrder();
+    const draftOrder = player.draftOrder || getNextDraftOrder();
     assignPlayerToTeam(player.discordId, targetTeam, draftOrder);
 
     await updateDraftUIMessage(interaction.guildId, interaction);
