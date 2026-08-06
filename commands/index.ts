@@ -2,6 +2,7 @@ import dotenv from 'dotenv';
 import fs from 'fs';
 import {
   ActionRowBuilder,
+  AutocompleteInteraction,
   ButtonBuilder,
   ButtonComponent,
   ButtonInteraction,
@@ -42,7 +43,6 @@ import { announce, safePing } from '../utils/announce';
 import {
   getActivePlayers,
   getPlayerByDiscordId,
-  getTeams,
   handleAddHotsAccount,
   markAllPlayersInactive,
   savePlayer,
@@ -59,6 +59,12 @@ import {
   deleteHotsAccount,
   getAllPlayers,
   handleDeleteHotsAccount,
+  assignPlayerToTeam,
+  resetActivePlayerTeams,
+  getNextDraftOrder,
+  getDraftPickedCount,
+  getSortedActivePlayers,
+  getTeams,
 } from '../store/player';
 import {
   saveChannel,
@@ -71,6 +77,7 @@ import {
 import { DiscordUserNames, Player } from '../types/player';
 import { client } from '../index';
 import { parseReplay, saveReplayToDb, getPlayerMatchStats, optimizeDb } from '../store/hotsReplays';
+import { getSetting, setSetting } from '../store/settings';
 import path from 'path';
 import { validateBattleTag } from '../utils/heroesOfTheStorm';
 dotenv.config();
@@ -90,18 +97,20 @@ function generateLobbyStatusMessage(pPreviousPlayersList?: string): string {
     (p, index) =>
       `${index + 1}: @${p.usernames.discordDisplayName}: (${(
         p.usernames.accounts?.find(a => a.isPrimary)?.hotsBattleTag ?? 'hots account missing! :scream:'
-      ).replace(/#.*$/, '')}) \`${getPlayerRolesFormatted(p.role)}\`${p.usernames.accounts?.length === 1 &&
+      ).replace(/#.*$/, '')}) \`${getPlayerRolesFormatted(p.role)}\`${
+        p.usernames.accounts?.length === 1 &&
         p.usernames.accounts[0].hpSlGames === null &&
         p.usernames.accounts[0].hpQmGames === null &&
         p.usernames.accounts[0].hpArGames === null
-        ? ' loading MMR...'
-        : ''
-      }${p.usernames.accounts?.length === 1 &&
+          ? ' loading MMR...'
+          : ''
+      }${
+        p.usernames.accounts?.length === 1 &&
         p.usernames.accounts[0].hpSlGames === -1 &&
         p.usernames.accounts[0].hpQmGames === -1 &&
         p.usernames.accounts[0].hpArGames === -1
-        ? ' MMR error!... :scream:'
-        : ''
+          ? ' MMR error!... :scream:'
+          : ''
       }`,
   );
 
@@ -268,11 +277,6 @@ function getMessageContent(options: string | MessagePayload | InteractionReplyOp
 export async function handleSetTeamsCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ) {
-  type TeamName = 'team1' | 'team2';
-  type Teams = {
-    [K in TeamName]: string[];
-  };
-
   if (interaction.isButton()) {
     console.error('Interaction is not a command or button interaction');
     return;
@@ -288,13 +292,12 @@ export async function handleSetTeamsCommand(
     .map(n => parseInt(n, 10))
     .filter(n => !isNaN(n));
   // now that we have the new team assignments
-  const activePlayers = getActivePlayers();
-  activePlayers.sort((a, b) => getPlayerMMR(b) - getPlayerMMR(a));
-  activePlayers.forEach((p, index) => (p.draftRank = index));
-  if (team1Input.length > activePlayers.length) {
+  const sortedPlayers = getSortedActivePlayers();
+  sortedPlayers.forEach((p, index) => (p.draftRank = index));
+  if (team1Input.length > sortedPlayers.length) {
     // the maximum length is the total number of players
     await safeReply(interaction, {
-      content: `Too many players provided. There are currently ${activePlayers.length} players in total.`,
+      content: `Too many players provided. There are currently ${sortedPlayers.length} players in total.`,
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -325,30 +328,23 @@ export async function handleSetTeamsCommand(
   // populate team 2
   const team2InputEffective =
     team2Input ??
-    activePlayers.reduce((acc: number[], _, index: number) => {
+    sortedPlayers.reduce((acc: number[], _, index: number) => {
       if (!team1Input.includes(index) && acc.length < 5) {
         acc.push(index);
       }
       return acc;
     }, []);
   // now we have the two teams, we need to set them in the database
-  const team1: { player: Player; index: number }[] = [];
-  const team2: { player: Player; index: number }[] = [];
-  const spectators: { player: Player; index: number }[] = [];
-  activePlayers.forEach(p => {
-    if (team1Input.includes(p.draftRank)) {
-      team1.push({ player: p, index: p.draftRank });
-      return;
-    }
-    if (team2InputEffective.includes(p.draftRank)) {
-      team2.push({ player: p, index: p.draftRank });
-      return;
-    }
-    spectators.push({ player: p, index: p.draftRank });
-  });
+  // go through sortedPlayers, and assign draftRank
+  const newTeam1: Player[] = sortedPlayers.filter(p => team1Input.includes(p.draftRank));
+  const newTeam2: Player[] = sortedPlayers.filter(p => team2InputEffective.includes(p.draftRank));
+  const newSpectators: Player[] = sortedPlayers.filter(
+    p => !team1Input.includes(p.draftRank) && !team2InputEffective.includes(p.draftRank),
+  );
+
   // set the teams in the database
-  setTeamsFromPlayers(team1, team2, spectators);
-  await generateTeamsMessage(interaction, team1, team2);
+  setTeamsFromPlayers(newTeam1, newTeam2, newSpectators);
+  await generateTeamsMessage(interaction, newTeam1, newTeam2);
 }
 
 /**
@@ -361,52 +357,687 @@ export async function handleSetTeamsCommand(
 export async function handleMakeTeamsCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ) {
+  const MAX_PLAYERS_PER_TEAM = 5;
   if (interaction.isButton()) {
     console.error('Interaction is not a command or button interaction');
     return;
   }
 
   const publish = interaction.options.getBoolean('publish', false) ?? false;
-  const activePlayers = getActivePlayers();
-  if (activePlayers.length < 1) {
+  const sortedPlayers = getSortedActivePlayers();
+  if (sortedPlayers.length < 1) {
     await safeReply(interaction, {
-      content: 'Not enough players to draft teams.',
+      content: 'Not enough players to make teams.',
       flags: MessageFlags.Ephemeral,
     });
     return;
   }
-  // sort the players by their MMR
-  const sortedPlayers = [...activePlayers].sort((a, b) => {
-    return getPlayerMMR(b) - getPlayerMMR(a);
-  });
+  const team1: Player[] = [];
+  const team2: Player[] = [];
+  const spectators: Player[] = [];
   // go through the sorted players, and alternate adding them to each team using snake draft (1, 2, 2, 1, 1, 2, 2, 1)
-  const team1: { player: Player; index: number }[] = [];
-  const team2: { player: Player; index: number }[] = [];
-  const spectators: { player: Player; index: number }[] = [];
-  for (let i = 0; i < sortedPlayers.length; i++) {
-    const isTeam2Turn = i % 4 === 1 || i % 4 === 2;
-    if (isTeam2Turn && team2.length < 5) {
-      team2.push({ player: sortedPlayers[i], index: i });
-    } else if (team1.length < 5) {
-      team1.push({ player: sortedPlayers[i], index: i });
-    } else if (team2.length < 5) {
-      team2.push({ player: sortedPlayers[i], index: i });
+  sortedPlayers.forEach((p, index) => {
+    if ((index % 4 == 0 || index % 4 == 3) && team1.length < MAX_PLAYERS_PER_TEAM) {
+      p.team = 1;
+      team1.push(p);
+    } else if ((index % 4 == 1 || index % 4 == 2) && team2.length < MAX_PLAYERS_PER_TEAM) {
+      p.team = 2;
+      team2.push(p);
     } else {
-      spectators.push({ player: sortedPlayers[i], index: i });
+      p.team = 0;
+      spectators.push(p);
     }
-  }
+  });
   // set the teams in the database
   setTeamsFromPlayers(team1, team2, spectators);
   await generateTeamsMessage(interaction, team1, team2, publish, true);
 }
 
-function getPlayerMMR(player: Player): number {
-  return (
-    (player.usernames.accounts?.reduce(
-      (bestMMR, account) => Math.max(bestMMR, account.hpQmMMR ?? 0, account.hpSlMMR ?? 0, account.hpArMMR ?? 0),
-      0,
-    ) ?? 0) + (player.adjustment ?? 0)
+/**
+ * Handles autocomplete for captain selection in /draft and /draft_captain
+ */
+export async function handleDraftAutocomplete(interaction: AutocompleteInteraction): Promise<void> {
+  const sortedPlayers = getSortedActivePlayers();
+  const focusedValue = interaction.options.getFocused().toLowerCase();
+
+  const filtered = sortedPlayers.filter(
+    p =>
+      p.usernames?.discordDisplayName?.toLowerCase().includes(focusedValue) ||
+      p.usernames?.discordGlobalName?.toLowerCase().includes(focusedValue) ||
+      p.usernames?.accounts?.some(acc => acc.hotsBattleTag?.toLowerCase().includes(focusedValue)),
   );
+
+  const choices = filtered.slice(0, 25).map(p => ({
+    name: `${p.usernames?.discordDisplayName ?? 'Player'} (${p.mmr})`,
+    value: p.discordId,
+  }));
+
+  await interaction.respond(choices);
+}
+
+/**
+ * Updates the active interactive draft message in channel
+ */
+export async function updateDraftUIMessage(
+  guildId: string | null,
+  interactionForGuild: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+) {
+  const draftMessages = getLobbyMessages([CommandIds.DRAFT]);
+  if (!draftMessages || draftMessages.length === 0) {
+    return;
+  }
+
+  const uiData = generateDraftUI(guildId);
+  try {
+    const channelId = draftMessages[0].channelId;
+    const messageId = draftMessages[0].messageId;
+    if (interactionForGuild && interactionForGuild.guild) {
+      const channel = interactionForGuild.guild.channels.cache.get(channelId);
+      if (channel?.isTextBased()) {
+        const message = await channel.messages.fetch(messageId);
+        await message.edit(uiData);
+      }
+    } else {
+      const guild = client.guilds.cache.get(guildId ?? '');
+      const channel = guild?.channels.cache.get(channelId);
+      if (channel?.isTextBased()) {
+        const message = await channel.messages.fetch(messageId);
+        await message.edit(uiData);
+      }
+    }
+  } catch (error) {
+    console.error('Failed to update draft UI message:', error);
+  }
+}
+
+/**
+ * Handles the /draft command interaction, which starts an interactive captain draft.
+ */
+export async function handleDraftCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+) {
+  const activeSortedPlayers = getSortedActivePlayers();
+  if (activeSortedPlayers.length < 2) {
+    await safeReply(interaction, {
+      content: 'Not enough active players in the lobby to start a draft. Need at least 2 active players.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  // Reset team assignments for active players
+  resetActivePlayerTeams();
+
+  let t1CaptainId = interaction.isChatInputCommand()
+    ? (interaction.options.getString('team1_captain') ?? undefined)
+    : undefined;
+  let t2CaptainId = interaction.isChatInputCommand()
+    ? (interaction.options.getString('team2_captain') ?? undefined)
+    : undefined;
+
+  if (!t1CaptainId) {
+    t1CaptainId = activeSortedPlayers[0].discordId;
+  }
+  if (!t2CaptainId) {
+    t2CaptainId =
+      t1CaptainId === activeSortedPlayers[0].discordId
+        ? activeSortedPlayers[1]?.discordId
+        : activeSortedPlayers[0].discordId;
+  }
+
+  const modeOpt = interaction.isChatInputCommand() ? (interaction.options.getString('mode') ?? 'captains') : 'captains';
+
+  setSetting('draft_mode', modeOpt, interaction.guildId);
+
+  // Automatically assign Captain 1 to Team 1 (rank #1) and Captain 2 to Team 2 (rank #2)
+  assignPlayerToTeam(t1CaptainId, 1, 1);
+  assignPlayerToTeam(t2CaptainId, 2, 2);
+
+  const uiData = generateDraftUI(interaction.guildId);
+
+  const sentMessage = await announce(interaction, uiData);
+
+  if (sentMessage) {
+    saveLobbyMessage(CommandIds.DRAFT, sentMessage.id, sentMessage.channelId, '');
+  }
+
+  const sentReply = await safeReply(interaction, {
+    content: 'Interactive draft started!',
+    flags: MessageFlags.Ephemeral,
+  });
+
+  await sentReply?.delete();
+}
+
+/**
+ * Builds the interactive draft message content and component buttons.
+ */
+export function generateDraftUI(guildId: string | null): {
+  content: string;
+  embeds: EmbedBuilder[];
+  components: ActionRowBuilder<ButtonBuilder>[];
+  allowedMentions: { parse: [] };
+} {
+  const activePlayers = getSortedActivePlayers(true);
+  const { team1, team2, t1Captain, t2Captain } = getTeams();
+
+  const unpickedPlayers = activePlayers.filter(p => p.team === null || p.team === undefined);
+  const mode = getSetting('draft_mode', guildId) ?? 'captains';
+  const turnInfo = getCurrentDraftTurn({ 1: team1.length, 2: team2.length }, activePlayers.length);
+
+  const statusHeader = buildDraftStatusHeader(mode, turnInfo, unpickedPlayers.length, t1Captain, t2Captain);
+  const centeredRotationBlock = buildDraftRotationBlock(turnInfo.activePickIndex, mode, turnInfo.isComplete);
+
+  const sortedTeam1 = sortTeamByDraftOrder(team1, t1Captain?.discordId);
+  const sortedTeam2 = sortTeamByDraftOrder(team2, t2Captain?.discordId);
+
+  const team1List =
+    (sortedTeam1.map(p => formatDraftPlayerEntry(p, p.discordId === t1Captain?.discordId, true)).join('\n') ||
+      '*No players picked yet*') + '\n\u200b';
+
+  const team2List =
+    (sortedTeam2.map(p => formatDraftPlayerEntry(p, p.discordId === t1Captain?.discordId, true)).join('\n') ||
+      '*No players picked yet*') + '\n\u200b';
+
+  const unpickedList =
+    unpickedPlayers.map(p => formatDraftPlayerEntry(p, false, false)).join('\n') || '*None (Pool empty)*';
+
+  const embed = buildDraftEmbed({
+    mode,
+    turnInfo,
+    statusHeader,
+    centeredRotationBlock,
+    t1Captain,
+    t2Captain,
+    team1List,
+    team2List,
+    unpickedList,
+    unpickedCount: unpickedPlayers.length,
+  });
+
+  const components = buildDraftActionRows(unpickedPlayers, turnInfo, mode, t1Captain, t2Captain);
+
+  return { content: '', embeds: [embed], components, allowedMentions: { parse: [] } };
+}
+
+/**
+ * Calculates current turn in HotS 1-2-2-1-1-2-2-1 draft order based on team counts.
+ */
+export function getCurrentDraftTurn(
+  teamPlayerCounts: { [key: number]: number },
+  totalActive: number = 10,
+): {
+  currentTeam: number;
+  picksRemaining: number;
+  pickNumber: number;
+  isComplete: boolean;
+  totalPicksThisTurn: number;
+  activePickIndex: number;
+} {
+  const Max_Picks = 10;
+  const activePickIndex = Math.min(8, Math.max(0, teamPlayerCounts[1] + teamPlayerCounts[2] - 2));
+  const totalPicksThisTurn =
+    activePickIndex === 0
+      ? 1
+      : activePickIndex === totalActive && totalActive % 1 === 0
+        ? 1
+        : Math.min(2, totalActive - teamPlayerCounts[1] - teamPlayerCounts[2]);
+  const pickNumber = activePickIndex === 0 ? 1 : activePickIndex % 2 === 0 ? 2 : 1;
+  if (teamPlayerCounts[1] + teamPlayerCounts[2] >= Max_Picks) {
+    return { currentTeam: 1, picksRemaining: 0, isComplete: true, totalPicksThisTurn, activePickIndex, pickNumber };
+  }
+
+  for (let i = 2; i < totalActive; i++) {
+    const currentTeam = i % 2 === 0 ? 1 : 2;
+    if (teamPlayerCounts[currentTeam] < i) {
+      return {
+        currentTeam,
+        activePickIndex,
+        picksRemaining: Math.min(
+          i - teamPlayerCounts[currentTeam],
+          totalActive - teamPlayerCounts[1] - teamPlayerCounts[2],
+        ),
+        totalPicksThisTurn,
+        isComplete: false,
+        pickNumber,
+      };
+    }
+  }
+
+  // Fallback for arbitrary states resulting from free pick mode:
+  // Whichever team has fewer players gets the next turn!
+  if (teamPlayerCounts[1] <= teamPlayerCounts[2]) {
+    return { currentTeam: 1, picksRemaining: 1, isComplete: false, totalPicksThisTurn, activePickIndex, pickNumber };
+  } else {
+    return { currentTeam: 2, picksRemaining: 1, isComplete: false, totalPicksThisTurn, activePickIndex, pickNumber };
+  }
+}
+
+/**
+ * Builds the status header text based on draft mode and active turn.
+ */
+function buildDraftStatusHeader(
+  mode: string,
+  turnInfo: ReturnType<typeof getCurrentDraftTurn>,
+  unpickedCount: number,
+  t1Captain?: Player,
+  t2Captain?: Player,
+): string {
+  if (mode === 'captains') {
+    if (turnInfo.isComplete || unpickedCount === 0) {
+      return '# 🎉 Draft Complete!\nBoth teams have been picked.';
+    } else {
+      const activeCaptain = turnInfo.currentTeam === 1 ? t1Captain : t2Captain;
+      const activeCaptainName = activeCaptain ? `@${activeCaptain.usernames?.discordDisplayName}` : 'Unassigned';
+      const teamLabel = turnInfo.currentTeam === 1 ? '🔵 Team 1' : '🔴 Team 2';
+      return `## ${teamLabel} Captain ${activeCaptainName}'s Turn\n*(Pick ${turnInfo.pickNumber} of ${turnInfo.totalPicksThisTurn})*`;
+    }
+  } else if (mode === 'free_team1') {
+    return '## ⚡ Free Pick Mode ➡️ 🔵 Team 1\n*Click any available player button to assign them to Team 1*';
+  } else if (mode === 'free_team2') {
+    return '## ⚡ Free Pick Mode ➡️ 🔴 Team 2\n*Click any available player button to assign them to Team 2*';
+  } else {
+    return '## ⚡ Free Pick Mode\n• Team 1 Captain picks ➡️ Team 1 (🔵)\n• Team 2 Captain picks ➡️ Team 2 (🔴)';
+  }
+}
+
+/**
+ * Generates the 1-2-2 HotS pick rotation sequence tracker string block.
+ */
+function buildDraftRotationBlock(activePickIndex: number, mode: string, isComplete: boolean): string {
+  const sequence = [1, 2, 2, 1, 1, 2, 2, 1];
+  const arrowRow = sequence
+    .map((_, idx) => (idx === activePickIndex && mode === 'captains' && !isComplete ? '⬇️' : '⬛'))
+    .join(' ');
+
+  const trackerRow = sequence
+    .map((team, idx) => {
+      if (idx < activePickIndex && mode === 'captains') {
+        return team === 1 ? '🔵' : '🔴';
+      } else {
+        return team === 1 ? '🧿' : '⭕';
+      }
+    })
+    .join(' ');
+
+  const centerPad = '⠀ ⠀ ⠀ ⠀ ⠀ ⠀ ⠀ ⠀ ⠀ ⠀ ';
+  return `${centerPad}**Draft Rotation Order:**${isComplete ? '' : '\n' + centerPad + arrowRow}\n${centerPad}${trackerRow}\n\u200b`;
+}
+
+/**
+ * Sorts players on a team roster putting captain first followed by draft pick order.
+ */
+function sortTeamByDraftOrder(players: Player[], captainId?: string): Player[] {
+  return [...players].sort((a, b) => {
+    const aIsCap = a.discordId === captainId;
+    const bIsCap = b.discordId === captainId;
+    if (aIsCap) return -1;
+    if (bIsCap) return 1;
+    return (a.draftOrder ?? 0) - (b.draftOrder ?? 0);
+  });
+}
+
+/**
+ * Formats a player entry string for display in team rosters or available pool.
+ */
+function formatDraftPlayerEntry(p: Player, isCaptain: boolean, isOnTeamRoster: boolean): string {
+  const primaryHotsTag = (
+    p.usernames.accounts?.find(a => a.isPrimary)?.hotsBattleTag ??
+    p.usernames.accounts?.[0]?.hotsBattleTag ??
+    ''
+  ).replace(/#.*$/, '');
+  const hotsSection = primaryHotsTag ? `: (${primaryHotsTag})` : `: (${p.usernames.discordDisplayName})`;
+  const roleSection = `\`${getPlayerRolesFormatted(p.role)}\``;
+  const mmrSection = `\`(${p.mmr})\``;
+
+  let prefix = '• ';
+  if (isCaptain) {
+    prefix = '• 👑 ';
+  } else if (isOnTeamRoster) {
+    const pickNum = p.draftOrder ?? 1;
+    prefix = `• #${pickNum - 1} `;
+  }
+
+  if (isOnTeamRoster) {
+    return `${prefix}@${p.usernames.discordDisplayName}${hotsSection}\n  ${roleSection} ${mmrSection}`;
+  }
+  return `${prefix}@${p.usernames.discordDisplayName}${hotsSection} ${roleSection} ${mmrSection}`;
+}
+
+/**
+ * Constructs the primary EmbedBuilder for the interactive draft message.
+ */
+function buildDraftEmbed(params: {
+  mode: string;
+  turnInfo: ReturnType<typeof getCurrentDraftTurn>;
+  statusHeader: string;
+  centeredRotationBlock: string;
+  t1Captain?: Player;
+  t2Captain?: Player;
+  team1List: string;
+  team2List: string;
+  unpickedList: string;
+  unpickedCount: number;
+}): EmbedBuilder {
+  const {
+    mode,
+    turnInfo,
+    statusHeader,
+    centeredRotationBlock,
+    t1Captain,
+    t2Captain,
+    team1List,
+    team2List,
+    unpickedList,
+    unpickedCount,
+  } = params;
+
+  const t1CaptainName = t1Captain ? `@${t1Captain.usernames?.discordDisplayName}` : 'Unassigned';
+  const t2CaptainName = t2Captain ? `@${t2Captain.usernames?.discordDisplayName}` : 'Unassigned';
+
+  let footerText = 'Draft Style: Captains Mode (1-2-2 Rotation) • Nexus Customs';
+  if (mode === 'free_team1') footerText = 'Draft Style: Free Pick ➡️ Team 1 (🔵) • Nexus Customs';
+  if (mode === 'free_team2') footerText = 'Draft Style: Free Pick ➡️ Team 2 (🔴) • Nexus Customs';
+
+  return new EmbedBuilder()
+    .setTitle('⚔️ HEROES OF THE STORM CAPTAIN DRAFT')
+    .setColor(turnInfo.currentTeam === 1 ? 0x3498db : 0xed4245)
+    .setDescription(`${statusHeader}\n\n${centeredRotationBlock}`)
+    .addFields(
+      {
+        name: `🔵 TEAM 1 (Captain: ${t1CaptainName})`,
+        value: team1List,
+        inline: true,
+      },
+      {
+        name: `🔴 TEAM 2 (Captain: ${t2CaptainName})`,
+        value: team2List,
+        inline: true,
+      },
+      {
+        name: turnInfo.isComplete ? `🟡 SPECTATORS (${unpickedCount})` : `📋 AVAILABLE LOBBY POOL (${unpickedCount})`,
+        value: unpickedList,
+        inline: false,
+      },
+    )
+    .setFooter({
+      text: footerText,
+    });
+}
+
+/**
+ * Builds interactive button component action rows for picks, removals, and controls.
+ */
+function buildDraftActionRows(
+  unpickedPlayers: Player[],
+  turnInfo: ReturnType<typeof getCurrentDraftTurn>,
+  mode: string,
+  t1Captain?: Player,
+  t2Captain?: Player,
+): ActionRowBuilder<ButtonBuilder>[] {
+  const rows: ActionRowBuilder<ButtonBuilder>[] = [];
+  let currentRow = new ActionRowBuilder<ButtonBuilder>();
+
+  if (!turnInfo.isComplete && unpickedPlayers.length > 0) {
+    unpickedPlayers.forEach(p => {
+      if (currentRow.components.length >= 5) {
+        rows.push(currentRow);
+        currentRow = new ActionRowBuilder<ButtonBuilder>();
+      }
+      const label = `${p.usernames?.discordDisplayName ?? 'Player'} (${p.mmr})`;
+      const buttonStyle = mode === 'free_team2' ? ButtonStyle.Danger : ButtonStyle.Primary;
+      currentRow.addComponents(
+        new ButtonBuilder()
+          .setCustomId(`draft_pick:${p.discordId}`)
+          .setLabel(label.length > 80 ? label.slice(0, 77) + '...' : label)
+          .setStyle(buttonStyle),
+      );
+    });
+    if (currentRow.components.length > 0) {
+      rows.push(currentRow);
+    }
+  }
+
+  // In Free Pick mode, also add removal buttons for currently picked non-captain players
+  const isFreePick = mode === 'free_team1' || mode === 'free_team2' || mode === 'free';
+  if (isFreePick && rows.length < 4) {
+    const pickedNonCaptains = [t1Captain, t2Captain].filter((p): p is Player => p !== undefined);
+    let removeRow = new ActionRowBuilder<ButtonBuilder>();
+    pickedNonCaptains.forEach(p => {
+      if (removeRow.components.length >= 5) {
+        rows.push(removeRow);
+        removeRow = new ActionRowBuilder<ButtonBuilder>();
+      }
+      const label = `Remove ${p.usernames?.discordDisplayName ?? 'Player'}`;
+      removeRow.addComponents(
+        new ButtonBuilder()
+          .setCustomId(`draft_remove:${p.discordId}`)
+          .setLabel(label.length > 80 ? label.slice(0, 77) + '...' : label)
+          .setStyle(ButtonStyle.Secondary),
+      );
+    });
+    if (removeRow.components.length > 0 && rows.length < 4) {
+      rows.push(removeRow);
+    }
+  }
+
+  // Control Row
+  const canUndo = getDraftPickedCount(t1Captain?.discordId, t2Captain?.discordId) > 0;
+
+  let modeBtnLabel = 'Mode: Captains (1-2-2)';
+  if (mode === 'free_team1') modeBtnLabel = 'Mode: Free Pick ➡️ Team 1 (🔵)';
+  if (mode === 'free_team2') modeBtnLabel = 'Mode: Free Pick ➡️ Team 2 (🔴)';
+
+  const controlsRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId('draft_undo')
+      .setLabel('Undo Last Pick')
+      .setStyle(ButtonStyle.Danger)
+      .setDisabled(!canUndo),
+    new ButtonBuilder().setCustomId('draft_toggle_mode').setLabel(modeBtnLabel).setStyle(ButtonStyle.Secondary),
+  );
+
+  rows.push(controlsRow);
+  return rows;
+}
+
+/**
+ * Handles the /draft_captain command interaction
+ */
+export async function handleDraftCaptainCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+) {
+  if (!interaction.isChatInputCommand()) {
+    return;
+  }
+  const t1CaptainId = interaction.options.getString('team1_captain');
+  const t2CaptainId = interaction.options.getString('team2_captain');
+
+  if (!t1CaptainId && !t2CaptainId) {
+    await safeReply(interaction, {
+      content: 'Please specify at least one captain (Team 1 Captain or Team 2 Captain) to set.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const updated: string[] = [];
+
+  if (t1CaptainId) {
+    assignPlayerToTeam(t1CaptainId, 1, 1);
+    updated.push(`Team 1 captain to <@${t1CaptainId}>`);
+  }
+  if (t2CaptainId) {
+    assignPlayerToTeam(t2CaptainId, 2, 2);
+    updated.push(`Team 2 captain to <@${t2CaptainId}>`);
+  }
+
+  await updateDraftUIMessage(interaction.guildId, interaction);
+
+  const sentReply = await safeReply(interaction, {
+    content: `Updated ${updated.join(' and ')}!`,
+    flags: MessageFlags.Ephemeral,
+  });
+  await sentReply?.delete();
+}
+
+/**
+ * Handles picking a player via player button click
+ */
+export async function handleDraftPickButton(interaction: ButtonInteraction<CacheType>, pickedPlayerDiscordId: string) {
+  // Instantly acknowledge button interaction to Discord (< 50ms) to prevent timeouts
+  await interaction.deferUpdate();
+
+  const guildId = interaction.guildId;
+  const mode = getSetting('draft_mode', guildId) ?? 'captains';
+
+  const sortedPlayers = getSortedActivePlayers(true);
+  const { team1, team2, t1Captain, t2Captain } = getTeams(sortedPlayers);
+  const turnInfo = getCurrentDraftTurn({ 1: team1.length, 2: team2.length }, sortedPlayers.length);
+
+  const isT1Captain = interaction.user.id === t1Captain.discordId;
+  const isT2Captain = interaction.user.id === t2Captain.discordId;
+
+  if (mode === 'captains') {
+    // 1. Must be a captain
+    if (!isT1Captain && !isT2Captain) {
+      await safeReply(interaction, {
+        content: '⛔ Only designated team captains can pick players in Captains Mode!',
+        flags: MessageFlags.Ephemeral,
+        allowedMentions: { parse: [] },
+      });
+      return;
+    }
+
+    // 2. Must be active captain's turn
+    const activeCaptainId = turnInfo.currentTeam === 1 ? t1Captain.discordId : t2Captain.discordId;
+    if (interaction.user.id !== activeCaptainId) {
+      const activeCaptainObj = sortedPlayers.find(p => p.discordId === activeCaptainId);
+      const activeName = activeCaptainObj ? `@${activeCaptainObj.usernames?.discordDisplayName}` : 'assigned captain';
+      await safeReply(interaction, {
+        content: `✋ Not your turn! It's Team ${turnInfo.currentTeam} Captain's (${activeName}) turn to pick.`,
+        flags: MessageFlags.Ephemeral,
+        allowedMentions: { parse: [] },
+      });
+      return;
+    }
+  }
+
+  // Determine assigned team
+  const assignedTeam = mode === 'captains' ? turnInfo.currentTeam : mode === 'free_team1' ? 1 : 2;
+
+  // Assign player in DB with next draft order (#3, #4, #5...)
+  const nextOrder = getNextDraftOrder();
+  assignPlayerToTeam(pickedPlayerDiscordId, assignedTeam, nextOrder);
+
+  await updateDraftUIMessage(guildId, interaction);
+}
+
+/**
+ * Handles the /draft_undo command interaction or Undo button click
+ */
+export async function handleDraftUndoCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+) {
+  let count = 1;
+  let all = false;
+
+  if (interaction.isChatInputCommand()) {
+    count = interaction.options.getInteger('count') ?? 1;
+    all = interaction.options.getBoolean('all') ?? false;
+  } else {
+    // Instantly acknowledge button interaction to Discord to prevent timeouts
+    await interaction.deferUpdate();
+  }
+
+  const guildId = interaction.guildId;
+  const { team1, team2, t1Captain, t2Captain } = getTeams();
+  const allTeams = [...team1, ...team2];
+
+  const nonCaptainPicks = allTeams
+    .filter(p => p.discordId !== t1Captain.discordId && p.discordId !== t2Captain.discordId)
+    .sort((a, b) => (b.draftOrder ?? 0) - (a.draftOrder ?? 0));
+
+  const picksToUndo = nonCaptainPicks.slice(0, all ? nonCaptainPicks.length : count);
+
+  for (const player of picksToUndo) {
+    assignPlayerToTeam(player.discordId, null, null);
+  }
+  const numUndone = picksToUndo.length;
+
+  await updateDraftUIMessage(guildId, interaction);
+
+  if (interaction.isChatInputCommand()) {
+    const message = all
+      ? 'Undid all draft picks! Teams have been reset back to captains.'
+      : numUndone > 0
+        ? `Undid the last ${numUndone} draft pick(s).`
+        : 'No draft picks to undo.';
+    await safeReply(interaction, {
+      content: message,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+}
+
+/**
+ * Handles the Mode Toggle button click
+ */
+export async function handleDraftToggleModeButton(interaction: ButtonInteraction<CacheType>) {
+  await interaction.deferUpdate();
+
+  const currentMode = getSetting('draft_mode', interaction.guildId) ?? 'captains';
+  let newMode = 'captains';
+  if (currentMode === 'captains') {
+    newMode = 'free_team1';
+  } else if (currentMode === 'free_team1') {
+    newMode = 'free_team2';
+  } else {
+    newMode = 'captains';
+  }
+  setSetting('draft_mode', newMode, interaction.guildId);
+
+  await updateDraftUIMessage(interaction.guildId, interaction);
+}
+
+/**
+ * Handles the /draft_mode command interaction
+ */
+export async function handleDraftModeCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+) {
+  if (!interaction.isChatInputCommand()) {
+    return;
+  }
+  const mode = interaction.options.getString('mode', true);
+  setSetting('draft_mode', mode, interaction.guildId);
+
+  await updateDraftUIMessage(interaction.guildId, interaction);
+
+  let modeLabel = 'Captains Mode (1-2-2 Rotation)';
+  if (mode === 'free_team1') modeLabel = 'Free Pick ➡️ Team 1 (🔵)';
+  if (mode === 'free_team2') modeLabel = 'Free Pick ➡️ Team 2 (🔴)';
+
+  const sentReply = await safeReply(interaction, {
+    content: `Switched draft mode to **${modeLabel}**!`,
+    flags: MessageFlags.Ephemeral,
+  });
+  // await sentReply?.delete();
+}
+
+/**
+ * Handles removing a player from a team back to the lobby pool
+ */
+export async function handleDraftRemoveButton(
+  interaction: ButtonInteraction<CacheType>,
+  removedPlayerDiscordId: string,
+) {
+  await interaction.deferUpdate();
+
+  const guildId = interaction.guildId;
+  assignPlayerToTeam(removedPlayerDiscordId, null, null);
+
+  await updateDraftUIMessage(guildId, interaction);
 }
 
 /**
@@ -430,8 +1061,8 @@ function getPlayerMMR(player: Player): number {
  */
 async function generateTeamsMessage(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
-  team1: { player: Player; index: number }[],
-  team2: { player: Player; index: number }[],
+  team1: Player[],
+  team2: Player[],
   /**
    * If this is true, we're publishing the teams to the channel, so delete the old ephemeral message
    * and post a new message publicly
@@ -449,34 +1080,31 @@ async function generateTeamsMessage(
     });
     return;
   }
-  const activePlayers = getActivePlayers();
-  team1.sort((a, b) => a.index - b.index);
-  team2.sort((a, b) => a.index - b.index);
-  activePlayers.sort((a, b) => getPlayerMMR(b) - getPlayerMMR(a));
+  const activePlayers = getSortedActivePlayers();
   activePlayers.forEach((p, index) => (p.draftRank = index));
   const team1List = team1
     .map(
       p =>
-        `\`${p.index + 1}: ${getPlayerMMR(p.player)}\` ${`<@${p.player.discordId}>`} ${p.player.usernames.accounts
+        `\`${p.draftRank + 1}: ${p.mmr}\` ${`<@${p.discordId}>`} ${p.usernames.accounts
           ?.find(account => account.isPrimary)
-          ?.hotsBattleTag.replace(/#.*$/, '')} \`${getPlayerRolesFormatted(p.player.role)}\``,
+          ?.hotsBattleTag.replace(/#.*$/, '')} \`${getPlayerRolesFormatted(p.role)}\``,
     )
     .join('\n');
   const team2List = team2
     .map(
       p =>
-        `\`${p.index + 1}: ${getPlayerMMR(p.player)}\` ${`<@${p.player.discordId}>`} ${p.player.usernames.accounts
+        `\`${p.draftRank + 1}: ${p.mmr}\` ${`<@${p.discordId}>`} ${p.usernames.accounts
           ?.find(account => account.isPrimary)
-          ?.hotsBattleTag.replace(/#.*$/, '')} \`${getPlayerRolesFormatted(p.player.role)}\``,
+          ?.hotsBattleTag.replace(/#.*$/, '')} \`${getPlayerRolesFormatted(p.role)}\``,
     )
     .join('\n');
   const spectators = activePlayers.filter(
-    p => team1.every(t => t.player.discordId !== p.discordId) && team2.every(t => t.player.discordId !== p.discordId),
+    p => team1.every(t => t.discordId !== p.discordId) && team2.every(t => t.discordId !== p.discordId),
   );
   const spectatorList = spectators
     .map(
       p =>
-        `\`${p.draftRank + 1}: ${getPlayerMMR(p)}\` ${`<@${p.discordId}>`} ${p.usernames.accounts
+        `\`${p.draftRank + 1}: ${p.mmr}\` ${`<@${p.discordId}>`} ${p.usernames.accounts
           ?.find(account => account.isPrimary)
           ?.hotsBattleTag.replace(/#.*$/, '')}`,
     )
@@ -600,8 +1228,7 @@ export async function handleSwapTeamsCommand(
   const playerANumber = interaction.options.getInteger('player-a', true) - 1;
   /** this is a 1-based index */
   const playerBNumber = interaction.options.getInteger('player-b', true) - 1;
-  const activePlayers = getActivePlayers();
-  activePlayers.sort((a, b) => (getPlayerMMR(b) - getPlayerMMR(a)));
+  const activePlayers = getSortedActivePlayers();
   // we don't need to recalculate the draftRank here
   // because it should be calculated when the draft command is run,
   // and the swap command should only be used after a draft command,
@@ -623,9 +1250,11 @@ export async function handleSwapTeamsCommand(
     !playerB
   ) {
     await safeReply(interaction, {
-      content: `Invalid player numbers (playerANumber: ${playerANumber + 1}, playerBNumber: ${playerBNumber + 1
-        }, playerA: ${playerA?.discordId}, playerB: ${playerB?.discordId}) There are only ${activePlayers.length
-        } players.`,
+      content: `Invalid player numbers (playerANumber: ${playerANumber + 1}, playerBNumber: ${
+        playerBNumber + 1
+      }, playerA: ${playerA?.discordId}, playerB: ${playerB?.discordId}) There are only ${
+        activePlayers.length
+      } players.`,
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -633,8 +1262,8 @@ export async function handleSwapTeamsCommand(
   if (playerA.team === playerB.team) {
     await safeReply(interaction, {
       content: `Both players are on the same team. Cannot swap.
-Player A: \`team: ${playerA.team}\` \`${playerANumber + 1}: ${getPlayerMMR(playerA)}\` <@${playerA.discordId}>
-Player B: \`team: ${playerB.team}\` \`${playerBNumber + 1}: ${getPlayerMMR(playerB)}\` <@${playerB.discordId}>`,
+Player A: \`team: ${playerA.team}\` \`${playerANumber + 1}: ${playerA.mmr}\` <@${playerA.discordId}>
+Player B: \`team: ${playerB.team}\` \`${playerBNumber + 1}: ${playerB.mmr}\` <@${playerB.discordId}>`,
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -645,10 +1274,8 @@ Player B: \`team: ${playerB.team}\` \`${playerBNumber + 1}: ${getPlayerMMR(playe
     { playerId: playerA.discordId, newTeam: playerB.team ?? null },
     { playerId: playerB.discordId, newTeam: playerA.team ?? null },
   ]);
-  const { team1: newTeam1, team2: newTeam2 } = getTeams();
-  const team1Obj = newTeam1.map(p => ({ player: p, index: p.draftRank ?? 0 }));
-  const team2Obj = newTeam2.map(p => ({ player: p, index: p.draftRank ?? 0 }));
-  await generateTeamsMessage(interaction, team1Obj, team2Obj);
+  const { team1, team2 } = getTeams();
+  await generateTeamsMessage(interaction, team1, team2);
 }
 
 /**
@@ -665,12 +1292,7 @@ export async function handlePublishTeamsCommand(
   }
   // get the teams from the database
   const { team1, team2 } = getTeams();
-  await generateTeamsMessage(
-    interaction,
-    team1.map(p => ({ player: p, index: p.draftRank ?? 0 })),
-    team2.map(p => ({ player: p, index: p.draftRank ?? 0 })),
-    true,
-  );
+  await generateTeamsMessage(interaction, team1, team2, true);
   // show the move to teams button
   const moveToTeamsBtn = new ButtonBuilder()
     .setCustomId(CommandIds.MOVE_TO_TEAMS)
@@ -815,8 +1437,9 @@ export async function handleMoveToTeamsCommand(
     await interaction.editReply({
       content: `Moved ${numberMoved} players to their respective team channels: ${result
         .map(c => `<#${c.channelId}>`)
-        .join(', ')}\nWARNING: **${teams.team1.length + teams.team2.length - numberMoved
-        } players could not be moved.**`,
+        .join(', ')}\nWARNING: **${
+        teams.team1.length + teams.team2.length - numberMoved
+      } players could not be moved.**`,
     });
   } else {
     await interaction.editReply({
@@ -943,8 +1566,9 @@ export async function handleGetChannelsCommand(
   const team1Channel = channels.find(c => c.channelType === 'team1');
   const team2Channel = channels.find(c => c.channelType === 'team2');
   await safeReply(interaction, {
-    content: `Current channels:\nLobby: ${lobbyChannel ? `<#${lobbyChannel.channelId}>` : 'Not set'}\nTeam 1: ${team1Channel ? `<#${team1Channel.channelId}>` : 'Not set'
-      }\nTeam 2: ${team2Channel ? `<#${team2Channel.channelId}>` : 'Not set'}`,
+    content: `Current channels:\nLobby: ${lobbyChannel ? `<#${lobbyChannel.channelId}>` : 'Not set'}\nTeam 1: ${
+      team1Channel ? `<#${team1Channel.channelId}>` : 'Not set'
+    }\nTeam 2: ${team2Channel ? `<#${team2Channel.channelId}>` : 'Not set'}`,
     flags: MessageFlags.Ephemeral,
   });
 }
@@ -1033,9 +1657,9 @@ export async function handlePlayersCommand(
         return onlyRaw
           ? `<@${discordId}>`
           : `@${user?.displayName}` +
-          `: (${usernames.accounts
-            ?.find(a => a.isPrimary)
-            ?.hotsBattleTag.replace(/#.*$/, '')}) \`${getPlayerRolesFormatted(role)}\``;
+              `: (${usernames.accounts
+                ?.find(a => a.isPrimary)
+                ?.hotsBattleTag.replace(/#.*$/, '')}) \`${getPlayerRolesFormatted(role)}\``;
       })
       .join('\n') || 'No players in the lobby';
   const rawPlayerList = Object.values(players)
@@ -1125,7 +1749,8 @@ export async function handlePlayersAllCommand(
     const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(...buttons);
     const sortAlphbetically = new ButtonBuilder()
       .setCustomId(
-        `${CommandIds.PLAYERS_ALL_PAGE_SORT}_alphabetical_${sort === 'alphabetical' ? !ascending : ascending
+        `${CommandIds.PLAYERS_ALL_PAGE_SORT}_alphabetical_${
+          sort === 'alphabetical' ? !ascending : ascending
         }_${pageNumber}`,
       )
       .setEmoji('🔤')
@@ -1212,8 +1837,8 @@ export async function handleRejoinCommand(
       ` the lobby as: \`${player.usernames.accounts
         ?.find(a => a.isPrimary)
         ?.hotsBattleTag.replace(/#.*$/, '')}\`, \`${getPlayerRolesFormatted(
-          player.role,
-        )}\`\nUse /leave to leave the lobby, or use the buttons below.`;
+        player.role,
+      )}\`\nUse /leave to leave the lobby, or use the buttons below.`;
     await safeReply(interaction, {
       content,
       flags: MessageFlags.Ephemeral,
@@ -1266,6 +1891,7 @@ ${validationResult.rules}
         active: false,
         team: undefined,
         draftRank: NaN,
+        draftOrder: NaN,
         adjustment: null,
         mmr: 0,
         lastActive: new Date(),
@@ -1353,8 +1979,8 @@ async function handleLookupCommandSub(
     const message = player
       ? `${hotsBattleTag || 'Player'} found in the lobby with role: \`${getPlayerRolesFormatted(player.role)}\``
       : `${hotsBattleTag || 'Player'} not found in the lobby, adding them with default role \`${getPlayerRolesFormatted(
-        CommandIds.ROLE_FLEX,
-      )}\`.`;
+          CommandIds.ROLE_FLEX,
+        )}\`.`;
     // show the player's hots_accounts.hotsBattleTag
     const hotsAccounts =
       player?.usernames.accounts?.sort((a, b) => {
@@ -1396,7 +2022,7 @@ async function handleLookupCommandSub(
           name: '🎮 HotS Accounts & MMR',
           value: `**Highest MMR:** ${MMR}\n${accounts}`,
           inline: false,
-        }
+        },
       );
 
     if (matchStats.totalGames > 0) {
@@ -1404,30 +2030,34 @@ async function handleLookupCommandSub(
       const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
 
       const buildEmojis = (matches: typeof matchStats.recentMatches) => {
-        return matches.map(m => {
-          if (!m.date) return m.win ? '🟩' : '🟥';
-          const matchDate = new Date(m.date);
-          if (isNaN(matchDate.getTime())) return m.win ? '🟩' : '🟥';
+        return matches
+          .map(m => {
+            if (!m.date) return m.win ? '🟩' : '🟥';
+            const matchDate = new Date(m.date);
+            if (isNaN(matchDate.getTime())) return m.win ? '🟩' : '🟥';
 
-          const year = matchDate.getFullYear();
-          const month = matchDate.getMonth() + 1;
-          const day = matchDate.getDate();
+            const year = matchDate.getFullYear();
+            const month = matchDate.getMonth() + 1;
+            const day = matchDate.getDate();
 
-          const matchDayStart = new Date(year, month - 1, day).getTime();
-          const diffDays = Math.round((todayStart - matchDayStart) / (1000 * 60 * 60 * 24));
-          const relativeStr = diffDays <= 0 ? 'Today' : diffDays === 1 ? 'Yesterday' : `${diffDays}_days_ago`;
+            const matchDayStart = new Date(year, month - 1, day).getTime();
+            const diffDays = Math.round((todayStart - matchDayStart) / (1000 * 60 * 60 * 24));
+            const relativeStr = diffDays <= 0 ? 'Today' : diffDays === 1 ? 'Yesterday' : `${diffDays}_days_ago`;
 
-          const dateStr = matchDate.toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: '2-digit',
-          }).replace(/[\s,]+/g, '_');
+            const dateStr = matchDate
+              .toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: '2-digit',
+              })
+              .replace(/[\s,]+/g, '_');
 
-          const prettyDate = `${dateStr}_${relativeStr}`;
+            const prettyDate = `${dateStr}_${relativeStr}`;
 
-          const gcalUrl = `<http://calendar.google.com/u/0/r/day/${year}/${month}/${day}?${prettyDate}>`;
-          return `[${m.win ? '🟩' : '🟥'}](${gcalUrl})`;
-        }).join(' ');
+            const gcalUrl = `<http://calendar.google.com/u/0/r/day/${year}/${month}/${day}?${prettyDate}>`;
+            return `[${m.win ? '🟩' : '🟥'}](${gcalUrl})`;
+          })
+          .join(' ');
       };
 
       const recentFormW = matchStats.recentMatches.filter(m => m.win).length;
@@ -1438,13 +2068,15 @@ async function handleLookupCommandSub(
       const matchStatsValue = `• **Career Record:** ${matchStats.totalGames} Games | ${matchStats.wins}W - ${matchStats.losses}L (${matchStats.winRate}% WR)`;
       const recentStats = `(${recentFormW}W - ${recentFormL}L, ${recentWinRate}% WR)`;
 
-      const topHeroesStr = matchStats.topHeroes.length > 0
-        ? matchStats.topHeroes.map((h, i) => `${i + 1}. **${h.hero}**\n(${h.games}G, ${h.winRate}% WR)`).join('\n')
-        : 'N/A';
+      const topHeroesStr =
+        matchStats.topHeroes.length > 0
+          ? matchStats.topHeroes.map((h, i) => `${i + 1}. **${h.hero}**\n(${h.games}G, ${h.winRate}% WR)`).join('\n')
+          : 'N/A';
 
-      const bestHeroesStr = matchStats.bestHeroes.length > 0
-        ? matchStats.bestHeroes.map((h, i) => `${i + 1}. **${h.hero}**\n(${h.games}G, ${h.winRate}% WR)`).join('\n')
-        : 'N/A';
+      const bestHeroesStr =
+        matchStats.bestHeroes.length > 0
+          ? matchStats.bestHeroes.map((h, i) => `${i + 1}. **${h.hero}**\n(${h.games}G, ${h.winRate}% WR)`).join('\n')
+          : 'N/A';
 
       const formatBmCategory = (label: string, count: number, td: number, deaths: number) => {
         if (count <= 0 && td <= 0 && deaths <= 0) return null;
@@ -1459,11 +2091,33 @@ async function handleLookupCommandSub(
       };
 
       const bmStr = [
-        formatBmCategory('B-Steps', matchStats.bmStats.bsteps, matchStats.bmStats.bstepTd, matchStats.bmStats.bstepDeaths),
-        formatBmCategory('Sprays', matchStats.bmStats.sprays, matchStats.bmStats.sprayTd, matchStats.bmStats.sprayDeaths),
-        formatBmCategory('Dances', matchStats.bmStats.dances, matchStats.bmStats.danceTd, matchStats.bmStats.danceDeaths),
-        formatBmCategory('Taunts', matchStats.bmStats.taunts, matchStats.bmStats.tauntTd, matchStats.bmStats.tauntDeaths),
-      ].filter(Boolean).join('\n');
+        formatBmCategory(
+          'B-Steps',
+          matchStats.bmStats.bsteps,
+          matchStats.bmStats.bstepTd,
+          matchStats.bmStats.bstepDeaths,
+        ),
+        formatBmCategory(
+          'Sprays',
+          matchStats.bmStats.sprays,
+          matchStats.bmStats.sprayTd,
+          matchStats.bmStats.sprayDeaths,
+        ),
+        formatBmCategory(
+          'Dances',
+          matchStats.bmStats.dances,
+          matchStats.bmStats.danceTd,
+          matchStats.bmStats.danceDeaths,
+        ),
+        formatBmCategory(
+          'Taunts',
+          matchStats.bmStats.taunts,
+          matchStats.bmStats.tauntTd,
+          matchStats.bmStats.tauntDeaths,
+        ),
+      ]
+        .filter(Boolean)
+        .join('\n');
 
       embed.addFields({
         name: '📊 Match Stats',
@@ -1488,7 +2142,7 @@ async function handleLookupCommandSub(
           {
             name: '',
             value: recentStats,
-          }
+          },
         );
       } else {
         const total = matchStats.recentMatches.length;
@@ -1585,6 +2239,7 @@ async function handleLookupCommandSub(
         active: false,
         team: undefined,
         draftRank: NaN,
+        draftOrder: NaN,
         adjustment: null,
         mmr: 0,
         lastActive: new Date(),
@@ -1627,8 +2282,9 @@ export async function handleDeletePlayerCommand(
   await updateLobbyMessage(interaction);
   // reply with the number of players and accounts deleted
   await safeReply(interaction, {
-    content: `Deleted ${playersDeleted} player${playersDeleted === 1 ? '' : 's'
-      } and ${hotsAccountsDeleted} HotS account${hotsAccountsDeleted === 1 ? '' : 's'} for Discord ID: <@${discordId}>.`,
+    content: `Deleted ${playersDeleted} player${
+      playersDeleted === 1 ? '' : 's'
+    } and ${hotsAccountsDeleted} HotS account${hotsAccountsDeleted === 1 ? '' : 's'} for Discord ID: <@${discordId}>.`,
     flags: MessageFlags.Ephemeral,
   });
 }
@@ -1747,6 +2403,7 @@ export async function handleJoinCommand(
     active: true,
     team: undefined,
     draftRank: NaN,
+    draftOrder: NaN,
     adjustment: null,
     mmr: 0,
     lastActive: new Date(),
@@ -1976,8 +2633,9 @@ async function handleAddHotsAccountCommandSub(
       .map(account => `* \`${account.hotsBattleTag}\` ${account.isPrimary ? '(Primary)' : ''}`)
       .join('\n');
     await safeReply(interaction, {
-      content: `${interaction.user.id === discordId ? 'Your' : `<@${discordId}>'s`
-        } associated Heroes of the Storm accounts:\n${accountsList}`,
+      content: `${
+        interaction.user.id === discordId ? 'Your' : `<@${discordId}>'s`
+      } associated Heroes of the Storm accounts:\n${accountsList}`,
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -2378,9 +3036,7 @@ async function deleteMessage(
 
     // If not found in the current channel, search other text channels in the guild
     if (!message && interaction.guild) {
-      const textChannels = interaction.guild.channels.cache.filter(
-        ch => ch.isTextBased() && ch.id !== channel?.id,
-      );
+      const textChannels = interaction.guild.channels.cache.filter(ch => ch.isTextBased() && ch.id !== channel?.id);
       for (const [, ch] of textChannels) {
         try {
           message = await (ch as TextBasedChannel).messages.fetch(messageId);
@@ -2636,8 +3292,9 @@ export async function handleAdminSetActiveCommand(
     await updateLobbyMessage(interaction, previousPlayersList);
   } else {
     await safeReply(interaction, {
-      content: `${player.usernames.accounts?.find(a => a.isPrimary)?.hotsBattleTag.replace(/#.*$/, '')} is already ${isActive ? CommandIds.ACTIVE : CommandIds.INACTIVE
-        }.`,
+      content: `${player.usernames.accounts?.find(a => a.isPrimary)?.hotsBattleTag.replace(/#.*$/, '')} is already ${
+        isActive ? CommandIds.ACTIVE : CommandIds.INACTIVE
+      }.`,
       flags: MessageFlags.Ephemeral,
     });
   }
@@ -2996,7 +3653,12 @@ function parseSingleDate(inputStr: string, isEndOfDay: boolean): Date | null {
   return null;
 }
 
-function isReplayInFilterRange(file: string, replayDate: unknown, startDate: Date | null, endDate: Date | null): boolean {
+function isReplayInFilterRange(
+  file: string,
+  replayDate: unknown,
+  startDate: Date | null,
+  endDate: Date | null,
+): boolean {
   let fileTime: number | null = null;
 
   if (replayDate) {
@@ -3005,13 +3667,13 @@ function isReplayInFilterRange(file: string, replayDate: unknown, startDate: Dat
       if (!isNaN(d.getTime())) {
         fileTime = d.getTime();
       }
-    } catch { }
+    } catch {}
   }
 
   if (fileTime === null) {
     try {
       fileTime = fs.statSync(file).mtime.getTime();
-    } catch { }
+    } catch {}
   }
 
   if (fileTime === null) {
@@ -3166,7 +3828,9 @@ export async function handleImportReplaysCommand(
           }
         } catch (err: any) {
           if (err?.code === 50027 || err?.status === 401 || String(err?.message).includes('Invalid Webhook Token')) {
-            console.warn(`[import-replays] Discord interaction token expired after 15m (file ${count}). Continuing import in background...`);
+            console.warn(
+              `[import-replays] Discord interaction token expired after 15m (file ${count}). Continuing import in background...`,
+            );
             webhookExpired = true;
           } else {
             console.error('Error sending Discord interaction update:', err);
@@ -3238,7 +3902,7 @@ export async function handleImportReplaysCommand(
       await interaction.editReply({
         content: `No custom .StormReplay games matched the criteria in:\n\`${folderPath}\``,
       });
-    } catch { }
+    } catch {}
   }
 }
 

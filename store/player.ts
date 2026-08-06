@@ -39,9 +39,16 @@ const initSchema = db.transaction(() => {
       active INTEGER NOT NULL,
       team INTEGER CHECK(team IN (1, 2, 3)),
       draft_rank INTEGER,
+      draft_order INTEGER,
       last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  try {
+    db.exec('ALTER TABLE players ADD COLUMN draft_order INTEGER;');
+  } catch {
+    // Column already exists
+  }
 
   const createHotsAccountsSQL = generateCreateTableSQL('hots_accounts', HOTS_ACCOUNTS_COLUMNS);
   db.exec(createHotsAccountsSQL);
@@ -178,6 +185,7 @@ function getPlayerFromRow(row: FlatPlayer, accounts: HotsAccountRow[]): Player {
     active: row.active === 1,
     team: row.team ?? undefined, // Ensure team is undefined if null
     draftRank: row.draft_rank ?? NaN,
+    draftOrder: row.draft_order ?? NaN,
     adjustment: row.adjustment,
     mmr:
       (accountsNew.reduce(
@@ -205,7 +213,7 @@ function getAccountFromAccountRow(account: HotsAccountRow): HotsAccount {
 }
 
 /**
- * Retrieves all active players from the database.
+ * Retrieves all active players from the database, with their hots accounts
  * @returns Map<string, Player> a Map of active players, where the key is the Discord ID and the value is the Player object.
  */
 export function getActivePlayers(): Player[] {
@@ -815,25 +823,21 @@ export function clearTeams(): void {
  * @param team2 Array of Player objects for team 2.
  * @returns void
  */
-export function setTeamsFromPlayers(
-  team1: { player: Player; index: number }[],
-  team2: { player: Player; index: number }[],
-  spectators: { player: Player; index: number }[],
-): void {
+export function setTeamsFromPlayers(team1: Player[], team2: Player[], spectators: Player[]): void {
   const transaction = db.transaction(() => {
     const clearStmt = db.prepare('UPDATE players SET team = NULL, draft_rank = NULL');
     clearStmt.run();
     team1.forEach(p => {
       const updateStmt = db.prepare('UPDATE players SET team = ?, draft_rank = ? WHERE discord_id = ?');
-      updateStmt.run(1, p.index, p.player.discordId);
+      updateStmt.run(1, p.draftRank, p.discordId);
     });
     team2.forEach(p => {
       const updateStmt = db.prepare('UPDATE players SET team = ?, draft_rank = ? WHERE discord_id = ?');
-      updateStmt.run(2, p.index, p.player.discordId);
+      updateStmt.run(2, p.draftRank, p.discordId);
     });
     spectators.forEach(p => {
       const updateStmt = db.prepare('UPDATE players SET team = ?, draft_rank = ? WHERE discord_id = ?');
-      updateStmt.run(null, p.index, p.player.discordId);
+      updateStmt.run(null, p.draftRank, p.discordId);
     });
   });
   transaction();
@@ -851,32 +855,115 @@ export function changeTeams(playerChanges: { playerId: string; newTeam: number |
 }
 
 /**
- * Retrieves the teams from the database.
- * This function queries the players table for all players with a non-null team assignment,
- * and organizes them into two separate arrays based on their team number.
- * @returns An object containing two arrays: team1 and team2, each containing Player objects for the respective teams.
+ * Assigns a specific player to a team (1, 2, or null) and draft_order.
+ * If a non-null draftOrder is specified and another player already occupies it,
+ * the previous occupant is bumped to the next available draft order.
  */
-export function getTeams(): { team1: Player[]; team2: Player[] } {
-  const stmt = db.prepare<[], FlatPlayer>('SELECT * FROM players WHERE team IS NOT NULL');
-  const rows: FlatPlayer[] = stmt.all();
-  // select all hots accounts by first joining to the players where team is not null, then getting all accounts where is_primary = 1
-  const accountsStmt = db.prepare<[], HotsAccountRow>(
-    'SELECT discord_id, hots_battle_tag, is_primary, HP_QM_MMR, HP_SL_MMR, HP_AR_MMR, HP_QM_Games, HP_SL_Games, HP_AR_Games FROM hots_accounts WHERE is_primary = 1;',
-  );
-  const accounts = accountsStmt.all();
-  const team1: Player[] = [];
-  const team2: Player[] = [];
-  rows.forEach(row => {
-    const player: Player = getPlayerFromRow(row, accounts);
-    if (row.team === 1) {
-      team1.push(player);
-    } else if (row.team === 2) {
-      team2.push(player);
+export function assignPlayerToTeam(discordId: string, team: number | null, draftOrder: number | null = null): void {
+  const transaction = db.transaction(() => {
+    if (draftOrder !== null) {
+      const existingStmt = db.prepare<[number, string], { discord_id: string }>(
+        'SELECT discord_id FROM players WHERE active = 1 AND draft_order = ? AND discord_id != ?',
+      );
+      const existingPlayer = existingStmt.get(draftOrder, discordId);
+      if (existingPlayer) {
+        const nextRank = getNextDraftOrder();
+        const bumpStmt = db.prepare('UPDATE players SET draft_order = ? WHERE discord_id = ?');
+        bumpStmt.run(nextRank, existingPlayer.discord_id);
+      }
     }
+
+    const stmt = db.prepare('UPDATE players SET team = ?, draft_order = ? WHERE discord_id = ?');
+    stmt.run(team, draftOrder, discordId);
   });
-  team1.sort((a, b) => (a.draftRank ?? 0) - (b.draftRank ?? 0));
-  team2.sort((a, b) => (a.draftRank ?? 0) - (b.draftRank ?? 0));
-  return { team1, team2 };
+  transaction();
+}
+
+/**
+ * Resets team and draft_order for all active players.
+ */
+export function resetActivePlayerTeams(): void {
+  const stmt = db.prepare('UPDATE players SET team = NULL, draft_order = NULL WHERE active = 1');
+  stmt.run();
+}
+
+/**
+ * Calculates the next available draft order number for the current draft.
+ * Captain 1 = 1, Captain 2 = 2, Picks start at 3.
+ */
+export function getNextDraftOrder(): number {
+  const stmt = db.prepare<[], { maxOrder: number | null }>(
+    'SELECT MAX(draft_order) as maxOrder FROM players WHERE active = 1 AND draft_order IS NOT NULL',
+  );
+  const row = stmt.get();
+  const maxOrder = row?.maxOrder ?? 0;
+  return Math.max(2, maxOrder) + 1;
+}
+
+/**
+ * Returns the count of non-captain picked players on Team 1 or Team 2.
+ */
+export function getDraftPickedCount(t1CaptainId?: string, t2CaptainId?: string): number {
+  if (t1CaptainId && t2CaptainId) {
+    const stmt = db.prepare<[string, string], { count: number }>(
+      'SELECT COUNT(*) as count FROM players WHERE active = 1 AND (team = 1 OR team = 2) AND discord_id NOT IN (?, ?)',
+    );
+    const row = stmt.get(t1CaptainId, t2CaptainId);
+    return row?.count ?? 0;
+  }
+  const stmt = db.prepare<[], { count: number }>(
+    'SELECT COUNT(*) as count FROM players WHERE active = 1 AND (team = 1 OR team = 2) AND (draft_order > 2 OR draft_order IS NULL)',
+  );
+  const row = stmt.get();
+  return row?.count ?? 0;
+}
+
+const activePlayersCache: { data: Player[]; timestamp: number } = { data: [], timestamp: 0 };
+/**
+ * Retrieves sorted active players, with caching.
+ * @returns {Player[]}
+ */
+export function getSortedActivePlayers(forceRefesh = false) {
+  if (forceRefesh || Date.now() - activePlayersCache.timestamp >= 5000) {
+    activePlayersCache.data = getActivePlayers().sort((a, b) => getPlayerMMR(b) - getPlayerMMR(a));
+    activePlayersCache.timestamp = Date.now();
+    let currentRank = 1;
+    activePlayersCache.data.forEach(p => {
+      if (p.team !== undefined && p.team !== null) {
+        p.draftRank = currentRank++;
+      }
+    });
+    return activePlayersCache.data;
+  }
+  return activePlayersCache.data;
+}
+
+/**
+ * Gets the teams from the active players cache
+ *
+ * @param activePlayers - The array of active players to get teams from. If not provided, the sorted active players will be used.
+ *
+ * @returns ({ team1: Player[], team2: Player[], spectators: Player[], t1Captain: Player, t2Captain: Player })
+ **/
+export function getTeams(activePlayers = getSortedActivePlayers()) {
+  const team1 = activePlayers.filter(p => p.team === 1);
+  const team2 = activePlayers.filter(p => p.team === 2);
+  const spectators = activePlayers.filter(p => p.team === 0);
+  const t1Captain = team1.find(p => p.draftOrder === 1) ?? team1[0] ?? activePlayers[0];
+  const t2Captain =
+    team2.find(p => p.draftOrder === 2) ??
+    team2[0] ??
+    (t1Captain === activePlayers[0] ? activePlayers[1] : activePlayers[0]);
+  return { team1, team2, spectators, t1Captain, t2Captain };
+}
+
+function getPlayerMMR(player: Player): number {
+  return (
+    (player.usernames.accounts?.reduce(
+      (bestMMR, account) => Math.max(bestMMR, account.hpQmMMR ?? 0, account.hpSlMMR ?? 0, account.hpArMMR ?? 0),
+      0,
+    ) ?? 0) + (player.adjustment ?? 0)
+  );
 }
 
 export async function loadPlayerDataIntoSqlite() {

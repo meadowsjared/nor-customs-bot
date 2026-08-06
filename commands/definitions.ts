@@ -134,6 +134,95 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     defaultMemberPermissions: minimumAdminPermissions,
   },
   {
+    name: CommandIds.DRAFT,
+    description: 'Start an interactive captain draft to pick teams',
+    defaultMemberPermissions: minimumAdminPermissions,
+    options: [
+      {
+        name: 'team1_captain',
+        type: ApplicationCommandOptionType.String,
+        description: 'Team 1 Captain (active lobby players)',
+        required: false,
+        autocomplete: true,
+      },
+      {
+        name: 'team2_captain',
+        type: ApplicationCommandOptionType.String,
+        description: 'Team 2 Captain (active lobby players)',
+        required: false,
+        autocomplete: true,
+      },
+      {
+        name: 'mode',
+        type: ApplicationCommandOptionType.String,
+        description: 'Draft mode style',
+        required: false,
+        choices: [
+          { name: 'Captains Mode (1-2-2 Rotation)', value: 'captains' },
+          { name: 'Free Pick Mode', value: 'free' },
+        ],
+      },
+    ],
+  },
+  {
+    name: CommandIds.DRAFT_CAPTAIN,
+    description: 'Set or change team captains mid-draft',
+    defaultMemberPermissions: minimumAdminPermissions,
+    options: [
+      {
+        name: 'team1_captain',
+        type: ApplicationCommandOptionType.String,
+        description: 'Team 1 Captain (active lobby players)',
+        required: false,
+        autocomplete: true,
+      },
+      {
+        name: 'team2_captain',
+        type: ApplicationCommandOptionType.String,
+        description: 'Team 2 Captain (active lobby players)',
+        required: false,
+        autocomplete: true,
+      },
+    ],
+  },
+  {
+    name: CommandIds.DRAFT_MODE,
+    description: 'Change the draft mode style mid-draft',
+    defaultMemberPermissions: minimumAdminPermissions,
+    options: [
+      {
+        name: 'mode',
+        type: ApplicationCommandOptionType.String,
+        description: 'The draft mode to switch to',
+        required: true,
+        choices: [
+          { name: 'Captains Mode (1-2-2 Rotation)', value: 'captains' },
+          { name: 'Free Pick ➡️ Team 1 (🔵)', value: 'free_team1' },
+          { name: 'Free Pick ➡️ Team 2 (🔴)', value: 'free_team2' },
+        ],
+      },
+    ],
+  },
+  {
+    name: CommandIds.DRAFT_UNDO,
+    description: 'Undo draft pick(s) or reset teams back to captains',
+    defaultMemberPermissions: minimumAdminPermissions,
+    options: [
+      {
+        name: 'count',
+        type: ApplicationCommandOptionType.Integer,
+        description: 'Number of draft picks to undo (default: 1)',
+        required: false,
+      },
+      {
+        name: 'all',
+        type: ApplicationCommandOptionType.Boolean,
+        description: 'Undo all draft picks, resetting teams back to captains',
+        required: false,
+      },
+    ],
+  },
+  {
     name: CommandIds.SET_CHANNEL_TEAM_ID,
     description: 'Set the channel team ID',
     defaultMemberPermissions: minimumAdminPermissions,

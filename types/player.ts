@@ -100,6 +100,7 @@ export interface Player {
    */
   team: number | undefined;
   draftRank: number;
+  draftOrder: number;
   adjustment: number | null;
   mmr: number | null;
   lastActive: Date;
@@ -150,5 +151,6 @@ export interface FlatPlayer {
   team: number;
   adjustment: number | null;
   draft_rank: number | null;
+  draft_order: number | null;
   last_active: string; // ISO date string
 }

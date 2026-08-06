@@ -12,7 +12,6 @@ import {
   CacheType,
   ButtonInteraction,
   MessageFlags,
-  ApplicationCommandDataResolvable,
 } from 'discord.js';
 import { botChannelName, CommandIds, roleMap } from './constants';
 import {
@@ -45,6 +44,14 @@ import {
   handleLookupByDiscordIdCommand,
   handleAdminAddHotsAccountByDiscordIdCommand,
   handleMakeTeamsCommand,
+  handleDraftCommand,
+  handleDraftAutocomplete,
+  handleDraftCaptainCommand,
+  handleDraftModeCommand,
+  handleDraftPickButton,
+  handleDraftRemoveButton,
+  handleDraftToggleModeButton,
+  handleDraftUndoCommand,
   handlePublishTeamsCommand,
   handleSwapTeamsCommand,
   handleImportReplaysCommand,
@@ -155,6 +162,16 @@ function getCommandName(
 }
 
 client.on('interactionCreate', async interaction => {
+  if (interaction.isAutocomplete()) {
+    if (
+      interaction.commandName === CommandIds.DRAFT ||
+      interaction.commandName === CommandIds.DRAFT_CAPTAIN
+    ) {
+      await handleDraftAutocomplete(interaction);
+      return;
+    }
+  }
+
   if (!interaction.isChatInputCommand() && !interaction.isButton()) return;
 
   if (interaction.isButton() && interaction.customId.startsWith('mapvote:')) {
@@ -192,6 +209,22 @@ client.on('interactionCreate', async interaction => {
     case CommandIds.MAKE_TEAMS:
       // Handle make teams command (MMR auto-balanced teams)
       handleMakeTeamsCommand(interaction);
+      break;
+    case CommandIds.DRAFT:
+      // Handle draft command (interactive captain draft)
+      handleDraftCommand(interaction);
+      break;
+    case CommandIds.DRAFT_CAPTAIN:
+      // Handle set draft captain command
+      handleDraftCaptainCommand(interaction);
+      break;
+    case CommandIds.DRAFT_MODE:
+      // Handle set draft mode command
+      handleDraftModeCommand(interaction);
+      break;
+    case CommandIds.DRAFT_UNDO:
+      // Handle undo draft command
+      handleDraftUndoCommand(interaction);
       break;
     case CommandIds.SWAP_PLAYERS:
       // Handle swap command
@@ -457,6 +490,24 @@ async function handleDefaultCommand(
   }
   if (parts.length === 6 && parts[0] === CommandIds.ADMIN && parts[1] === CommandIds.PRIMARY) {
     handleAdminPrimaryCommand(interaction, parts[2], parts[3], parts[4], parts[5]);
+    return;
+  }
+  if (interaction.isButton() && interaction.customId.startsWith('draft_pick:')) {
+    const pickedPlayerId = interaction.customId.split(':')[1];
+    await handleDraftPickButton(interaction, pickedPlayerId);
+    return;
+  }
+  if (interaction.isButton() && interaction.customId.startsWith('draft_remove:')) {
+    const removedPlayerId = interaction.customId.split(':')[1];
+    await handleDraftRemoveButton(interaction, removedPlayerId);
+    return;
+  }
+  if (interaction.isButton() && interaction.customId === 'draft_undo') {
+    await handleDraftUndoCommand(interaction);
+    return;
+  }
+  if (interaction.isButton() && interaction.customId === 'draft_toggle_mode') {
+    await handleDraftToggleModeButton(interaction);
     return;
   }
   await handleUnknownCommand(interaction, commandName);
