@@ -399,8 +399,15 @@ export async function handleMakeTeamsCommand(
 export async function handleDraftAutocomplete(interaction: AutocompleteInteraction): Promise<void> {
   let sortedPlayers = getSortedActivePlayers();
 
-  if (interaction.commandName === CommandIds.DRAFT_BENCH) {
-    sortedPlayers = sortedPlayers.filter(p => p.team === 1 || p.team === 2);
+  if (interaction.commandName === CommandIds.DRAFT_TEAM_ASSIGN) {
+    const selectedTeam = interaction.options.getString('team');
+    if (selectedTeam === '1') {
+      sortedPlayers = sortedPlayers.filter(p => p.team !== 1);
+    } else if (selectedTeam === '2') {
+      sortedPlayers = sortedPlayers.filter(p => p.team !== 2);
+    } else if (selectedTeam === 'spectator') {
+      sortedPlayers = sortedPlayers.filter(p => p.team === 1 || p.team === 2);
+    }
   }
 
   const focusedValue = interaction.options.getFocused().toLowerCase();
@@ -986,15 +993,16 @@ export async function handleDraftUndoCommand(
 }
 
 /**
- * Handles the /draft_bench command interaction to bench a player from their team,
- * making them a spectator in the lobby.
+ * Handles the /draft_team_assign command interaction to assign or move a player to
+ * Team 1, Team 2, or Spectators mid-draft.
  */
-export async function handleDraftBenchCommand(
+export async function handleDraftTeamAssignCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ) {
   if (!interaction.isChatInputCommand()) {
     return;
   }
+  const targetTeamOption = interaction.options.getString('team', true);
   const playerDiscordId = interaction.options.getString('player', true);
 
   const activePlayers = getSortedActivePlayers(true);
@@ -1016,23 +1024,47 @@ export async function handleDraftBenchCommand(
     return;
   }
 
-  if (player.team !== 1 && player.team !== 2) {
-    await safeReply(interaction, {
-      content: `**${player.usernames?.discordDisplayName ?? 'Player'}** is already a spectator (not on a team).`,
+  const playerName = player.usernames?.discordDisplayName ?? 'Player';
+
+  if (targetTeamOption === 'spectator') {
+    if (player.team !== 1 && player.team !== 2) {
+      await safeReply(interaction, {
+        content: `**${playerName}** is already a spectator (not on a team).`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    assignPlayerToTeam(player.discordId, null, null);
+
+    await updateDraftUIMessage(interaction.guildId, interaction);
+
+    const sentReply = await safeReply(interaction, {
+      content: `Moved **${playerName}** to Spectators.`,
       flags: MessageFlags.Ephemeral,
     });
-    return;
+    await sentReply?.delete();
+  } else {
+    const targetTeam = parseInt(targetTeamOption, 10);
+    if (player.team === targetTeam) {
+      await safeReply(interaction, {
+        content: `**${playerName}** is already on Team ${targetTeam}.`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const draftOrder = player.draftOrder ?? getNextDraftOrder();
+    assignPlayerToTeam(player.discordId, targetTeam, draftOrder);
+
+    await updateDraftUIMessage(interaction.guildId, interaction);
+
+    const sentReply = await safeReply(interaction, {
+      content: `Assigned **${playerName}** to Team ${targetTeam}.`,
+      flags: MessageFlags.Ephemeral,
+    });
+    await sentReply?.delete();
   }
-
-  assignPlayerToTeam(player.discordId, null, null);
-
-  await updateDraftUIMessage(interaction.guildId, interaction);
-
-  const sentReply = await safeReply(interaction, {
-    content: `Benched **${player.usernames?.discordDisplayName ?? 'Player'}** from their team. They are now a spectator.`,
-    flags: MessageFlags.Ephemeral,
-  });
-  await sentReply?.delete();
 }
 
 /**

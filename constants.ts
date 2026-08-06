@@ -26,7 +26,7 @@ export const enum CommandIds {
   DRAFT_CAPTAIN = 'draft_captain',
   DRAFT_MODE = 'draft_mode',
   DRAFT_UNDO = 'draft_undo',
-  DRAFT_BENCH = 'draft_bench',
+  DRAFT_TEAM_ASSIGN = 'draft_team_assign',
   SWAP_PLAYERS = 'swap_players',
   PUBLISH_TEAMS = 'publish_teams',
   TEAMS = 'teams',

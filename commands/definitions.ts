@@ -223,14 +223,25 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     ],
   },
   {
-    name: CommandIds.DRAFT_BENCH,
-    description: 'Bench a player from their team mid-draft, making them a spectator',
+    name: CommandIds.DRAFT_TEAM_ASSIGN,
+    description: 'Assign or move a player to Team 1, Team 2, or Spectators mid-draft',
     defaultMemberPermissions: minimumAdminPermissions,
     options: [
       {
+        name: 'team',
+        type: ApplicationCommandOptionType.String,
+        description: 'The team or spectator assignment',
+        required: true,
+        choices: [
+          { name: 'Team 1', value: '1' },
+          { name: 'Team 2', value: '2' },
+          { name: 'Bench', value: 'spectator' },
+        ],
+      },
+      {
         name: 'player',
         type: ApplicationCommandOptionType.String,
-        description: 'The player to bench from their team',
+        description: 'The player to assign to a team',
         required: true,
         autocomplete: true,
       },
