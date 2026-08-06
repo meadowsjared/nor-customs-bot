@@ -397,7 +397,12 @@ export async function handleMakeTeamsCommand(
  * Handles autocomplete for captain selection in /draft and /draft_captain
  */
 export async function handleDraftAutocomplete(interaction: AutocompleteInteraction): Promise<void> {
-  const sortedPlayers = getSortedActivePlayers();
+  let sortedPlayers = getSortedActivePlayers();
+
+  if (interaction.commandName === CommandIds.DRAFT_BENCH) {
+    sortedPlayers = sortedPlayers.filter(p => p.team === 1 || p.team === 2);
+  }
+
   const focusedValue = interaction.options.getFocused().toLowerCase();
 
   const filtered = sortedPlayers.filter(
@@ -978,6 +983,56 @@ export async function handleDraftUndoCommand(
       flags: MessageFlags.Ephemeral,
     });
   }
+}
+
+/**
+ * Handles the /draft_bench command interaction to bench a player from their team,
+ * making them a spectator in the lobby.
+ */
+export async function handleDraftBenchCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+) {
+  if (!interaction.isChatInputCommand()) {
+    return;
+  }
+  const playerDiscordId = interaction.options.getString('player', true);
+
+  const activePlayers = getSortedActivePlayers(true);
+  const player =
+    activePlayers.find(p => p.discordId === playerDiscordId) ??
+    activePlayers.find(
+      p =>
+        p.usernames?.discordDisplayName?.toLowerCase() === playerDiscordId.toLowerCase() ||
+        p.usernames?.discordGlobalName?.toLowerCase() === playerDiscordId.toLowerCase() ||
+        p.usernames?.discordName?.toLowerCase() === playerDiscordId.toLowerCase() ||
+        p.usernames?.accounts?.some(acc => acc.hotsBattleTag?.toLowerCase() === playerDiscordId.toLowerCase()),
+    );
+
+  if (!player) {
+    await safeReply(interaction, {
+      content: 'Player not found in active lobby.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  if (player.team !== 1 && player.team !== 2) {
+    await safeReply(interaction, {
+      content: `**${player.usernames?.discordDisplayName ?? 'Player'}** is already a spectator (not on a team).`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  assignPlayerToTeam(player.discordId, null, null);
+
+  await updateDraftUIMessage(interaction.guildId, interaction);
+
+  const sentReply = await safeReply(interaction, {
+    content: `Benched **${player.usernames?.discordDisplayName ?? 'Player'}** from their team. They are now a spectator.`,
+    flags: MessageFlags.Ephemeral,
+  });
+  await sentReply?.delete();
 }
 
 /**

@@ -223,6 +223,20 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     ],
   },
   {
+    name: CommandIds.DRAFT_BENCH,
+    description: 'Bench a player from their team mid-draft, making them a spectator',
+    defaultMemberPermissions: minimumAdminPermissions,
+    options: [
+      {
+        name: 'player',
+        type: ApplicationCommandOptionType.String,
+        description: 'The player to bench from their team',
+        required: true,
+        autocomplete: true,
+      },
+    ],
+  },
+  {
     name: CommandIds.SET_CHANNEL_TEAM_ID,
     description: 'Set the channel team ID',
     defaultMemberPermissions: minimumAdminPermissions,

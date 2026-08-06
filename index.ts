@@ -47,6 +47,7 @@ import {
   handleDraftCommand,
   handleDraftAutocomplete,
   handleDraftCaptainCommand,
+  handleDraftBenchCommand,
   handleDraftModeCommand,
   handleDraftPickButton,
   handleDraftRemoveButton,
@@ -165,7 +166,8 @@ client.on('interactionCreate', async interaction => {
   if (interaction.isAutocomplete()) {
     if (
       interaction.commandName === CommandIds.DRAFT ||
-      interaction.commandName === CommandIds.DRAFT_CAPTAIN
+      interaction.commandName === CommandIds.DRAFT_CAPTAIN ||
+      interaction.commandName === CommandIds.DRAFT_BENCH
     ) {
       await handleDraftAutocomplete(interaction);
       return;
@@ -217,6 +219,10 @@ client.on('interactionCreate', async interaction => {
     case CommandIds.DRAFT_CAPTAIN:
       // Handle set draft captain command
       handleDraftCaptainCommand(interaction);
+      break;
+    case CommandIds.DRAFT_BENCH:
+      // Handle bench player from team command
+      handleDraftBenchCommand(interaction);
       break;
     case CommandIds.DRAFT_MODE:
       // Handle set draft mode command
