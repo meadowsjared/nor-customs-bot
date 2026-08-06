@@ -1113,21 +1113,6 @@ export async function handleDraftModeCommand(
 }
 
 /**
- * Handles removing a player from a team back to the lobby pool
- */
-export async function handleDraftRemoveButton(
-  interaction: ButtonInteraction<CacheType>,
-  removedPlayerDiscordId: string,
-) {
-  await interaction.deferUpdate();
-
-  const guildId = interaction.guildId;
-  assignPlayerToTeam(removedPlayerDiscordId, null, null);
-
-  await updateDraftUIMessage(guildId, interaction);
-}
-
-/**
  * Generate the message to show who is on what team
  * if publish it true, the message will be posted publicly, no ephemeral message is made
  * and the previous ephemeral message is deleted

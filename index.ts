@@ -50,7 +50,6 @@ import {
   handleDraftTeamAssignCommand,
   handleDraftModeCommand,
   handleDraftPickButton,
-  handleDraftRemoveButton,
   handleDraftToggleModeButton,
   handleDraftUndoCommand,
   handlePublishTeamsCommand,
@@ -501,11 +500,6 @@ async function handleDefaultCommand(
   if (interaction.isButton() && interaction.customId.startsWith('draft_pick:')) {
     const pickedPlayerId = interaction.customId.split(':')[1];
     await handleDraftPickButton(interaction, pickedPlayerId);
-    return;
-  }
-  if (interaction.isButton() && interaction.customId.startsWith('draft_remove:')) {
-    const removedPlayerId = interaction.customId.split(':')[1];
-    await handleDraftRemoveButton(interaction, removedPlayerId);
     return;
   }
   if (interaction.isButton() && interaction.customId === 'draft_undo') {
