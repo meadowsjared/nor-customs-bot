@@ -2081,9 +2081,9 @@ async function handleLookupCommandSub(
       return accountMMR > max ? accountMMR : max;
     }, 0);
 
-    const limit = interaction.options.getInteger(CommandIds.RECENT_MATCHES_LIMIT, false) ?? 13;
+    const limit = interaction.options.getInteger(CommandIds.RECENT_MATCHES_LIMIT, false) ?? 30;
     const minHeroGames = interaction.options.getInteger(CommandIds.MIN_HERO_GAMES, false) ?? 5;
-    const numHeroes = interaction.options.getInteger(CommandIds.NUM_HEROES, false) ?? 3;
+    const numHeroes = interaction.options.getInteger(CommandIds.NUM_HEROES, false) ?? 6;
     const matchStats = getPlayerMatchStats(discordId, limit, minHeroGames, numHeroes);
 
     const embed = new EmbedBuilder()
