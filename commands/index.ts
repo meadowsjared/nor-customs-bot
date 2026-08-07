@@ -544,15 +544,14 @@ export function generateDraftUI(guildId: string | null): {
   const sortedTeam2 = sortTeamByDraftOrder(team2, t2Captain?.discordId);
 
   const team1List =
-    (sortedTeam1.map(p => formatDraftPlayerEntry(p, p.discordId === t1Captain?.discordId, true)).join('\n') ||
-      '*No players picked yet*') + '\n\u200b';
+    (sortedTeam1.map(p => formatDraftPlayerEntry(p, t1Captain, true)).join('\n') || '*No players picked yet*') +
+    '\n\u200b';
 
   const team2List =
-    (sortedTeam2.map(p => formatDraftPlayerEntry(p, p.discordId === t1Captain?.discordId, true)).join('\n') ||
-      '*No players picked yet*') + '\n\u200b';
+    (sortedTeam2.map(p => formatDraftPlayerEntry(p, t2Captain, true)).join('\n') || '*No players picked yet*') +
+    '\n\u200b';
 
-  const unpickedList =
-    unpickedPlayers.map(p => formatDraftPlayerEntry(p, false, false)).join('\n') || '*None (Pool empty)*';
+  const unpickedList = unpickedPlayers.map(p => formatDraftPlayerEntry(p)).join('\n') || '*None (Pool empty)*';
 
   const embed = buildDraftEmbed({
     mode,
@@ -692,7 +691,7 @@ function sortTeamByDraftOrder(players: Player[], captainId?: string): Player[] {
 /**
  * Formats a player entry string for display in team rosters or available pool.
  */
-function formatDraftPlayerEntry(p: Player, isCaptain: boolean, isOnTeamRoster: boolean): string {
+function formatDraftPlayerEntry(p: Player, captain?: Player, isOnTeamRoster = false): string {
   const primaryHotsTag = (
     p.usernames.accounts?.find(a => a.isPrimary)?.hotsBattleTag ??
     p.usernames.accounts?.[0]?.hotsBattleTag ??
@@ -703,7 +702,7 @@ function formatDraftPlayerEntry(p: Player, isCaptain: boolean, isOnTeamRoster: b
   const mmrSection = `\`(${p.mmr})\``;
 
   let prefix = '• ';
-  if (isCaptain) {
+  if (p.discordId === captain?.discordId) {
     prefix = '• 👑 ';
   } else if (isOnTeamRoster) {
     const pickNum = p.draftOrder ?? 1;
@@ -757,12 +756,12 @@ function buildDraftEmbed(params: {
     .setDescription(`${statusHeader}\n\n${centeredRotationBlock}`)
     .addFields(
       {
-        name: `🔵 TEAM 1 (Captain: ${t1CaptainName})`,
+        name: `🔵 TEAM 1\n(Captain: ${t1CaptainName})`,
         value: team1List,
         inline: true,
       },
       {
-        name: `🔴 TEAM 2 (Captain: ${t2CaptainName})`,
+        name: `🔴 TEAM 2\n(Captain: ${t2CaptainName})`,
         value: team2List,
         inline: true,
       },

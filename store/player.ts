@@ -954,7 +954,7 @@ export function getSortedActivePlayers(forceRefesh = false) {
 export function getTeams(activePlayers = getSortedActivePlayers()) {
   const team1 = activePlayers.filter(p => p.team === 1);
   const team2 = activePlayers.filter(p => p.team === 2);
-  const spectators = activePlayers.filter(p => p.team === 0);
+  const spectators = activePlayers.filter(p => p.team !== 1 && p.team !== 2);
   const t1Captain = team1.find(p => p.draftOrder === 1) ?? team1[0] ?? activePlayers[0];
   const t2Captain =
     team2.find(p => p.draftOrder === 2) ??
