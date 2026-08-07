@@ -23,6 +23,7 @@ initialize().catch(err => {
 });
 
 export async function getHeroesProfileData(battleTag: string): Promise<HPData | undefined> {
+  let browser: Browser | undefined;
   try {
     const startTime = Date.now();
     // first check if we have their region and blizz_id stored already
@@ -34,16 +35,16 @@ export async function getHeroesProfileData(battleTag: string): Promise<HPData | 
 
     let blizz_id = row?.HP_Blizz_ID;
     let region = row?.HP_Region;
-    const { xsrfToken, page, browser } = await initializeHPPage();
+    const initialized = await initializeHPPage();
+    browser = initialized.browser;
+    const { xsrfToken, page } = initialized;
     if (!xsrfToken || !page) {
-      browser.close();
       throw new Error('XSRF token or page instance is missing.');
     }
     if (!blizz_id || !region) {
       // we don't know their blizz_id or region, so we need to look it up
-      const bestMatch = await getBestHpAccount(battleTag, xsrfToken, page, browser);
+      const bestMatch = await getBestHpAccount(battleTag, xsrfToken, page);
       if (!bestMatch) {
-        browser.close();
         return undefined;
       }
       blizz_id = bestMatch.blizz_id;
@@ -67,7 +68,6 @@ export async function getHeroesProfileData(battleTag: string): Promise<HPData | 
         });
 
         if (!response.ok) {
-          browser.close();
           throw new Error(`${response.status}`);
         }
 
@@ -96,10 +96,13 @@ export async function getHeroesProfileData(battleTag: string): Promise<HPData | 
       `qm: ${hpData.qmMmr}/${hpData.qmGames}, sl: ${hpData.slMmr}/${hpData.slGames}, ar: ${hpData.arMmr}/${hpData.arGames}`,
     );
     console.log(`Elapsed time: ${elapsedTime.toFixed(2)} seconds`);
-    browser.close();
     return hpData;
   } catch (error) {
     console.error('An error occurred:', error);
+  } finally {
+    if (browser) {
+      await browser.close().catch(() => {});
+    }
   }
 }
 
@@ -112,7 +115,6 @@ async function getBestHpAccount(
   battleTag: string,
   decodedToken: string,
   page: PageWithCursor,
-  browser: Browser,
 ): Promise<HPPlayerData | undefined> {
   if (!page) {
     console.error('Page instance not available');
@@ -132,7 +134,6 @@ async function getBestHpAccount(
         });
 
         if (!response.ok) {
-          browser.close();
           throw new Error(`WHOA! ${response.status}`);
         }
         console.log('response.json:', await response.clone().json());
@@ -144,14 +145,12 @@ async function getBestHpAccount(
 
     if (!Array.isArray(data) || data.length === 0) {
       console.log(`No data found for BattleTag: ${battleTag}`);
-      browser.close();
       return undefined;
     }
 
     data.sort((a, b) => b.totalGamesPlayed - a.totalGamesPlayed);
     return data[0];
   } catch (error) {
-    browser.close();
     console.error(`Error fetching getBestHpAccount data:`, error);
     return undefined;
   }
