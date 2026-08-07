@@ -154,5 +154,8 @@ SELECT * FROM map_votes LEFT JOIN map_vote_sessions AS p ON p.id = session_id;
 # get the map popularity
 SELECT map, COUNT(*) AS count FROM hots_replays GROUP BY map ORDER BY count DESC;
 
+# get lobby players with win rates
+SELECT p.*, COUNT(s.id) AS total_games, COALESCE(SUM(CASE WHEN s.team = r.winner THEN 1 ELSE 0 END), 0) AS wins, ROUND(COALESCE(AVG(CASE WHEN s.team = r.winner THEN 1.0 ELSE 0.0 END), 0) * 100, 1) || '%' AS win_rate FROM players p LEFT JOIN hots_replay_player_game_stats s ON p.discord_id = s.discord_id LEFT JOIN hots_replays r ON s.replay_id = r.id WHERE p.active = 1 GROUP BY p.discord_id ORDER BY p.active, p.team;
+
 # import replays 
 /import-replays start_date_or_count:08/05/2020 end_date:8/17/2024
