@@ -531,13 +531,12 @@ export function generateDraftUI(guildId: string | null): {
   allowedMentions: { parse: [] };
 } {
   const activePlayers = getSortedActivePlayers(true);
-  const { team1, team2, t1Captain, t2Captain } = getTeams();
+  const { team1, team2, spectators, t1Captain, t2Captain } = getTeams();
 
-  const unpickedPlayers = activePlayers.filter(p => p.team === null || p.team === undefined);
   const mode = getSetting('draft_mode', guildId) ?? 'captains';
   const turnInfo = getCurrentDraftTurn({ 1: team1.length, 2: team2.length }, activePlayers.length);
 
-  const statusHeader = buildDraftStatusHeader(mode, turnInfo, unpickedPlayers.length, t1Captain, t2Captain);
+  const statusHeader = buildDraftStatusHeader(mode, turnInfo, spectators.length, t1Captain, t2Captain);
   const centeredRotationBlock = buildDraftRotationBlock(turnInfo.activePickIndex, mode, turnInfo.isComplete);
 
   const sortedTeam1 = sortTeamByDraftOrder(team1, t1Captain?.discordId);
@@ -551,7 +550,7 @@ export function generateDraftUI(guildId: string | null): {
     (sortedTeam2.map(p => formatDraftPlayerEntry(p, t2Captain, true)).join('\n') || '*No players picked yet*') +
     '\n\u200b';
 
-  const unpickedList = unpickedPlayers.map(p => formatDraftPlayerEntry(p)).join('\n') || '*None (Pool empty)*';
+  const unpickedList = spectators.map(p => formatDraftPlayerEntry(p)).join('\n') || '*None (Pool empty)*';
 
   const embed = buildDraftEmbed({
     mode,
@@ -563,10 +562,10 @@ export function generateDraftUI(guildId: string | null): {
     team1List,
     team2List,
     unpickedList,
-    unpickedCount: unpickedPlayers.length,
+    unpickedCount: spectators.length,
   });
 
-  const components = buildDraftActionRows(unpickedPlayers, turnInfo, mode, t1Captain, t2Captain);
+  const components = buildDraftActionRows(spectators, turnInfo, mode, t1Captain, t2Captain);
 
   return { content: '', embeds: [embed], components, allowedMentions: { parse: [] } };
 }
