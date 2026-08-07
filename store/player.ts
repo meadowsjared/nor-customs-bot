@@ -795,13 +795,45 @@ export function setPlayerActive(
       addDummyHotsAccount(discordId, hotsBattleTag);
     }
     const stmt = db.prepare(
-      `UPDATE players SET active = ?${active ? ', last_active = CURRENT_TIMESTAMP' : ''} WHERE discord_id = ?`,
+      `UPDATE players SET active = ?${active ? ', last_active = CURRENT_TIMESTAMP' : ''}${!active ? ', lobby_rank = NULL, team = NULL, draft_order = NULL' : ''} WHERE discord_id = ?`,
     );
+    if (!active && player.lobbyRank > 0) {
+      console.log(`updating everybodies lobby rank greater than ${player.lobbyRank}`);
+      const updateStmt = db.prepare('UPDATE players SET lobby_rank = lobby_rank - 1 WHERE lobby_rank > ?');
+      updateStmt.run(player.lobbyRank);
+    }
     stmt.run(active ? 1 : 0, discordId);
+    recalculateLobbyRanks();
   });
   transaction();
   player.active = active;
   return { updated: true, player };
+}
+
+/**
+ * Recalculates the lobby ranks for all players in the database.
+ * This function first gets all active players sorted by their rank, then updates their lobby ranks in the database.
+ * It should be called within a db.transaction.
+ * @returns void
+ */
+export function recalculateLobbyRanks() {
+  const allPlayers = getSortedActivePlayers(true);
+
+  let currentRank = 1;
+  for (let i = 0; i < allPlayers.length; i++) {
+    const player = allPlayers[i];
+    if (player.active) {
+      const lobbyRank = currentRank++;
+      if (player.lobbyRank !== lobbyRank) {
+        console.log(`updating ${player.usernames.discordName} lobby rank to ${lobbyRank}`);
+        player.lobbyRank = lobbyRank;
+        const updateStmt = db.prepare('UPDATE players SET lobby_rank = ? WHERE discord_id = ?');
+        updateStmt.run(lobbyRank, player.discordId);
+      } else {
+        console.log(`${player.usernames.discordName} lobby rank not changed - ${player.lobbyRank}`);
+      }
+    }
+  }
 }
 
 function addDummyHotsAccount(discordId: string, hotsBattleTag: string) {
@@ -831,19 +863,17 @@ export function clearTeams(): void {
  */
 export function setTeamsFromPlayers(team1: Player[], team2: Player[], spectators: Player[]): void {
   const transaction = db.transaction(() => {
-    const clearStmt = db.prepare('UPDATE players SET team = NULL, lobby_rank = NULL');
+    const clearStmt = db.prepare('UPDATE players SET team = NULL, lobby_rank = NULL, draft_order = NULL');
+    const updateStmt = db.prepare('UPDATE players SET team = ?, lobby_rank = ?, draft_order = ? WHERE discord_id = ?');
     clearStmt.run();
     team1.forEach(p => {
-      const updateStmt = db.prepare('UPDATE players SET team = ?, lobby_rank = ? WHERE discord_id = ?');
-      updateStmt.run(1, p.lobbyRank, p.discordId);
+      updateStmt.run(1, p.lobbyRank, p.draftOrder, p.discordId);
     });
     team2.forEach(p => {
-      const updateStmt = db.prepare('UPDATE players SET team = ?, lobby_rank = ? WHERE discord_id = ?');
-      updateStmt.run(2, p.lobbyRank, p.discordId);
+      updateStmt.run(2, p.lobbyRank, p.draftOrder, p.discordId);
     });
     spectators.forEach(p => {
-      const updateStmt = db.prepare('UPDATE players SET team = ?, lobby_rank = ? WHERE discord_id = ?');
-      updateStmt.run(null, p.lobbyRank, p.discordId);
+      updateStmt.run(null, p.lobbyRank, p.draftOrder, p.discordId);
     });
   });
   transaction();
@@ -933,12 +963,6 @@ export function getSortedActivePlayers(forceRefesh = false) {
   if (forceRefesh || Date.now() - activePlayersCache.timestamp >= 5000) {
     activePlayersCache.data = getActivePlayers().sort((a, b) => getPlayerMMR(b) - getPlayerMMR(a));
     activePlayersCache.timestamp = Date.now();
-    let currentRank = 1;
-    activePlayersCache.data.forEach(p => {
-      if (p.team !== undefined && p.team !== null) {
-        p.lobbyRank = currentRank++;
-      }
-    });
     return activePlayersCache.data;
   }
   return activePlayersCache.data;

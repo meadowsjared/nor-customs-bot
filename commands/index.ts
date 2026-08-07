@@ -376,14 +376,21 @@ export async function handleMakeTeamsCommand(
   const team2: Player[] = [];
   const spectators: Player[] = [];
   // go through the sorted players, and alternate adding them to each team using snake draft (1, 2, 2, 1, 1, 2, 2, 1)
+  let currentLobbyRank = 1;
   sortedPlayers.forEach((p, index) => {
     if ((index % 4 == 0 || index % 4 == 3) && team1.length < MAX_PLAYERS_PER_TEAM) {
+      p.draftOrder = currentLobbyRank;
+      p.lobbyRank = currentLobbyRank++;
       p.team = 1;
       team1.push(p);
     } else if ((index % 4 == 1 || index % 4 == 2) && team2.length < MAX_PLAYERS_PER_TEAM) {
+      p.draftOrder = currentLobbyRank;
+      p.lobbyRank = currentLobbyRank++;
       p.team = 2;
       team2.push(p);
     } else {
+      p.draftOrder = NaN;
+      p.lobbyRank = NaN;
       p.team = 0;
       spectators.push(p);
     }
@@ -1857,6 +1864,7 @@ export async function handleLeaveCommand(
 ) {
   const { player } = setPlayerActive(interaction.user.id, false); // Mark player as inactive in the database
   await updateLobbyMessage(interaction);
+  // TODO recalculate lobby ranks
   if (player) {
     // Update the lobby message instead of announcing
     await safeReply(interaction, {
