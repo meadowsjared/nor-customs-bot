@@ -798,7 +798,6 @@ export function setPlayerActive(
       `UPDATE players SET active = ?${active ? ', last_active = CURRENT_TIMESTAMP' : ''}${!active ? ', lobby_rank = NULL, team = NULL, draft_order = NULL' : ''} WHERE discord_id = ?`,
     );
     if (!active && player.lobbyRank > 0) {
-      console.log(`updating everybodies lobby rank greater than ${player.lobbyRank}`);
       const updateStmt = db.prepare('UPDATE players SET lobby_rank = lobby_rank - 1 WHERE lobby_rank > ?');
       updateStmt.run(player.lobbyRank);
     }
@@ -825,12 +824,9 @@ export function recalculateLobbyRanks() {
     if (player.active) {
       const lobbyRank = currentRank++;
       if (player.lobbyRank !== lobbyRank) {
-        console.log(`updating ${player.usernames.discordName} lobby rank to ${lobbyRank}`);
         player.lobbyRank = lobbyRank;
         const updateStmt = db.prepare('UPDATE players SET lobby_rank = ? WHERE discord_id = ?');
         updateStmt.run(lobbyRank, player.discordId);
-      } else {
-        console.log(`${player.usernames.discordName} lobby rank not changed - ${player.lobbyRank}`);
       }
     }
   }
