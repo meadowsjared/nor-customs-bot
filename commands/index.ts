@@ -4000,9 +4000,9 @@ export async function handleChannelCommand(
   const command = interaction.options.getString(CommandIds.COMMAND, true);
   const channel = interaction.options.getChannel(CommandIds.CHANNEL, false);
   const messageId = interaction.options.getString(CommandIds.MESSAGE_ID, false);
-  const field1 = interaction.options.getString(CommandIds.FIELD1, false);
+  const field1 = interaction.options.getString(CommandIds.FIELD1, false) ?? undefined;
   const handler = handlers[command] ?? undefined;
-  if (handler && channel && channel instanceof GuildChannel && messageId && field1) {
+  if (handler && channel && channel instanceof GuildChannel && messageId) {
     await handler(channel, messageId, field1);
   } else {
     await safeReply(interaction, {
@@ -4049,14 +4049,29 @@ const handlers: { [key: string]: (channel: GuildChannel, messageId?: string, fie
   }),
 };
 
-async function processMessageData(msg: Message, identifier: string) {
-  if (!identifier) return;
+async function processMessageData(msg: Message, identifier?: string) {
   const reactions = msg.reactions.cache;
-  const target = reactions.find(r => {
-    const identifier2 = r.emoji.name;
-    return identifier === identifier2;
-  });
-  if (target) {
-    await target.remove();
+  if (!identifier) {
+    reactions.forEach(async r => {
+      await r.remove();
+    });
+    return;
   }
+  const parsedNum = parseInt(identifier, 10);
+  if (isNaN(parsedNum)) {
+    const target = reactions.find(r => {
+      const identifier2 = r.emoji.name;
+      return identifier === identifier2;
+    });
+    if (target) {
+      await target.remove();
+    }
+    return;
+  }
+  // remove any reactions that have less than the parsed number of counts
+  reactions.forEach(async r => {
+    if (r.count < parsedNum) {
+      await r.remove();
+    }
+  });
 }
