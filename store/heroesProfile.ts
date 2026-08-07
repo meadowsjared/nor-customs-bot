@@ -63,12 +63,15 @@ export async function getHeroesProfileData(battleTag: string): Promise<HPData | 
           headers: {
             'Content-Type': 'application/json',
             'X-XSRF-TOKEN': token,
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': 'application/json, text/plain, */*',
           },
           body: JSON.stringify({ battletag: battleTag, region, blizz_id }),
         });
 
         if (!response.ok) {
-          throw new Error(`${response.status}`);
+          const errText = await response.text().catch(() => '');
+          throw new Error(`${response.status}: ${errText}`);
         }
 
         return response.json();
@@ -129,12 +132,15 @@ async function getBestHpAccount(
           headers: {
             'X-XSRF-TOKEN': token,
             'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': 'application/json, text/plain, */*',
           },
           body: JSON.stringify({ userinput: tag }),
         });
 
         if (!response.ok) {
-          throw new Error(`WHOA! ${response.status}`);
+          const errText = await response.text().catch(() => '');
+          throw new Error(`WHOA! ${response.status}: ${errText}`);
         }
         console.log('response.json:', await response.clone().json());
         return response.json();

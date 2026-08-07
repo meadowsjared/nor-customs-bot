@@ -1,6 +1,6 @@
 import { appendFileSync, mkdirSync } from 'fs';
 import { connect, PageWithCursor } from 'puppeteer-real-browser';
-import type { Browser, Protocol } from "rebrowser-puppeteer-core";
+import type { Browser, Protocol } from 'rebrowser-puppeteer-core';
 
 // Save original console methods
 const origLog = console.log;
@@ -30,7 +30,7 @@ export async function puppeteerRefreshXsrfTokenAndCookies(
         encoding: 'utf8',
       }).trim();
       if (foundPath) process.env.CHROME_PATH = foundPath;
-    } catch { }
+    } catch {}
   }
 
   const userDataDir = '/tmp/puppeteer_real_browser';
@@ -45,12 +45,15 @@ export async function puppeteerRefreshXsrfTokenAndCookies(
     },
   });
   try {
-    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.goto(url, { waitUntil: 'networkidle2' });
+
+    // Allow Cloudflare Turnstile / security challenge to complete
+    await new Promise(r => setTimeout(r, 2000));
 
     // Find the XSRF token
     let xsrfCookie;
     let cookieObjects: Protocol.Network.Cookie[] = [];
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 15; i++) {
       const client = await page.createCDPSession();
       const res = await client.send('Network.getAllCookies');
       cookieObjects = res.cookies;
