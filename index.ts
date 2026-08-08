@@ -25,6 +25,8 @@ import {
   handleSetTeamsCommand,
   handleSetChannelTeamIdCommand,
   handleSetLobbyChannelCommand,
+  handleSetBotChannelCommand,
+  handleRenameBotChannelCommand,
   handleMoveToLobbyCommand,
   handleMoveToTeamsCommand,
   handleNewGameCommand,
@@ -63,6 +65,8 @@ import {
   handleChannelCommand,
   handleAdminDeleteHotsAccountCommand,
 } from './commands';
+import { getBotChannel } from './utils/channel';
+import { setSetting } from './store/settings';
 import {
   handleMapVoteCommand,
   handleVoteMapButtonClick,
@@ -92,23 +96,42 @@ client.on('messageCreate', msg => {
 });
 
 client.on('guildCreate', async guild => {
-  const existing = guild.channels.cache.find(ch => ch.name === botChannelName);
-  if (existing) {
-    console.log(`Channel ${botChannelName} already exists!`);
-    return;
+  let channel = await getBotChannel(guild);
+  if (!channel) {
+    try {
+      channel = await guild.channels.create({
+        name: botChannelName,
+        type: ChannelType.GuildText,
+        permissionOverwrites: [
+          {
+            id: guild.id,
+            allow: ['ViewChannel', 'SendMessages'],
+          },
+        ],
+      });
+      setSetting('bot_channel_id', channel.id, guild.id);
+      console.log(`Joined new guild: ${guild.name} (ID: ${guild.id}) - Created bot channel.`);
+    } catch (err) {
+      console.error(`Could not create channel in guild ${guild.name}:`, err);
+    }
   }
-  // Create a new text channel
-  await guild.channels.create({
-    name: botChannelName,
-    type: 0, // GUILD_TEXT
-    permissionOverwrites: [
-      {
-        id: guild.id,
-        allow: ['ViewChannel', 'SendMessages'],
-      },
-    ],
-  });
-  console.log(`Joined new guild: ${guild.name} (ID: ${guild.id})`);
+
+  if (channel && 'send' in channel) {
+    await channel
+      .send(
+        `Hello! 👋 This channel (<#${channel.id}>) is configured as the bot channel for **Nor's Customs Bot**. You can rename it anytime with \`/rename_bot_channel\` or select a different channel with \`/set_bot_channel\`.`,
+      )
+      .catch(err => console.error(`Error sending welcome message in guild ${guild.name}:`, err));
+  } else {
+    try {
+      const owner = await guild.fetchOwner();
+      await owner.send(
+        `Thanks for adding **Nor's Customs Bot** to **${guild.name}**! 👋\n\nPlease run \`/set_bot_channel #channel\` in your server or create a text channel named \`${botChannelName}\` to complete setup.`,
+      );
+    } catch (err) {
+      console.error(`Could not DM owner of guild ${guild.name}:`, err);
+    }
+  }
 });
 
 client.once('clientReady', async () => {
@@ -124,10 +147,12 @@ client.once('clientReady', async () => {
       },
     ],
   });
-  // Log all guilds the bot is in
+  // Log all guilds the bot is in and resolve bot channel
   client.guilds.cache.forEach(async guild => {
     guild.commands.set(slashCommands);
-    console.log(`Guild: ${guild.name} (ID: ${guild.id})`);
+    const botChannel = await getBotChannel(guild);
+    const channelName = botChannel && 'name' in botChannel ? botChannel.name : 'None/Not Found';
+    console.log(`Guild: ${guild.name} (ID: ${guild.id}) - Bot Channel: ${channelName}`);
   });
 
   // list all commands in Nor's server for debugging
@@ -246,6 +271,14 @@ client.on('interactionCreate', async interaction => {
     case CommandIds.SET_LOBBY_CHANNEL:
       // Handle set lobby channel command
       handleSetLobbyChannelCommand(interaction);
+      break;
+    case CommandIds.SET_BOT_CHANNEL:
+      // Handle set bot channel command
+      handleSetBotChannelCommand(interaction);
+      break;
+    case CommandIds.RENAME_BOT_CHANNEL:
+      // Handle rename bot channel command
+      handleRenameBotChannelCommand(interaction);
       break;
     case CommandIds.MOVE_TO_LOBBY:
       // Handle gather to lobby command

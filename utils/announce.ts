@@ -10,7 +10,7 @@ import {
   MessagePayload,
   ModalSubmitInteraction,
 } from 'discord.js';
-import { botChannelName } from '../constants';
+import { getBotChannel } from './channel';
 
 type InteractionReplyOptionsFlags = MessageCreateOptions['flags'];
 
@@ -29,10 +29,19 @@ export async function announce(
     | ModalSubmitInteraction<CacheType>,
   options: string | MessagePayload | MessageCreateOptions
 ) {
-  const channel = interaction.guild?.channels.cache.find(ch => ch.name === botChannelName);
-  if (channel?.isTextBased()) {
+  const channel = await getBotChannel(interaction.guild);
+  if (channel && 'send' in channel) {
     return await channel.send(options);
   }
+
+  if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
+    await interaction.reply({
+      content:
+        '⚠️ No bot channel is configured for this server. Please ask an admin to run `/set_bot_channel #channel` or create a channel named `🫠-nor-customs`.',
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
   return undefined;
 }
 

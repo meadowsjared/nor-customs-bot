@@ -286,6 +286,33 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     ],
   },
   {
+    name: CommandIds.SET_BOT_CHANNEL,
+    description: 'Set the bot interaction and announcement text channel',
+    defaultMemberPermissions: minimumAdminPermissions,
+    options: [
+      {
+        name: 'channel',
+        type: ApplicationCommandOptionType.Channel,
+        description: 'The text channel to set for the bot',
+        required: true,
+        channelTypes: [ChannelType.GuildText],
+      },
+    ],
+  },
+  {
+    name: CommandIds.RENAME_BOT_CHANNEL,
+    description: 'Rename the bot interaction and announcement text channel',
+    defaultMemberPermissions: minimumAdminPermissions,
+    options: [
+      {
+        name: 'name',
+        type: ApplicationCommandOptionType.String,
+        description: 'The new name for the bot channel',
+        required: true,
+      },
+    ],
+  },
+  {
     name: CommandIds.MOVE_TO_TEAMS,
     description: 'Move players to teams',
     defaultMemberPermissions: minimumAdminPermissions,

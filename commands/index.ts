@@ -8,6 +8,7 @@ import {
   ButtonInteraction,
   ButtonStyle,
   CacheType,
+  ChannelType,
   ChatInputCommandInteraction,
   EmbedBuilder,
   GuildChannel,
@@ -40,6 +41,7 @@ import {
   roleMap,
 } from '../constants';
 import { announce, safePing } from '../utils/announce';
+import { getBotChannel } from '../utils/channel';
 import {
   getActivePlayers,
   getPlayerByDiscordId,
@@ -228,8 +230,8 @@ export async function safeReply(
       console.error(`Guild with ID ${process.env.NOR_DISCORD_ID} not found.`);
       return;
     }
-    const channel = guild.channels.cache.find(ch => ch.name === botChannelName);
-    if (!channel?.isTextBased()) {
+    const channel = await getBotChannel(guild);
+    if (!channel || !('send' in channel)) {
       console.error(`Channel with name ${botChannelName} not found or is not text-based.`);
       return;
     }
@@ -1628,6 +1630,82 @@ export async function handleSetLobbyChannelCommand(
   });
 }
 
+export async function handleSetBotChannelCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+) {
+  if (!interaction.isChatInputCommand() || interaction.isButton()) {
+    console.error('Interaction is not a chat input command');
+    return;
+  }
+  if (!interaction.guildId) {
+    return await safeReply(interaction, {
+      content: 'This command can only be used in a server.',
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  const channel = interaction.options.getChannel('channel', true);
+  if (channel.type !== ChannelType.GuildText) {
+    return await safeReply(interaction, {
+      content: 'Please select a valid text channel.',
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  setSetting('bot_channel_id', channel.id, interaction.guildId);
+
+  return await safeReply(interaction, {
+    content: `Bot channel set to <#${channel.id}>.`,
+    flags: MessageFlags.Ephemeral,
+  });
+}
+
+export async function handleRenameBotChannelCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+) {
+  if (!interaction.isChatInputCommand() || interaction.isButton()) {
+    console.error('Interaction is not a chat input command');
+    return;
+  }
+  if (!interaction.guild) {
+    return await safeReply(interaction, {
+      content: 'This command can only be used in a server.',
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  const newName = interaction.options.getString('name', true);
+  const channel = await getBotChannel(interaction.guild);
+
+  if (!channel) {
+    return await safeReply(interaction, {
+      content: 'Bot channel is not set or not found. Use `/set_bot_channel` first.',
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  if ('setName' in channel && typeof channel.setName === 'function') {
+    try {
+      await channel.setName(newName);
+      return await safeReply(interaction, {
+        content: `Bot channel <#${channel.id}> renamed to **${newName}**!`,
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (error) {
+      console.error('Error renaming bot channel:', error);
+      return await safeReply(interaction, {
+        content: 'Failed to rename bot channel. Please check bot permissions.',
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+  }
+
+  return await safeReply(interaction, {
+    content: 'The configured bot channel cannot be renamed.',
+    flags: MessageFlags.Ephemeral,
+  });
+}
+
 export async function handleGetChannelsCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ) {
@@ -1751,8 +1829,8 @@ export async function handlePlayersCommand(
   });
   if (rawPlayerList.length > 0) {
     // show a public message in the channel, if there are players in the lobby
-    const channel = interaction.guild?.channels.cache.find(ch => ch.name === botChannelName);
-    if (channel?.isTextBased()) {
+    const channel = await getBotChannel(interaction.guild);
+    if (channel && 'send' in channel) {
       interaction.followUp({
         content: `\`${rawPlayerList.join(',') || 'No players in the lobby'}\``,
         flags: MessageFlags.Ephemeral,
