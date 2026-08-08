@@ -28,7 +28,7 @@ export async function getHeroesProfileData(battleTag: string): Promise<HPData | 
     const startTime = Date.now();
     // first check if we have their region and blizz_id stored already
     const hpRegionStmt = db.prepare<string, { HP_Blizz_ID: string; HP_Region: number }>(
-      'SELECT HP_Blizz_ID, HP_Region FROM hots_accounts WHERE hots_battle_tag = ?',
+      'SELECT HP_Blizz_ID, HP_Region FROM hots_accounts WHERE hots_battle_tag = ? COLLATE NOCASE',
     );
     const row = hpRegionStmt.get(battleTag);
     console.log(`Getting HP Data for ${battleTag}`);
@@ -51,7 +51,7 @@ export async function getHeroesProfileData(battleTag: string): Promise<HPData | 
       region = bestMatch.region;
       // store blizz_id, region for the first item in the array
       const hpUpdateStmt = db.prepare(
-        'UPDATE hots_accounts SET HP_Blizz_ID = ?, HP_Region = ? WHERE hots_battle_tag = ?',
+        'UPDATE hots_accounts SET HP_Blizz_ID = ?, HP_Region = ? WHERE hots_battle_tag = ? COLLATE NOCASE',
       );
       hpUpdateStmt.run(blizz_id, region, battleTag);
     }

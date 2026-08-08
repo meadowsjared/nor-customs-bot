@@ -466,7 +466,7 @@ function updateSotsStatsForAccount(battleTag: string) {
         SUM(danceTD) as totalDanceTD,
         SUM(danceDeaths) as totalDanceDeaths
       FROM hots_replay_player_game_stats
-      WHERE hots_battle_tag = ?
+      WHERE hots_battle_tag = ? COLLATE NOCASE
     `).get(battleTag) as Record<string, number> | undefined;
 
     if (stats && stats.totalGames > 0) {
@@ -565,7 +565,7 @@ function updateSotsStatsForAccount(battleTag: string) {
           SotS_Dances = ?,
           SotS_Dance_TD = ?,
           SotS_Dance_Deaths = ?
-        WHERE hots_battle_tag = ?
+        WHERE hots_battle_tag = ? COLLATE NOCASE
       `).run(
         stats.totalGames,
         stats.winPct,
@@ -737,7 +737,9 @@ export function saveReplayToDb(parsedReplay: ParsedReplay): number {
       updatedBattleTags.add(battleTag);
 
       // Lookup hots_accounts id and discord_id if it exists
-      const accountRow = db.prepare('SELECT id, discord_id FROM hots_accounts WHERE hots_battle_tag = ?').get(battleTag) as { id: number; discord_id: string } | undefined;
+      const accountRow = db.prepare<[string], { id: number; discord_id: string }>(
+        'SELECT id, discord_id FROM hots_accounts WHERE hots_battle_tag = ? COLLATE NOCASE',
+      ).get(battleTag);
       const hotsAccountId = accountRow?.id ?? null;
       const discordId = accountRow?.discord_id ?? null;
 

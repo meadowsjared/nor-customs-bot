@@ -1993,7 +1993,7 @@ ${validationResult.rules}
     await new Promise(resolve => setTimeout(resolve, 8000));
     await reply?.delete();
   }
-  if (!hpCalled && !player?.usernames.accounts?.find(a => a.hotsBattleTag === hotsBattleTag)) {
+  if (!hpCalled && !player?.usernames.accounts?.find(a => a.hotsBattleTag.toLowerCase() === hotsBattleTag.toLowerCase())) {
     await handleAddHotsAccount(modalInteraction, modalInteraction.user.id, hotsBattleTag);
   }
 }

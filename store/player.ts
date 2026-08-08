@@ -64,9 +64,13 @@ const initSchema = db.transaction(() => {
     CREATE INDEX IF NOT EXISTS idx_hots_accounts_discord_id 
     ON hots_accounts(discord_id)
   `);
+
+
+  db.exec('DROP INDEX IF EXISTS idx_unique_hots_battle_tag;');
+
   db.exec(`
     CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_hots_battle_tag 
-    ON hots_accounts(hots_battle_tag)
+    ON hots_accounts(hots_battle_tag COLLATE NOCASE)
   `);
 });
 
@@ -299,7 +303,7 @@ ${validationResult.rules}
 
   //check if the hots account is already in use by another player
   const existingAccountStmt = db.prepare<string[], HotsAccount & { discord_id: string }>(
-    'SELECT discord_id, hots_battle_tag FROM hots_accounts WHERE hots_battle_tag = ? AND discord_id != ?',
+    'SELECT discord_id, hots_battle_tag FROM hots_accounts WHERE hots_battle_tag = ? COLLATE NOCASE AND discord_id != ?',
   );
   const existingAccount = existingAccountStmt.get(hotsBattleTag, discordId);
   if (existingAccount) {
@@ -370,7 +374,7 @@ ${validationResult.rules}
         HP_SL_Games = ?,
         HP_AR_Games = ?,
         updated_at = CURRENT_TIMESTAMP
-      WHERE discord_id = ? AND hots_battle_tag = ?`,
+      WHERE discord_id = ? AND hots_battle_tag = ? COLLATE NOCASE`,
     );
     updateProfileStmt.run(
       profileData.region,
@@ -532,7 +536,7 @@ export function deletePlayerHotsAccounts(discordId: string): number {
 }
 
 export function deleteHotsAccount(hotsBattleTag: string) {
-  const stmt = db.prepare('DELETE FROM hots_accounts WHERE hots_battle_tag = ?');
+  const stmt = db.prepare('DELETE FROM hots_accounts WHERE hots_battle_tag = ? COLLATE NOCASE');
   const result = stmt.run(hotsBattleTag);
   return result.changes;
 }
@@ -647,7 +651,7 @@ async function updatePrimaryAccountInDb(
   hotsBattleTag: string,
 ): Promise<{ success: boolean; message?: string; player?: Player }> {
   const stmt = db.prepare(
-    'UPDATE hots_accounts SET is_primary = CASE WHEN hots_battle_tag = ? THEN 1 ELSE 0 END WHERE discord_id = ?',
+    'UPDATE hots_accounts SET is_primary = CASE WHEN hots_battle_tag = ? COLLATE NOCASE THEN 1 ELSE 0 END WHERE discord_id = ?',
   );
   const result = stmt.run(hotsBattleTag, discordId);
   if (result.changes === 0) {
