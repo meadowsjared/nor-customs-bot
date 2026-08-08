@@ -173,6 +173,10 @@ client.once('clientReady', async () => {
     });
 
   console.log(`Bot is ready! Logged in as ${client.user?.tag}`);
+  if (client.application?.id) {
+    const inviteUrl = `https://discord.com/oauth2/authorize?client_id=${client.application.id}&permissions=8&scope=bot%20applications.commands`;
+    console.log(`Bot Invite Link (Guild Install):\n${inviteUrl}`);
+  }
 });
 
 function getCommandName(
