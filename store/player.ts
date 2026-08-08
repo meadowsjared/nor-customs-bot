@@ -362,9 +362,10 @@ ${validationResult.rules}
     ) ?? false;
   if (hasAccount) {
     userIsSelf = discordId === interaction?.user.id;
-    //update their heroes profile data anyway
+    //update their heroes profile data and battle tag casing
     const updateProfileStmt = db.prepare(
       `UPDATE hots_accounts SET
+        hots_battle_tag = ?,
         HP_Region = ?,
         HP_Blizz_ID = ?,
         HP_QM_MMR = ?,
@@ -377,6 +378,7 @@ ${validationResult.rules}
       WHERE discord_id = ? AND hots_battle_tag = ? COLLATE NOCASE`,
     );
     updateProfileStmt.run(
+      hotsBattleTag,
       profileData.region,
       profileData.blizz_id,
       profileData.qmMmr,
@@ -421,10 +423,9 @@ ${validationResult.rules}
     if (hotsAccountAlreadyExists) {
       const content = `${userIsSelf ? 'You' : '<@' + discordId + '>'} already ${
         userIsSelf ? 'have' : 'has'
-      } this HotS account linked: \`${
-        player.usernames.accounts?.find(account => account.hotsBattleTag.toLowerCase() === hotsBattleTag.toLowerCase())
-          ?.hotsBattleTag
-      }\`\n\nHowever, ${userIsSelf ? 'your' : '<@' + discordId + '>' + "'s"} Heroes profile data has been updated.`;
+      } this HotS account linked: \`${hotsBattleTag}\`\n\nHowever, ${
+        userIsSelf ? 'your' : '<@' + discordId + '>' + "'s"
+      } Heroes profile data and BattleTag formatting have been updated.`;
       try {
         await interaction?.editReply({
           content,
