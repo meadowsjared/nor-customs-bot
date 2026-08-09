@@ -13,7 +13,7 @@ import {
   ButtonInteraction,
   MessageFlags,
 } from 'discord.js';
-import { botChannelName, CommandIds, roleMap } from './constants';
+import { botChannelName, CommandIds, norsServerId, roleMap } from './constants';
 import {
   handleJoinCommand,
   handleLeaveCommand,
@@ -96,6 +96,7 @@ client.on('messageCreate', msg => {
 });
 
 client.on('guildCreate', async guild => {
+  guild.commands.set(slashCommands).catch(err => console.error(`Error setting commands for guild ${guild.name}:`, err));
   let channel = await getBotChannel(guild);
   if (!channel) {
     try {
@@ -157,7 +158,7 @@ client.once('clientReady', async () => {
 
   // list all commands in Nor's server for debugging
   client.guilds.cache
-    .get('706998529582956654')
+    .get(norsServerId)
     ?.commands.fetch()
     .then(commands => {
       console.log('--- Commands in Guild ---');

@@ -11,6 +11,7 @@ import {
 export const botChannelName = '🫠-nor-customs';
 
 export const norDiscordId = '192116769870184448'; // Nor's Discord ID
+export const norsServerId = '706998529582956654'; // Nor's Server ID
 
 export const adminUserIds = [
   '243668219712372736', // Bandayd
