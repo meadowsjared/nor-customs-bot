@@ -3,10 +3,10 @@ import { MapDefinition, MapVoteSession, MapVoteTally } from '../types/mapVote';
 
 const db = new Database('./store/nor_customs.db');
 
-// Ensure tables exist
 db.exec(`
   CREATE TABLE IF NOT EXISTS map_vote_sessions (
     id TEXT PRIMARY KEY,
+    guild_id TEXT NOT NULL DEFAULT 'global',
     channel_id TEXT NOT NULL,
     message_ids TEXT NOT NULL,
     created_by TEXT NOT NULL,
@@ -14,7 +14,9 @@ db.exec(`
     active INTEGER NOT NULL DEFAULT 1,
     title TEXT
   );
+`);
 
+db.exec(`
   CREATE TABLE IF NOT EXISTS map_votes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id TEXT NOT NULL,
@@ -203,19 +205,20 @@ export function getMapVoteSortedList(sessionId?: string): {
  */
 export function startMapVoteSession(
   sessionId: string,
+  guildId: string,
   channelId: string,
   messageIds: string[],
   createdBy: string,
   title?: string,
 ): MapVoteSession {
-  db.prepare(`UPDATE map_vote_sessions SET active = 0 WHERE channel_id = ?`).run(channelId);
+  db.prepare(`UPDATE map_vote_sessions SET active = 0 WHERE guild_id = ? AND channel_id = ?`).run(guildId, channelId);
 
   const createdAt = new Date();
   const stmt = db.prepare(`
-    INSERT INTO map_vote_sessions (id, channel_id, message_ids, created_by, created_at, active, title)
-    VALUES (?, ?, ?, ?, ?, 1, ?)
+    INSERT INTO map_vote_sessions (id, guild_id, channel_id, message_ids, created_by, created_at, active, title)
+    VALUES (?, ?, ?, ?, ?, ?, 1, ?)
   `);
-  stmt.run(sessionId, channelId, JSON.stringify(messageIds), createdBy, createdAt.toISOString(), title ?? null);
+  stmt.run(sessionId, guildId, channelId, JSON.stringify(messageIds), createdBy, createdAt.toISOString(), title ?? null);
 
   return {
     id: sessionId,
@@ -241,14 +244,14 @@ function mapSessionRowToSession(row: SessionRow): MapVoteSession {
 }
 
 /**
- * Retrieves the active vote session in a channel.
+ * Retrieves the active vote session in a channel for a specific guild.
  */
-export function getActiveMapVoteSession(channelId: string): MapVoteSession | undefined {
+export function getActiveMapVoteSession(guildId: string, channelId: string): MapVoteSession | undefined {
   const row = db
-    .prepare<[string], SessionRow>(
-      `SELECT * FROM map_vote_sessions WHERE channel_id = ? AND active = 1 ORDER BY created_at DESC LIMIT 1`,
+    .prepare<[string, string], SessionRow>(
+      `SELECT * FROM map_vote_sessions WHERE guild_id = ? AND channel_id = ? AND active = 1 ORDER BY created_at DESC LIMIT 1`,
     )
-    .get(channelId);
+    .get(guildId, channelId);
 
   return row ? mapSessionRowToSession(row) : undefined;
 }
@@ -257,14 +260,20 @@ export function getActiveMapVoteSession(channelId: string): MapVoteSession | und
  * Retrieves the newest vote session in a channel (active or ended).
  * If no session is found for the channel, falls back to the newest session overall.
  */
-export function getNewestMapVoteSession(channelId?: string): MapVoteSession | undefined {
+export function getNewestMapVoteSession(guildId?: string, channelId?: string): MapVoteSession | undefined {
   let row: SessionRow | undefined;
-  if (channelId) {
+  if (guildId && channelId) {
+    row = db
+      .prepare<[string, string], SessionRow>(
+        `SELECT * FROM map_vote_sessions WHERE guild_id = ? AND channel_id = ? ORDER BY created_at DESC LIMIT 1`,
+      )
+      .get(guildId, channelId);
+  } else if (guildId) {
     row = db
       .prepare<[string], SessionRow>(
-        `SELECT * FROM map_vote_sessions WHERE channel_id = ? ORDER BY created_at DESC LIMIT 1`,
+        `SELECT * FROM map_vote_sessions WHERE guild_id = ? ORDER BY created_at DESC LIMIT 1`,
       )
-      .get(channelId);
+      .get(guildId);
   }
 
   if (!row) {

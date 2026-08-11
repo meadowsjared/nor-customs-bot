@@ -42,6 +42,7 @@ import {
 } from '../constants';
 import { announce, safePing } from '../utils/announce';
 import { getBotChannel } from '../utils/channel';
+import { safeReply, requireGuildId } from '../utils/interaction';
 import {
   getActivePlayers,
   getPlayerByDiscordId,
@@ -87,13 +88,13 @@ dotenv.config();
  * Generates the current lobby status message with active players
  * @returns The formatted lobby status message
  */
-function generateLobbyStatusMessage(pPreviousPlayersList?: string): string {
+function generateLobbyStatusMessage(guildId: string, pPreviousPlayersList?: string): string {
   const prevPlayersFromDb: string[] = JSON.parse(
-    getLobbyMessages([CommandIds.NEW_GAME])?.[0]?.previousPlayersList ?? '[]',
+    getLobbyMessages(guildId, [CommandIds.NEW_GAME])?.[0]?.previousPlayersList ?? '[]',
   );
   const previousPlayersMessage = generatePreviousPlayersMessage(prevPlayersFromDb);
   const previousPlayersList = pPreviousPlayersList ?? previousPlayersMessage ?? '';
-  const activePlayers = getActivePlayers();
+  const activePlayers = getActivePlayers(guildId);
   activePlayers.sort((a, b) => a.lastActive.getTime() - b.lastActive.getTime()); // sort by last_active ascending
   const lobbyPlayers = activePlayers.map(
     (p, index) =>
@@ -131,8 +132,8 @@ function generateLobbyStatusMessage(pPreviousPlayersList?: string): string {
 }
 
 /** generates the list of previous players */
-function generatePreviousPlayersList(): string[] {
-  return getActivePlayers().map(p => p.discordId);
+function generatePreviousPlayersList(guildId: string): string[] {
+  return getActivePlayers(guildId).map(p => p.discordId);
 }
 
 function generatePreviousPlayersMessage(previousPlayersList: string[]): string {
@@ -146,10 +147,14 @@ function generatePreviousPlayersMessage(previousPlayersList: string[]): string {
  * Updates the lobby announcement message with current player status
  * @param interaction The interaction object for guild access
  */
-export async function updateLobbyMessage(interaction: chatOrButtonOrModal, previousPlayersList?: string[]) {
+export async function updateLobbyMessage(
+  guildId: string,
+  interaction: chatOrButtonOrModal,
+  previousPlayersList?: string[],
+) {
   await updateAdminActiveButtons(interaction, previousPlayersList);
 
-  const lobbyMessages = getLobbyMessages([CommandIds.NEW_GAME]);
+  const lobbyMessages = getLobbyMessages(guildId, [CommandIds.NEW_GAME]);
   if (!lobbyMessages || lobbyMessages.length === 0) {
     return; // No lobby message to update
   }
@@ -159,7 +164,7 @@ export async function updateLobbyMessage(interaction: chatOrButtonOrModal, previ
     if (channel?.isTextBased()) {
       const message = await channel.messages.fetch(lobbyMessages[0].messageId);
       // purposely don't pass in the previousPlayersList, so it uses the stored value in the database
-      const updatedContent = generateLobbyStatusMessage();
+      const updatedContent = generateLobbyStatusMessage(guildId);
       await message.edit({
         content: updatedContent,
         components: [new ActionRowBuilder<ButtonBuilder>().addComponents(imPlayingBtn)],
@@ -174,17 +179,18 @@ export async function updateLobbyMessage(interaction: chatOrButtonOrModal, previ
 export async function handleNewGameCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ) {
-  // combine the observers, team1, and team2, into one string, labeling each section, but skip a section if there are no players in that section
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return;
 
   /**
    * Array of discord IDs of the players that were active before starting the new game
    */
-  const previousPlayersList = generatePreviousPlayersList();
-  markAllPlayersInactive();
+  const previousPlayersList = generatePreviousPlayersList(guildId);
+  markAllPlayersInactive(guildId);
 
   // Generate the initial lobby status message
   const previousPlayersMessage = generatePreviousPlayersMessage(previousPlayersList);
-  const lobbyStatusMessage = generateLobbyStatusMessage(previousPlayersMessage);
+  const lobbyStatusMessage = generateLobbyStatusMessage(guildId, previousPlayersMessage);
 
   // announce in the channel that a new game has started and all players have been marked as inactive, so they need to hit the button if they are going to play
   const sentMessage = await announce(interaction, {
@@ -195,7 +201,13 @@ export async function handleNewGameCommand(
 
   // Store the message ID so we can update it later
   if (sentMessage) {
-    saveLobbyMessage(CommandIds.NEW_GAME, sentMessage.id, sentMessage.channelId, JSON.stringify(previousPlayersList));
+    saveLobbyMessage(
+      guildId,
+      CommandIds.NEW_GAME,
+      sentMessage.id,
+      sentMessage.channelId,
+      JSON.stringify(previousPlayersList),
+    );
   }
 
   const sentReply = await safeReply(interaction, {
@@ -206,67 +218,6 @@ export async function handleNewGameCommand(
   await sentReply?.delete();
   // TODO I want to show the admin active buttons here, but if I do it crashes
   // handleAdminSetActiveCommand(interaction, previousPlayersList);
-}
-
-/**
- * Safely replies to an interaction, using followUp if already replied
- * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
- * @param replyOptions The options for the reply message
- * @returns Promise<Message<boolean> | InteractionResponse<boolean> | undefined>
- */
-export async function safeReply(
-  interaction: chatOrButtonOrModal | undefined,
-  options: string | MessagePayload | InteractionReplyOptions,
-) {
-  if (!interaction) {
-    // post a new message
-    if (!process.env.NOR_DISCORD_ID) {
-      console.error('No NOR_DISCORD_ID environment variable set.');
-      return;
-    }
-    // use process.env.NOR_DISCORD_ID to get the channel
-    const guild = client.guilds.cache.get(process.env.NOR_DISCORD_ID);
-    if (!guild) {
-      console.error(`Guild with ID ${process.env.NOR_DISCORD_ID} not found.`);
-      return;
-    }
-    const channel = await getBotChannel(guild);
-    if (!channel || !('send' in channel)) {
-      console.error(`Channel with name ${botChannelName} not found or is not text-based.`);
-      return;
-    }
-    const message = getMessageContent(options);
-    return channel.send({
-      content: message,
-    });
-  }
-  if (interaction.replied || interaction.deferred) {
-    return await interaction.followUp(options);
-  } else {
-    try {
-      if (interaction.isRepliable()) {
-        return await interaction.reply(options);
-      } else {
-        console.error('Interaction is not repliable');
-      }
-    } catch (error) {
-      try {
-        return await interaction.followUp(options);
-      } catch (followUpError) {
-        console.error('Failed to follow up on interaction:', followUpError);
-      }
-    }
-  }
-}
-
-function getMessageContent(options: string | MessagePayload | InteractionReplyOptions): string {
-  if (typeof options === 'string') {
-    return options;
-  } else if ('content' in options && typeof options.content === 'string') {
-    return options.content;
-  } else {
-    return 'No content';
-  }
 }
 
 /**
@@ -283,6 +234,8 @@ export async function handleSetTeamsCommand(
     console.error('Interaction is not a command or button interaction');
     return;
   }
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return;
   const originalTeamsData = interaction.options.getString('teams_data', true);
   const splitResult = originalTeamsData.split(',');
   const team1Input: number[] | null = splitResult[0]
@@ -294,7 +247,7 @@ export async function handleSetTeamsCommand(
     .map(n => parseInt(n, 10))
     .filter(n => !isNaN(n));
   // now that we have the new team assignments
-  const sortedPlayers = getSortedActivePlayers();
+  const sortedPlayers = getSortedActivePlayers(guildId);
   sortedPlayers.forEach((p, index) => (p.lobbyRank = index));
   if (team1Input.length > sortedPlayers.length) {
     // the maximum length is the total number of players
@@ -345,7 +298,7 @@ export async function handleSetTeamsCommand(
   );
 
   // set the teams in the database
-  setTeamsFromPlayers(newTeam1, newTeam2, newSpectators);
+  setTeamsFromPlayers(guildId, newTeam1, newTeam2, newSpectators);
   await generateTeamsMessage(interaction, newTeam1, newTeam2);
 }
 
@@ -364,9 +317,11 @@ export async function handleMakeTeamsCommand(
     console.error('Interaction is not a command or button interaction');
     return;
   }
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return;
 
   const publish = interaction.options.getBoolean('publish', false) ?? false;
-  const sortedPlayers = getSortedActivePlayers();
+  const sortedPlayers = getSortedActivePlayers(guildId);
   if (sortedPlayers.length < 1) {
     await safeReply(interaction, {
       content: 'Not enough players to make teams.',
@@ -398,7 +353,7 @@ export async function handleMakeTeamsCommand(
     }
   });
   // set the teams in the database
-  setTeamsFromPlayers(team1, team2, spectators);
+  setTeamsFromPlayers(guildId, team1, team2, spectators);
   await generateTeamsMessage(interaction, team1, team2, publish, true);
 }
 
@@ -406,7 +361,9 @@ export async function handleMakeTeamsCommand(
  * Handles autocomplete for captain selection in /draft and /draft_captain
  */
 export async function handleDraftAutocomplete(interaction: AutocompleteInteraction): Promise<void> {
-  let sortedPlayers = getSortedActivePlayers();
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return;
+  let sortedPlayers = getSortedActivePlayers(guildId);
 
   if (interaction.commandName === CommandIds.DRAFT_TEAM_ASSIGN) {
     const selectedTeam = interaction.options.getString('team');
@@ -440,10 +397,10 @@ export async function handleDraftAutocomplete(interaction: AutocompleteInteracti
  * Updates the active interactive draft message in channel
  */
 export async function updateDraftUIMessage(
-  guildId: string | null,
-  interactionForGuild: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+  guildId: string,
+  interactionForGuild?: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ) {
-  const draftMessages = getLobbyMessages([CommandIds.DRAFT]);
+  const draftMessages = getLobbyMessages(guildId, [CommandIds.DRAFT]);
   if (!draftMessages || draftMessages.length === 0) {
     return;
   }
@@ -459,7 +416,7 @@ export async function updateDraftUIMessage(
         await message.edit(uiData);
       }
     } else {
-      const guild = client.guilds.cache.get(guildId ?? '');
+      const guild = client.guilds.cache.get(guildId);
       const channel = guild?.channels.cache.get(channelId);
       if (channel?.isTextBased()) {
         const message = await channel.messages.fetch(messageId);
@@ -477,7 +434,9 @@ export async function updateDraftUIMessage(
 export async function handleDraftCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ) {
-  const activeSortedPlayers = getSortedActivePlayers();
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return;
+  const activeSortedPlayers = getSortedActivePlayers(guildId);
   if (activeSortedPlayers.length < 2) {
     await safeReply(interaction, {
       content: 'Not enough active players in the lobby to start a draft. Need at least 2 active players.',
@@ -487,7 +446,7 @@ export async function handleDraftCommand(
   }
 
   // Reset team assignments for active players
-  resetActivePlayerTeams();
+  resetActivePlayerTeams(guildId);
 
   let t1CaptainId = interaction.isChatInputCommand()
     ? (interaction.options.getString('team1_captain') ?? undefined)
@@ -508,18 +467,18 @@ export async function handleDraftCommand(
 
   const modeOpt = interaction.isChatInputCommand() ? (interaction.options.getString('mode') ?? 'captains') : 'captains';
 
-  setSetting('draft_mode', modeOpt, interaction.guildId);
+  setSetting('draft_mode', modeOpt, guildId);
 
   // Automatically assign Captain 1 to Team 1 (rank #1) and Captain 2 to Team 2 (rank #2)
-  assignPlayerToTeam(t1CaptainId, 1, 1);
-  assignPlayerToTeam(t2CaptainId, 2, 2);
+  assignPlayerToTeam(guildId, t1CaptainId, 1, 1);
+  assignPlayerToTeam(guildId, t2CaptainId, 2, 2);
 
-  const uiData = generateDraftUI(interaction.guildId);
+  const uiData = generateDraftUI(guildId);
 
   const sentMessage = await announce(interaction, uiData);
 
   if (sentMessage) {
-    saveLobbyMessage(CommandIds.DRAFT, sentMessage.id, sentMessage.channelId, '');
+    saveLobbyMessage(guildId, CommandIds.DRAFT, sentMessage.id, sentMessage.channelId, '');
   }
 
   const sentReply = await safeReply(interaction, {
@@ -533,14 +492,14 @@ export async function handleDraftCommand(
 /**
  * Builds the interactive draft message content and component buttons.
  */
-export function generateDraftUI(guildId: string | null): {
+export function generateDraftUI(guildId: string): {
   content: string;
   embeds: EmbedBuilder[];
   components: ActionRowBuilder<ButtonBuilder>[];
   allowedMentions: { parse: [] };
 } {
-  const activePlayers = getSortedActivePlayers(true);
-  const { team1, team2, spectators, t1Captain, t2Captain } = getTeams();
+  const activePlayers = getSortedActivePlayers(guildId, true);
+  const { team1, team2, spectators, t1Captain, t2Captain } = getTeams(guildId, activePlayers);
 
   const mode = getSetting('draft_mode', guildId) ?? 'captains';
   const turnInfo = getCurrentDraftTurn({ 1: team1.length, 2: team2.length }, activePlayers.length);
@@ -574,7 +533,7 @@ export function generateDraftUI(guildId: string | null): {
     unpickedCount: spectators.length,
   });
 
-  const components = buildDraftActionRows(spectators, turnInfo, mode, t1Captain, t2Captain);
+  const components = buildDraftActionRows(guildId, spectators, turnInfo, mode, t1Captain, t2Captain);
 
   return { content: '', embeds: [embed], components, allowedMentions: { parse: [] } };
 }
@@ -788,6 +747,7 @@ function buildDraftEmbed(params: {
  * Builds interactive button component action rows for picks, removals, and controls.
  */
 function buildDraftActionRows(
+  guildId: string,
   unpickedPlayers: Player[],
   turnInfo: ReturnType<typeof getCurrentDraftTurn>,
   mode: string,
@@ -841,7 +801,7 @@ function buildDraftActionRows(
   }
 
   // Control Row
-  const canUndo = getDraftPickedCount(t1Captain?.discordId, t2Captain?.discordId) > 0;
+  const canUndo = getDraftPickedCount(guildId, t1Captain?.discordId ?? '', t2Captain?.discordId ?? '') > 0;
 
   let modeBtnLabel = 'Mode: Captains (1-2-2)';
   if (mode === 'free_team1') modeBtnLabel = 'Mode: Free Pick ➡️ Team 1 (🔵)';
@@ -869,6 +829,8 @@ export async function handleDraftCaptainCommand(
   if (!interaction.isChatInputCommand()) {
     return;
   }
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return;
   const t1CaptainId = interaction.options.getString('team1_captain');
   const t2CaptainId = interaction.options.getString('team2_captain');
 
@@ -883,15 +845,15 @@ export async function handleDraftCaptainCommand(
   const updated: string[] = [];
 
   if (t1CaptainId) {
-    assignPlayerToTeam(t1CaptainId, 1, 1);
+    assignPlayerToTeam(guildId, t1CaptainId, 1, 1);
     updated.push(`Team 1 captain to <@${t1CaptainId}>`);
   }
   if (t2CaptainId) {
-    assignPlayerToTeam(t2CaptainId, 2, 2);
+    assignPlayerToTeam(guildId, t2CaptainId, 2, 2);
     updated.push(`Team 2 captain to <@${t2CaptainId}>`);
   }
 
-  await updateDraftUIMessage(interaction.guildId, interaction);
+  await updateDraftUIMessage(guildId, interaction);
 
   const sentReply = await safeReply(interaction, {
     content: `Updated ${updated.join(' and ')}!`,
@@ -904,14 +866,14 @@ export async function handleDraftCaptainCommand(
  * Handles picking a player via player button click
  */
 export async function handleDraftPickButton(interaction: ButtonInteraction<CacheType>, pickedPlayerDiscordId: string) {
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return;
   // Instantly acknowledge button interaction to Discord (< 50ms) to prevent timeouts
   await interaction.deferUpdate();
-
-  const guildId = interaction.guildId;
   const mode = getSetting('draft_mode', guildId) ?? 'captains';
 
-  const sortedPlayers = getSortedActivePlayers(true);
-  const { team1, team2, t1Captain, t2Captain } = getTeams(sortedPlayers);
+  const sortedPlayers = getSortedActivePlayers(guildId, true);
+  const { team1, team2, t1Captain, t2Captain } = getTeams(guildId, sortedPlayers);
   const turnInfo = getCurrentDraftTurn({ 1: team1.length, 2: team2.length }, sortedPlayers.length);
 
   const isT1Captain = interaction.user.id === t1Captain.discordId;
@@ -946,8 +908,8 @@ export async function handleDraftPickButton(interaction: ButtonInteraction<Cache
   const assignedTeam = mode === 'captains' ? turnInfo.currentTeam : mode === 'free_team1' ? 1 : 2;
 
   // Assign player in DB with next draft order (#3, #4, #5...)
-  const nextOrder = getNextDraftOrder();
-  assignPlayerToTeam(pickedPlayerDiscordId, assignedTeam, nextOrder);
+  const nextOrder = getNextDraftOrder(guildId);
+  assignPlayerToTeam(guildId, pickedPlayerDiscordId, assignedTeam, nextOrder);
 
   await updateDraftUIMessage(guildId, interaction);
 }
@@ -958,6 +920,9 @@ export async function handleDraftPickButton(interaction: ButtonInteraction<Cache
 export async function handleDraftUndoCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ) {
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return;
+
   let count = 1;
   let all = false;
 
@@ -969,8 +934,7 @@ export async function handleDraftUndoCommand(
     await interaction.deferUpdate();
   }
 
-  const guildId = interaction.guildId;
-  const { team1, team2, t1Captain, t2Captain } = getTeams();
+  const { team1, team2, t1Captain, t2Captain } = getTeams(guildId);
   const allTeams = [...team1, ...team2];
 
   const nonCaptainPicks = allTeams
@@ -980,7 +944,7 @@ export async function handleDraftUndoCommand(
   const picksToUndo = nonCaptainPicks.slice(0, all ? nonCaptainPicks.length : count);
 
   for (const player of picksToUndo) {
-    assignPlayerToTeam(player.discordId, null, null);
+    assignPlayerToTeam(guildId, player.discordId, null, null);
   }
   const numUndone = picksToUndo.length;
 
@@ -1009,10 +973,12 @@ export async function handleDraftTeamAssignCommand(
   if (!interaction.isChatInputCommand()) {
     return;
   }
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return;
   const targetTeamOption = interaction.options.getString('team', true);
   const playerDiscordId = interaction.options.getString('player', true);
 
-  const activePlayers = getSortedActivePlayers(true);
+  const activePlayers = getSortedActivePlayers(guildId, true);
   const player =
     activePlayers.find(p => p.discordId === playerDiscordId) ??
     activePlayers.find(
@@ -1042,9 +1008,9 @@ export async function handleDraftTeamAssignCommand(
       return;
     }
 
-    assignPlayerToTeam(player.discordId, null, null);
+    assignPlayerToTeam(guildId, player.discordId, null, null);
 
-    await updateDraftUIMessage(interaction.guildId, interaction);
+    await updateDraftUIMessage(guildId, interaction);
 
     const sentReply = await safeReply(interaction, {
       content: `Moved **${playerName}** to Spectators.`,
@@ -1061,10 +1027,10 @@ export async function handleDraftTeamAssignCommand(
       return;
     }
 
-    const draftOrder = player.draftOrder || getNextDraftOrder();
-    assignPlayerToTeam(player.discordId, targetTeam, draftOrder);
+    const draftOrder = player.draftOrder || getNextDraftOrder(guildId);
+    assignPlayerToTeam(guildId, player.discordId, targetTeam, draftOrder);
 
-    await updateDraftUIMessage(interaction.guildId, interaction);
+    await updateDraftUIMessage(guildId, interaction);
 
     const sentReply = await safeReply(interaction, {
       content: `Assigned **${playerName}** to Team ${targetTeam}.`,
@@ -1078,9 +1044,11 @@ export async function handleDraftTeamAssignCommand(
  * Handles the Mode Toggle button click
  */
 export async function handleDraftToggleModeButton(interaction: ButtonInteraction<CacheType>) {
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return;
   await interaction.deferUpdate();
 
-  const currentMode = getSetting('draft_mode', interaction.guildId) ?? 'captains';
+  const currentMode = getSetting('draft_mode', guildId) ?? 'captains';
   let newMode = 'captains';
   if (currentMode === 'captains') {
     newMode = 'free_team1';
@@ -1089,9 +1057,9 @@ export async function handleDraftToggleModeButton(interaction: ButtonInteraction
   } else {
     newMode = 'captains';
   }
-  setSetting('draft_mode', newMode, interaction.guildId);
+  setSetting('draft_mode', newMode, guildId);
 
-  await updateDraftUIMessage(interaction.guildId, interaction);
+  await updateDraftUIMessage(guildId, interaction);
 }
 
 /**
@@ -1103,10 +1071,12 @@ export async function handleDraftModeCommand(
   if (!interaction.isChatInputCommand()) {
     return;
   }
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return;
   const mode = interaction.options.getString('mode', true);
-  setSetting('draft_mode', mode, interaction.guildId);
+  setSetting('draft_mode', mode, guildId);
 
-  await updateDraftUIMessage(interaction.guildId, interaction);
+  await updateDraftUIMessage(guildId, interaction);
 
   let modeLabel = 'Captains Mode (1-2-2 Rotation)';
   if (mode === 'free_team1') modeLabel = 'Free Pick ➡️ Team 1 (🔵)';
@@ -1159,7 +1129,9 @@ async function generateTeamsMessage(
     });
     return;
   }
-  const activePlayers = getSortedActivePlayers();
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return;
+  const activePlayers = getSortedActivePlayers(guildId);
   activePlayers.forEach((p, index) => (p.lobbyRank = index));
   const team1List = team1
     .map(
@@ -1204,7 +1176,7 @@ async function generateTeamsMessage(
       ? [new EmbedBuilder().setTitle('Spectators').setDescription(spectatorList).setColor(`#909000`)]
       : [];
   const embeds = [team1embed, team2embed, ...spectatorEmbedAr];
-  let messages = getLobbyMessages([CommandIds.TEAMS_EPHEMERAL, CommandIds.TEAMS]);
+  let messages = getLobbyMessages(guildId, [CommandIds.TEAMS_EPHEMERAL, CommandIds.TEAMS]);
   if (publish || isDraft) {
     // clear the previous message from the database, so it doesn't get updated until it's published again
     if (messages) {
@@ -1222,7 +1194,7 @@ async function generateTeamsMessage(
     }
 
     // if publish or isDraft is true, we're deleting the old messages from the database
-    deleteLobbyMessages([CommandIds.TEAMS_EPHEMERAL, CommandIds.TEAMS]);
+    deleteLobbyMessages(guildId, [CommandIds.TEAMS_EPHEMERAL, CommandIds.TEAMS]);
   }
 
   if (publish) {
@@ -1234,7 +1206,7 @@ async function generateTeamsMessage(
     });
     if (message) {
       const fetchedMessage = await message.fetch();
-      saveLobbyMessage(CommandIds.TEAMS, fetchedMessage.id, interaction.channelId, ''); // store the interaction ID as the message ID, so we know it was a draft
+      saveLobbyMessage(guildId, CommandIds.TEAMS, fetchedMessage.id, interaction.channelId, ''); // store the interaction ID as the message ID, so we know it was a draft
     }
     return; // no need to update anything
   }
@@ -1247,7 +1219,7 @@ async function generateTeamsMessage(
     });
     if (message) {
       storeInteraction(message.id, interaction.channelId, interaction);
-      saveLobbyMessage(CommandIds.TEAMS_EPHEMERAL, message.id, interaction.channelId, '');
+      saveLobbyMessage(guildId, CommandIds.TEAMS_EPHEMERAL, message.id, interaction.channelId, '');
     }
     return;
   }
@@ -1281,11 +1253,11 @@ async function generateTeamsMessage(
         });
         // only save the message if we successfully edited it
         const fetchedMessage = await message.fetch();
-        saveLobbyMessage(CommandIds.TEAMS, fetchedMessage.id, interaction.channelId, ''); // store the interaction ID as the message ID, so we know it was a draft
+        saveLobbyMessage(guildId, CommandIds.TEAMS, fetchedMessage.id, interaction.channelId, ''); // store the interaction ID as the message ID, so we know it was a draft
         return;
       } catch (error) {
         // if we couldn't edit the message, then delete it from the database
-        deleteLobbyMessages([msg.messageType]);
+        deleteLobbyMessages(guildId, [msg.messageType]);
         console.error('Failed to update draft message:', [msg.messageType], error);
       }
     }
@@ -1303,11 +1275,13 @@ export async function handleSwapTeamsCommand(
     });
     return;
   }
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return;
   /** this is a 1-based index */
   const playerANumber = interaction.options.getInteger('player-a', true) - 1;
   /** this is a 1-based index */
   const playerBNumber = interaction.options.getInteger('player-b', true) - 1;
-  const activePlayers = getSortedActivePlayers();
+  const activePlayers = getSortedActivePlayers(guildId);
   // we don't need to recalculate the lobbyRank here
   // because it should be calculated when the team command is run,
   // and the swap command should only be used after a team command,
@@ -1349,11 +1323,11 @@ Player B: \`team: ${playerB.team}\` \`${playerBNumber + 1}: ${playerB.mmr}\` <@$
   }
   // swap the teams
   // note we set playerA to playerB's team, and playerB to playerA's team
-  changeTeams([
-    { playerId: playerA.discordId, newTeam: playerB.team ?? null },
-    { playerId: playerB.discordId, newTeam: playerA.team ?? null },
+  changeTeams(guildId, [
+    { discordId: playerA.discordId, newTeam: playerB.team ?? null },
+    { discordId: playerB.discordId, newTeam: playerA.team ?? null },
   ]);
-  const { team1, team2 } = getTeams();
+  const { team1, team2 } = getTeams(guildId);
   await generateTeamsMessage(interaction, team1, team2);
 }
 
@@ -1369,8 +1343,10 @@ export async function handlePublishTeamsCommand(
     console.error('Interaction is not a command or button interaction');
     return;
   }
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return;
   // get the teams from the database
-  const { team1, team2 } = getTeams();
+  const { team1, team2 } = getTeams(guildId);
   await generateTeamsMessage(interaction, team1, team2, true);
   // show the move to teams button
   const moveToTeamsBtn = new ButtonBuilder()
@@ -1390,16 +1366,18 @@ export async function handlePublishTeamsCommand(
 export async function handleMoveToLobbyCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ) {
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return;
   // 1. Immediately defer the reply
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-  const result = getChannels(['lobby']);
+  const result = getChannels(guildId, ['lobby']);
   if (!result || result.length === 0) {
     await interaction.editReply({
       content: 'No lobby channel set. Please set a lobby channel first using `/set_lobby_channel`.',
     });
     return;
   }
-  const lobby = getChannels(['lobby'])?.[0];
+  const lobby = getChannels(guildId, ['lobby'])?.[0];
   if (!lobby) {
     await interaction.editReply({
       content: 'No lobby channel set. Please set a lobby channel first using `/set_lobby_channel`.',
@@ -1414,7 +1392,7 @@ export async function handleMoveToLobbyCommand(
     });
     return;
   }
-  const players = getActivePlayers();
+  const players = getActivePlayers(guildId);
   if (players.length === 0) {
     await interaction.editReply({
       content: 'No active players to move.',
@@ -1480,8 +1458,10 @@ export async function handleMoveToLobbyCommand(
 export async function handleMoveToTeamsCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ) {
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return;
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-  const result = getChannels(['team1', 'team2']);
+  const result = getChannels(guildId, ['team1', 'team2']);
   if (!result || result.length === 0) {
     await interaction.editReply({
       content: 'No team channels set. Please set team channels first using `/set_channel_team_id`.',
@@ -1495,7 +1475,7 @@ export async function handleMoveToTeamsCommand(
     });
     return;
   }
-  const teams = getTeams();
+  const teams = getTeams(guildId);
   let numberMoved = 0;
   /** array for storing the ids of all the players that it failed to move: */
   const failedToMove: Player[] = [];
@@ -1579,6 +1559,8 @@ export async function handleSetChannelTeamIdCommand(
     console.error('Interaction is not a command or button interaction');
     return;
   }
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return;
   const channel = interaction.options.getChannel('channel_id', false);
   const teamId = interaction.options.getString('team_number', false);
   if (!channel || !teamId) {
@@ -1592,7 +1574,7 @@ export async function handleSetChannelTeamIdCommand(
     });
     return;
   }
-  saveChannel(teamId, channel);
+  saveChannel(guildId, teamId, channel);
   await safeReply(interaction, {
     content: `\`${teamId}\` channel set to <#${channel.id}>.`,
     flags: MessageFlags.Ephemeral,
@@ -1606,6 +1588,8 @@ export async function handleSetLobbyChannelCommand(
     console.error('Interaction is not a command or button interaction');
     return;
   }
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return;
   const channel = interaction.options.getChannel('channel_id', false);
   // if channel is null
   if (channel === null) {
@@ -1622,7 +1606,7 @@ export async function handleSetLobbyChannelCommand(
     });
     return;
   }
-  saveChannel('lobby', channel);
+  saveChannel(guildId, 'lobby', channel);
   // This command is not implemented yet
   await safeReply(interaction, {
     content: `\`lobby\` channel set to <#${channel.id}>`,
@@ -1637,12 +1621,8 @@ export async function handleSetBotChannelCommand(
     console.error('Interaction is not a chat input command');
     return;
   }
-  if (!interaction.guildId) {
-    return await safeReply(interaction, {
-      content: 'This command can only be used in a server.',
-      flags: MessageFlags.Ephemeral,
-    });
-  }
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return;
 
   const channel = interaction.options.getChannel('channel', true);
   if (channel.type !== ChannelType.GuildText) {
@@ -1652,7 +1632,7 @@ export async function handleSetBotChannelCommand(
     });
   }
 
-  setSetting('bot_channel_id', channel.id, interaction.guildId);
+  setSetting('bot_channel_id', channel.id, guildId);
 
   return await safeReply(interaction, {
     content: `Bot channel set to <#${channel.id}>.`,
@@ -1667,12 +1647,8 @@ export async function handleRenameBotChannelCommand(
     console.error('Interaction is not a chat input command');
     return;
   }
-  if (!interaction.guild) {
-    return await safeReply(interaction, {
-      content: 'This command can only be used in a server.',
-      flags: MessageFlags.Ephemeral,
-    });
-  }
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return;
 
   const newName = interaction.options.getString('name', true);
   const channel = await getBotChannel(interaction.guild);
@@ -1709,7 +1685,9 @@ export async function handleRenameBotChannelCommand(
 export async function handleGetChannelsCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ) {
-  const channels = getChannels(['lobby', 'team1', 'team2']);
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return;
+  const channels = getChannels(guildId, ['lobby', 'team1', 'team2']);
   if (!channels || channels.length === 0) {
     await safeReply(interaction, {
       content: 'No channels set. Please set a lobby channel and team channels first.',
@@ -1796,8 +1774,10 @@ export async function handlePlayersCommand(
     console.error('Interaction is not a command or button interaction');
     return;
   }
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return;
 
-  const players = getActivePlayers();
+  const players = getActivePlayers(guildId);
 
   const playerList =
     players
@@ -1940,8 +1920,10 @@ export async function handlePlayersAllCommand(
 export async function handleLeaveCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ) {
-  const { player } = setPlayerActive(interaction.user.id, false); // Mark player as inactive in the database
-  await updateLobbyMessage(interaction);
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return;
+  const { player } = setPlayerActive(interaction.user.id, false, guildId); // Mark player as inactive in the database
+  await updateLobbyMessage(guildId, interaction);
   // TODO recalculate lobby ranks
   if (player) {
     // Update the lobby message instead of announcing
@@ -1958,8 +1940,10 @@ export async function handleLeaveCommand(
 export async function handleClearCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ) {
-  markAllPlayersInactive(); // Mark all players as inactive in the database
-  await updateLobbyMessage(interaction); // Update the lobby message to show no players
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return;
+  markAllPlayersInactive(guildId); // Mark all players as inactive in the database
+  await updateLobbyMessage(guildId, interaction); // Update the lobby message to show no players
   await safeReply(interaction, {
     content: 'All players have been removed from the lobby.',
     flags: MessageFlags.Ephemeral,
@@ -1976,17 +1960,19 @@ export async function handleRejoinCommand(
   newUser = false,
   pBattleTag?: string,
 ) {
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return;
   // first check it the user has a hotsBattleTag in the database
-  const existingPlayer = getPlayerByDiscordId(interaction.user.id);
+  const existingPlayer = getPlayerByDiscordId(interaction.user.id, guildId);
   if (!existingPlayer?.usernames.accounts?.find(a => a.isPrimary)) {
     // if they don't have a hotsBattleTag, show the modal to collect it
-    await showJoinModal(interaction, pBattleTag);
+    await showJoinModal(guildId, interaction, pBattleTag);
     return;
   }
-  const { player, updated } = setPlayerActive(interaction.user.id, true); // Mark player as active in the database
+  const { player, updated } = setPlayerActive(interaction.user.id, true, guildId); // Mark player as active in the database
   if (player) {
     // always update the lobby message instead of announcing
-    await updateLobbyMessage(interaction);
+    await updateLobbyMessage(guildId, interaction);
     const joinVerb = newUser ? 'joined' : 'rejoined';
     const content =
       (updated === false ? `You are already in` : `You have ${joinVerb}`) +
@@ -2004,7 +1990,7 @@ export async function handleRejoinCommand(
   }
   if (player === undefined) {
     // show a dialog to collect the battle tag and role
-    await showJoinModal(interaction);
+    await showJoinModal(guildId, interaction);
   }
 }
 
@@ -2014,10 +2000,16 @@ export async function handleRejoinCommand(
  * @returns { Promise<void> }
  */
 export async function showJoinModal(
+  guildId: string,
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
   pBattleTag?: string,
 ): Promise<void> {
-  const { hotsBattleTag, modalInteraction } = await handleUserNameModalSubmit(interaction, undefined, pBattleTag);
+  const { hotsBattleTag, modalInteraction } = await handleUserNameModalSubmit(
+    interaction,
+    guildId,
+    undefined,
+    pBattleTag,
+  );
   if (!modalInteraction || !hotsBattleTag) {
     // If modal interaction is undefined, it means the user did not respond in time
     return;
@@ -2036,7 +2028,7 @@ ${validationResult.rules}
   let roleSelectMenuDisplayed = false;
   let hpCalled = false;
   const discordData = fetchDiscordNames(modalInteraction);
-  const player = getPlayerByDiscordId(modalInteraction.user.id);
+  const player = getPlayerByDiscordId(modalInteraction.user.id, guildId);
   if (!player) {
     savePlayer(
       interaction,
@@ -2045,7 +2037,7 @@ ${validationResult.rules}
         discordId: modalInteraction.user.id,
         usernames: { ...discordData },
         active: false,
-        team: undefined,
+        team: null,
         lobbyRank: NaN,
         draftOrder: NaN,
         adjustment: null,
@@ -2063,7 +2055,7 @@ ${validationResult.rules}
   }
   if (!roleSelectMenuDisplayed) {
     setPlayerActive(modalInteraction.user.id, true, hotsBattleTag);
-    await updateLobbyMessage(modalInteraction);
+    await updateLobbyMessage(guildId, modalInteraction);
     const reply = await safeReply(modalInteraction, {
       content: `Looking up \`${hotsBattleTag}\` please wait...`,
       flags: MessageFlags.Ephemeral,
@@ -2071,7 +2063,10 @@ ${validationResult.rules}
     await new Promise(resolve => setTimeout(resolve, 8000));
     await reply?.delete();
   }
-  if (!hpCalled && !player?.usernames.accounts?.find(a => a.hotsBattleTag.toLowerCase() === hotsBattleTag.toLowerCase())) {
+  if (
+    !hpCalled &&
+    !player?.usernames.accounts?.find(a => a.hotsBattleTag.toLowerCase() === hotsBattleTag.toLowerCase())
+  ) {
     await handleAddHotsAccount(modalInteraction, modalInteraction.user.id, hotsBattleTag);
   }
 }
@@ -2083,6 +2078,8 @@ export async function handleLookupByDiscordIdCommand(
     console.error('Interaction is not a command or button interaction');
     return;
   }
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return;
   const discordId = interaction.options.getString(CommandIds.DISCORD_ID, true).replace(/[<@>]/g, '');
   const displayName = interaction.options.getString(CommandIds.DISCORD_DISPLAY_NAME, true);
   const discordName = interaction.options.getString(CommandIds.DISCORD_NAME, true);
@@ -2091,7 +2088,7 @@ export async function handleLookupByDiscordIdCommand(
     discordGlobalName: displayName,
     discordDisplayName: displayName,
   };
-  return await handleLookupCommandSub(interaction, discordId, discordData);
+  return await handleLookupCommandSub(interaction, discordId, discordData, guildId);
 }
 
 export async function handleLookupCommand(
@@ -2101,15 +2098,17 @@ export async function handleLookupCommand(
     console.error('Interaction is not a command or button interaction');
     return;
   }
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return;
   const member = interaction.options.getMember(CommandIds.DISCORD_ID);
   if (!member || 'user' in member === false) {
     const discordId = interaction.options.get(CommandIds.DISCORD_ID)?.value;
     // check if it's a string of numbers
     if (typeof discordId === 'string') {
-      const player = getPlayerByDiscordId(discordId); // look up the player in the database by discord id
+      const player = getPlayerByDiscordId(discordId, guildId); // look up the player in the database by discord id
       if (player) {
         const discordData = fetchDiscordNames(interaction, discordId);
-        return await handleLookupCommandSub(interaction, discordId, discordData);
+        return await handleLookupCommandSub(interaction, discordId, discordData, guildId);
       }
     }
     await safeReply(interaction, {
@@ -2120,7 +2119,7 @@ export async function handleLookupCommand(
   }
   const discordId = member.user.id;
   const discordData = fetchDiscordNames(interaction, discordId);
-  return await handleLookupCommandSub(interaction, discordId, discordData);
+  return await handleLookupCommandSub(interaction, discordId, discordData, guildId);
   // return;
 }
 
@@ -2128,9 +2127,10 @@ async function handleLookupCommandSub(
   interaction: ChatInputCommandInteraction<CacheType>,
   discordId: string,
   discordData: DiscordUserNames,
+  guildId: string,
 ) {
   const hotsBattleTag = interaction.options.getString(CommandIds.BATTLE_TAG, false) ?? '';
-  const player = getPlayerByDiscordId(discordId);
+  const player = getPlayerByDiscordId(discordId, guildId);
   if (player || (!player && hotsBattleTag === '')) {
     const message = player
       ? `${hotsBattleTag || 'Player'} found in the lobby with role: \`${getPlayerRolesFormatted(player.role)}\``
@@ -2393,7 +2393,7 @@ async function handleLookupCommandSub(
           ...discordData,
         },
         active: false,
-        team: undefined,
+        team: null,
         lobbyRank: NaN,
         draftOrder: NaN,
         adjustment: null,
@@ -2405,15 +2405,15 @@ async function handleLookupCommandSub(
     return;
   }
   // update the player's Discord data in the database
-  setPlayerDiscordNames(discordId, discordData);
+  setPlayerDiscordNames(discordId, guildId, discordData);
   // If a hotsBattleTag is provided, and does this player already have this specific battle tag?
   if (
     hotsBattleTag &&
     player.usernames.accounts?.some(a => a.hotsBattleTag.toLowerCase() === hotsBattleTag.toLowerCase())
   ) {
-    setPlayerName(interaction, discordId, hotsBattleTag); // Update the player's Heroes of the Storm name in the database
+    setPlayerName(interaction, guildId, discordId, hotsBattleTag); // Update the player's Heroes of the Storm name in the database
   } else if (hotsBattleTag) {
-    await handleAddHotsAccountCommandSub(interaction, discordId, hotsBattleTag); // Add the new battle tag to the player's accounts in the database
+    await handleAddHotsAccountCommandSub(interaction, guildId, discordId, hotsBattleTag); // Add the new battle tag to the player's accounts in the database
   }
   // return;
 }
@@ -2435,7 +2435,9 @@ export async function handleDeletePlayerCommand(
   }
   const discordId = member.user.id;
   const { playersDeleted, hotsAccountsDeleted } = await deletePlayer(discordId);
-  await updateLobbyMessage(interaction);
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return;
+  await updateLobbyMessage(guildId, interaction);
   // reply with the number of players and accounts deleted
   await safeReply(interaction, {
     content: `Deleted ${playersDeleted} player${
@@ -2464,7 +2466,9 @@ export async function handleRefreshLobbyMessage(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
   reply: boolean = true,
 ) {
-  await updateLobbyMessage(interaction);
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return;
+  await updateLobbyMessage(guildId, interaction);
   if (reply) {
     const replyMessage = await safeReply(interaction, {
       content: 'Lobby messages refreshed.',
@@ -2483,7 +2487,9 @@ export async function handleAdminShowRoleButtons(
   interaction: ButtonInteraction<CacheType> | ChatInputCommandInteraction<CacheType>,
   discordId: string,
 ) {
-  const player = getPlayerByDiscordId(discordId); // Get player by Discord ID
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return;
+  const player = getPlayerByDiscordId(discordId, guildId); // Get player by Discord ID
   if (!player) {
     if (interaction.replied) {
       await interaction.followUp({
@@ -2525,13 +2531,14 @@ export async function handleAdminShowRoleButtons(
  * @returns Promise<void>
  */
 export async function handleAdminAddHotsAccountButton(interaction: ButtonInteraction<CacheType>, discordId: string) {
-  const { hotsBattleTag, modalInteraction } = await handleUserNameModalSubmit(interaction, discordId);
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return;
+  const { hotsBattleTag, modalInteraction } = await handleUserNameModalSubmit(interaction, guildId, discordId);
   if (!modalInteraction || !hotsBattleTag) {
     // If modal interaction is undefined, it means the user did not respond in time
     return;
   }
-
-  const player = getPlayerByDiscordId(discordId);
+  const player = getPlayerByDiscordId(discordId, guildId);
   if (player) {
     await handleAddHotsAccount(modalInteraction, discordId, hotsBattleTag); // Update the player's battle tag in the database
   }
@@ -2557,7 +2564,7 @@ export async function handleJoinCommand(
     usernames: { ...discordData },
     role,
     active: true,
-    team: undefined,
+    team: null,
     lobbyRank: NaN,
     draftOrder: NaN,
     adjustment: null,
@@ -2566,7 +2573,9 @@ export async function handleJoinCommand(
   };
   await savePlayer(interaction, interaction.user.id, newPlayer, hotsBattleTag); // Save player data to the database
   // announce in the channel who has joined
-  await handleUserJoined(interaction);
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return;
+  await handleUserJoined(guildId, interaction);
 }
 
 /**
@@ -2576,9 +2585,9 @@ export async function handleJoinCommand(
  * @param role The role of the user who joined, based on the roleMap keys.
  * @param skipReply (optional) Whether to skip the reply and just follow up with the components.
  */
-async function handleUserJoined(interaction: chatOrButtonOrModal) {
+async function handleUserJoined(guildId: string, interaction: chatOrButtonOrModal) {
   // Update the lobby message instead of announcing
-  await updateLobbyMessage(interaction);
+  await updateLobbyMessage(guildId, interaction);
 
   const components = [new ActionRowBuilder<ButtonBuilder>().addComponents(leaveBtn, addAccountBtn, roleBtn)];
   await safeReply(interaction, {
@@ -2590,13 +2599,15 @@ async function handleUserJoined(interaction: chatOrButtonOrModal) {
 export async function handleAddHotsAccountCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ) {
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return;
   if (interaction.isButton()) {
-    const { hotsBattleTag, modalInteraction } = await handleUserNameModalSubmit(interaction);
+    const { hotsBattleTag, modalInteraction } = await handleUserNameModalSubmit(interaction, guildId);
     if (!modalInteraction || !hotsBattleTag) {
       // If modal interaction is undefined, it means the user did not respond in time
       return;
     }
-    const player = getPlayerByDiscordId(modalInteraction.user.id);
+    const player = getPlayerByDiscordId(modalInteraction.user.id, guildId);
     if (player) {
       await handleAddHotsAccount(modalInteraction, modalInteraction.user.id, hotsBattleTag); // Update the player's battle tag in the database
     }
@@ -2605,7 +2616,7 @@ export async function handleAddHotsAccountCommand(
   const discordId = interaction.user.id;
   const hotsBattleTag = interaction.options.getString(CommandIds.BATTLE_TAG);
   // check if the battleTag is valid, it should be in the format of Name#1234
-  await handleAddHotsAccountCommandSub(interaction, discordId, hotsBattleTag);
+  await handleAddHotsAccountCommandSub(interaction, guildId, discordId, hotsBattleTag);
 }
 
 export async function handleAdminAddHotsAccountByDiscordIdCommand(
@@ -2615,9 +2626,11 @@ export async function handleAdminAddHotsAccountByDiscordIdCommand(
     console.error('Interaction is not a command or button interaction');
     return;
   }
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return;
   const discordId = interaction.options.getString(CommandIds.DISCORD_ID, true).replace(/[<@>]/g, '');
   const hotsBattleTag = interaction.options.getString(CommandIds.BATTLE_TAG);
-  await handleAddHotsAccountCommandSub(interaction, discordId, hotsBattleTag);
+  await handleAddHotsAccountCommandSub(interaction, guildId, discordId, hotsBattleTag);
 }
 
 export async function handleAdminAddHotsAccountCommand(interaction: ChatInputCommandInteraction<CacheType>) {
@@ -2629,9 +2642,11 @@ export async function handleAdminAddHotsAccountCommand(interaction: ChatInputCom
     });
     return;
   }
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return;
   const hotsBattleTag = interaction.options.getString(CommandIds.BATTLE_TAG);
   // check if the battleTag is valid, it should be in the format of Name#1234
-  await handleAddHotsAccountCommandSub(interaction, member.user.id, hotsBattleTag);
+  await handleAddHotsAccountCommandSub(interaction, guildId, member.user.id, hotsBattleTag);
 }
 
 export async function handleAdminDeleteHotsAccountCommand(interaction: ChatInputCommandInteraction<CacheType>) {
@@ -2656,7 +2671,9 @@ export async function handleAdminPrimaryCommand(
   messageIdParam?: string,
   channelIdParam?: string,
 ) {
-  const discordId = getDiscordId(interaction, discordIdParam);
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return;
+  const discordId = getDiscordId(interaction, guildId, discordIdParam);
   if (!discordId) {
     await safeReply(interaction, {
       content: 'Please provide a valid Discord ID or member to look up.',
@@ -2664,7 +2681,7 @@ export async function handleAdminPrimaryCommand(
     });
     return;
   }
-  const player = getPlayerByDiscordId(discordId);
+  const player = getPlayerByDiscordId(discordId, guildId);
   if (!player) {
     await safeReply(interaction, {
       content: 'The specified user does not exist in the database.',
@@ -2687,6 +2704,7 @@ export async function handleAdminPrimaryCommand(
       // set that account as primary directly
       await setPrimaryAccount(
         interaction,
+        guildId,
         discordId,
         player.usernames.accounts[0].hotsBattleTag,
         message.id,
@@ -2703,7 +2721,7 @@ export async function handleAdminPrimaryCommand(
         });
         return;
       }
-      await setPrimaryAccount(interaction, discordId, battleTag, message.id, channelId);
+      await setPrimaryAccount(interaction, guildId, discordId, battleTag, message.id, channelId);
       return;
     }
     const accountButtons = player.usernames.accounts.map(account => {
@@ -2728,11 +2746,12 @@ export async function handleAdminPrimaryCommand(
     storeInteraction(message.id, interaction.channelId, interaction);
     return;
   }
-  await setPrimaryAccount(interaction, discordId, battleTag, messageIdParam, channelIdParam);
+  await setPrimaryAccount(interaction, guildId, discordId, battleTag, messageIdParam, channelIdParam);
 }
 
 function getDiscordId(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+  guildId: string,
   discordIdParam?: string,
 ): string | undefined {
   if (discordIdParam) {
@@ -2748,7 +2767,7 @@ function getDiscordId(
   if (interaction.options.get(CommandIds.DISCORD_ID)) {
     const discordId = interaction.options.get(CommandIds.DISCORD_ID)?.value;
     if (typeof discordId === 'string') {
-      const player = getPlayerByDiscordId(discordId); // look up the player in the database by discord id
+      const player = getPlayerByDiscordId(discordId, guildId); // look up the player in the database by discord id
       if (player) {
         return discordId.replace(/[<@>]/g, '');
       }
@@ -2772,12 +2791,13 @@ function getBattleTag(
 
 async function handleAddHotsAccountCommandSub(
   interaction: ChatInputCommandInteraction<CacheType>,
+  guildId: string,
   discordId: string,
   hotsBattleTag: string | null,
 ) {
   if (!hotsBattleTag) {
     // if they didn't provide a battle tag, then show them all the accounts they have associated with their discord id
-    const player = getPlayerByDiscordId(discordId);
+    const player = getPlayerByDiscordId(discordId, guildId);
     if (!player?.usernames.accounts || player.usernames.accounts.length === 0) {
       await safeReply(interaction, {
         content: 'You have no Heroes of the Storm accounts associated with your Discord ID.',
@@ -2817,13 +2837,14 @@ async function handleDeleteHotsAccountCommandSub(
  */
 async function handleUserNameModalSubmit(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+  guildId: string,
   discordId?: string,
   pBattleTag?: string,
 ): Promise<{
   hotsBattleTag: string | undefined;
   modalInteraction: ModalSubmitInteraction<CacheType> | undefined;
 }> {
-  const previousPlayer = getPlayerByDiscordId(discordId ?? interaction.user.id);
+  const previousPlayer = getPlayerByDiscordId(discordId ?? interaction.user.id, guildId);
 
   // create a modal with a text field to collect the battle tag
   let suggestedBattleTag =
@@ -2895,7 +2916,9 @@ export async function handleEditRoleCommand(
   setActive = false,
   hotsBattleTag?: string,
 ): Promise<void> {
-  const player = getPlayerByDiscordId(interaction.user.id); // Get player by Discord ID
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return;
+  const player = getPlayerByDiscordId(interaction.user.id, guildId); // Get player by Discord ID
   if (!player) {
     if (interaction.replied) {
       await interaction.followUp({
@@ -2947,7 +2970,9 @@ export async function handleEditRoleButtonCommand(
     return;
   }
 
-  const player = getPlayerByDiscordId(discordId);
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return;
+  const player = getPlayerByDiscordId(discordId, guildId);
   if (!player) {
     await safeReply(interaction, {
       content: 'You are not in the lobby. Click the button below to join.',
@@ -2963,7 +2988,7 @@ export async function handleEditRoleButtonCommand(
   let setActiveNext: boolean;
   if (setActive === true && player.active === false && role !== undefined) {
     // If the action is set to active, we need to handle it differently
-    setPlayerActive(discordId, true, hotsBattleTag); // Set the player as active
+    setPlayerActive(discordId, true, guildId, hotsBattleTag); // Set the player as active
     setActiveNext = false; // Reset the active state for the next interaction
   } else {
     setActiveNext = setActive; // Keep the active state as is
@@ -2972,20 +2997,21 @@ export async function handleEditRoleButtonCommand(
   const activePrefix = setActive ? 'You must click a role to join the lobby\n' : ''; // Default content for the reply
   switch (action) {
     case CommandIds.ROLE_EDIT_ADD:
-      showAddButtons(interaction, discordId, player, role, roles, activePrefix, row2, activeSuffix);
+      showAddButtons(interaction, guildId, discordId, player, role, roles, activePrefix, row2, activeSuffix);
       break;
     case CommandIds.ROLE_EDIT_REMOVE:
-      showRemoveButtons(interaction, discordId, player, role, roles, activePrefix, row2, activeSuffix);
+      showRemoveButtons(interaction, guildId, discordId, player, role, roles, activePrefix, row2, activeSuffix);
       break;
     case CommandIds.ROLE_EDIT_REPLACE:
-      showReplaceButtons(interaction, discordId, player, role, roles, activePrefix, row2, activeSuffix);
+      showReplaceButtons(interaction, guildId, discordId, player, role, roles, activePrefix, row2, activeSuffix);
       break;
   }
-  await updateLobbyMessage(interaction);
+  await updateLobbyMessage(guildId, interaction);
 }
 
 function showAddButtons(
   interaction: ButtonInteraction<CacheType>,
+  guildId: string,
   discordId: string,
   player: Player,
   role: string | undefined,
@@ -2997,7 +3023,7 @@ function showAddButtons(
   if (role && !player.role?.includes(role)) {
     // If the role is specified and does not exist in the player's roles, add it
     const newRoles = (player.role ?? '') + role; // Append the new role
-    setPlayerRole(discordId, newRoles); // Update the player's role in the database
+    setPlayerRole(discordId, guildId, newRoles); // Update the player's role in the database
     roles = ', current role: ' + getPlayerRolesFormatted(newRoles);
   }
   interaction.update({
@@ -3016,6 +3042,7 @@ function showAddButtons(
 
 function showRemoveButtons(
   interaction: ButtonInteraction<CacheType>,
+  guildId: string,
   discordId: string,
   player: Player,
   role: string | undefined,
@@ -3030,7 +3057,7 @@ function showRemoveButtons(
       .split('')
       .filter(r => r !== role)
       .join('');
-    setPlayerRole(discordId, newRoles); // Update the player's role in the database
+    setPlayerRole(discordId, guildId, newRoles); // Update the player's role in the database
     roles = ', current role: ' + getPlayerRolesFormatted(newRoles);
   }
   interaction.update({
@@ -3049,6 +3076,7 @@ function showRemoveButtons(
 
 function showReplaceButtons(
   interaction: ButtonInteraction<CacheType>,
+  guildId: string,
   discordId: string,
   player: Player,
   role: string | undefined,
@@ -3058,7 +3086,7 @@ function showReplaceButtons(
   activeSuffix: string,
 ) {
   if (role) {
-    setPlayerRole(discordId, role);
+    setPlayerRole(discordId, guildId, role);
     roles = ', current role: ' + getPlayerRolesFormatted(role);
   }
   interaction.update({
@@ -3247,6 +3275,7 @@ function getMemberFromInteraction(
     | ChatInputCommandInteraction<CacheType>
     | ButtonInteraction<CacheType>
     | ModalSubmitInteraction<CacheType>,
+  guildId: string,
   pId?: string,
 ) {
   if (interaction.isChatInputCommand()) {
@@ -3255,7 +3284,7 @@ function getMemberFromInteraction(
     if (!member || 'user' in member === false) {
       // check if the user is in the database
       if (discordId && typeof discordId === 'string') {
-        const player = getPlayerByDiscordId(discordId);
+        const player = getPlayerByDiscordId(discordId, guildId);
         if (!player) {
           return null;
         }
@@ -3266,7 +3295,7 @@ function getMemberFromInteraction(
     return member.user.id;
   }
   if (pId) {
-    const player = getPlayerByDiscordId(pId);
+    const player = getPlayerByDiscordId(pId, guildId);
     if (!player) {
       return null;
     }
@@ -3289,7 +3318,9 @@ export async function handleAdminSetRoleCommand(
   if (!userIsAdmin(interaction)) {
     return;
   }
-  const member = getMemberFromInteraction(interaction, discordId);
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return;
+  const member = getMemberFromInteraction(interaction, guildId, discordId);
   if (member === null) {
     await safeReply(interaction, {
       content: 'Please provide a valid Discord member to set their name.',
@@ -3315,7 +3346,7 @@ export async function handleAdminSetRoleCommand(
     return;
   }
   const id = member;
-  const player = setPlayerRole(id, role);
+  const player = setPlayerRole(id, guildId, role);
   if (player === false) {
     await safeReply(interaction, {
       content: 'Player not found in the lobby. Please make sure they have joined first.',
@@ -3325,7 +3356,7 @@ export async function handleAdminSetRoleCommand(
   }
   // update the lobby message if the player is active
   if (player.active) {
-    await updateLobbyMessage(interaction);
+    await updateLobbyMessage(guildId, interaction);
   }
   await safeReply(interaction, {
     content: `Set <@${id}>'s role to \`${getPlayerRolesFormatted(role)}\``,
@@ -3376,6 +3407,8 @@ export async function handleAdminSetActiveCommand(
     });
     return;
   }
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return;
   let pDiscordId: string | undefined = undefined;
   let previousPlayersList: string[] | undefined = undefined;
   if (Array.isArray(pDiscordIdOrDiscordIdArray)) {
@@ -3384,12 +3417,12 @@ export async function handleAdminSetActiveCommand(
     pDiscordId = pDiscordIdOrDiscordIdArray;
   }
 
-  const discordId = getMemberFromInteraction(interaction, pDiscordId);
+  const discordId = getMemberFromInteraction(interaction, guildId, pDiscordId);
   if (discordId === null) {
     await handleAdminShowPlayerActiveButtons(interaction);
     return;
   }
-  const storedPlayer = getPlayerByDiscordId(discordId);
+  const storedPlayer = getPlayerByDiscordId(discordId, guildId);
   if (storedPlayer && pActive === undefined) {
     pActive = !storedPlayer.active; // Toggle the active status if not provided
   } else {
@@ -3397,7 +3430,7 @@ export async function handleAdminSetActiveCommand(
   }
   const isActive = getActiveFromInteraction(interaction, pActive); // Get the active status from the interaction or use the provided value
   const id = discordId ?? pDiscordId;
-  const { player, updated } = setPlayerActive(id, isActive); // Set player as active in the database
+  const { player, updated } = setPlayerActive(id, isActive, guildId); // Set player as active in the database
   if (!player) {
     await safeReply(interaction, {
       content: 'Player not found in the lobby. Please make sure they have joined first.',
@@ -3445,7 +3478,7 @@ export async function handleAdminSetActiveCommand(
         ],
       });
     }
-    await updateLobbyMessage(interaction, previousPlayersList);
+    await updateLobbyMessage(guildId, interaction, previousPlayersList);
   } else {
     await safeReply(interaction, {
       content: `${player.usernames.accounts?.find(a => a.isPrimary)?.hotsBattleTag.replace(/#.*$/, '')} is already ${
@@ -3490,13 +3523,15 @@ async function getPlayersByVoiceChannelId(
   channelId: string | null,
   previousPlayersList?: string[],
 ): Promise<Player[]> {
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return [];
   // get the users from the interaction's buttons
   const storedInteraction = getStoredInteraction(`${CommandIds.ADMIN}_${CommandIds.ACTIVE}`, interaction.channelId);
 
   // get previously stored players from the buttons of the previously stored interaction
-  const players = await getPreviousSetActivePlayers(storedInteraction);
-  const previousPlayers = getLobbyPreviousPlayers(previousPlayersList);
-  const activePlayers = getActivePlayers();
+  const players = await getPreviousSetActivePlayers(storedInteraction, guildId);
+  const previousPlayers = getLobbyPreviousPlayers(guildId, previousPlayersList);
+  const activePlayers = getActivePlayers(guildId);
   players.push(...previousPlayers.filter(lp => !players.some(p => p.discordId === lp.discordId))); // add the lobby players that are not already in the players array
   players.push(...activePlayers.filter(ap => !players.some(p => p.discordId === ap.discordId))); // add the active players that are not already in the players array
 
@@ -3509,7 +3544,7 @@ async function getPlayersByVoiceChannelId(
     // add the players from the database that match the discord ids of the channel members
     players.push(
       ...channel.members
-        .map(member => getPlayerByDiscordId(member.user.id))
+        .map(member => getPlayerByDiscordId(member.user.id, guildId))
         .filter((player): player is Player => !!player && !players.some(p => p.discordId === player.discordId)),
     ); // add the players from the channel that are not already in the players array
   }
@@ -3519,6 +3554,7 @@ async function getPlayersByVoiceChannelId(
 
 async function getPreviousSetActivePlayers(
   storedInteraction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType> | undefined,
+  guildId: string,
 ): Promise<Player[]> {
   if (!storedInteraction) {
     return [];
@@ -3542,7 +3578,7 @@ async function getPreviousSetActivePlayers(
               const parts = button.customId.split('_');
               const discordId = parts[2];
               if (discordId) {
-                const player = getPlayerByDiscordId(discordId);
+                const player = getPlayerByDiscordId(discordId, guildId);
                 if (player) {
                   acc.push(player);
                 }
@@ -3556,16 +3592,16 @@ async function getPreviousSetActivePlayers(
   );
 }
 
-function getLobbyPreviousPlayers(previousPlayersList?: string[]): Player[];
-function getLobbyPreviousPlayers(): Player[];
-function getLobbyPreviousPlayers(previousPlayersList?: string[]): Player[] {
-  const lobbyMessages = getLobbyMessages([CommandIds.NEW_GAME]);
+function getLobbyPreviousPlayers(guildId: string, previousPlayersList?: string[]): Player[];
+function getLobbyPreviousPlayers(guildId: string): Player[];
+function getLobbyPreviousPlayers(guildId: string, previousPlayersList?: string[]): Player[] {
+  const lobbyMessages = getLobbyMessages(guildId, [CommandIds.NEW_GAME]);
   if (!lobbyMessages || lobbyMessages.length === 0) {
     return []; // No lobby message to update
   }
   const playerIds = previousPlayersList ?? JSON.parse(lobbyMessages[0].previousPlayersList ?? '[]');
   const players: Player[] = playerIds
-    .map((discordId: string) => getPlayerByDiscordId(discordId))
+    .map((discordId: string) => getPlayerByDiscordId(discordId, guildId))
     .filter((player: Player | undefined) => player !== undefined);
   return players;
 }

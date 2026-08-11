@@ -12,14 +12,16 @@ import {
   MessageFlags,
   ModalSubmitInteraction,
 } from 'discord.js';
-import { safeReply, updateLobbyMessage } from '../commands';
+import { updateLobbyMessage } from '../commands';
 import { CommandIds } from '../constants';
 import { getHeroesProfileData } from './heroesProfile';
+import { requireGuildId, safeReply } from '../utils/interaction';
 import { HOTS_ACCOUNTS_COLUMNS } from '../types/csvSpreadsheet';
 import { generateCreateTableSQL } from '../utils/sql';
 import { validateBattleTag } from '../utils/heroesOfTheStorm';
 
 const db = new Database('./store/nor_customs.db');
+db.pragma('foreign_keys = ON');
 
 export const interactionStore = new Map<
   string,
@@ -27,34 +29,52 @@ export const interactionStore = new Map<
 >();
 
 const initSchema = db.transaction(() => {
-  // Ensure the players table exists
+  const playerCols = db.prepare<[], { name: string }>('PRAGMA table_info(players)').all();
+  if (playerCols.length > 0 && playerCols.some(c => c.name === 'active')) {
+    // migrate old players table to new players table without the columns: active, team, lobby_rank, draft_order
+    db.exec('ALTER TABLE players RENAME TO players_old');
+    db.exec(`
+      CREATE TABLE players (
+        discord_id TEXT PRIMARY KEY,
+        discord_name TEXT NOT NULL,
+        discord_global_name TEXT NOT NULL,
+        discord_display_name TEXT NOT NULL,
+        role TEXT,
+        adjustment INTEGER,
+        last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    db.exec(`
+      INSERT INTO players (discord_id, discord_name, discord_global_name, discord_display_name, role, adjustment, last_active)
+      SELECT discord_id, discord_name, discord_global_name, discord_display_name, role, adjustment, last_active FROM players_old
+    `);
+    db.exec('DROP TABLE players_old');
+  } else {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS players (
+        discord_id TEXT PRIMARY KEY,
+        discord_name TEXT NOT NULL,
+        discord_global_name TEXT NOT NULL,
+        discord_display_name TEXT NOT NULL,
+        role TEXT,
+        adjustment INTEGER,
+        last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+  }
+
   db.exec(`
-    CREATE TABLE IF NOT EXISTS players (
-      discord_id TEXT PRIMARY KEY,
-      discord_name TEXT NOT NULL,
-      discord_global_name TEXT NOT NULL,
-      discord_display_name TEXT NOT NULL,
-      role TEXT,
-      adjustment INTEGER,
-      active INTEGER NOT NULL,
+    CREATE TABLE IF NOT EXISTS lobby_players (
+      guild_id TEXT NOT NULL,
+      discord_id TEXT NOT NULL,
+      active INTEGER NOT NULL DEFAULT 0,
       team INTEGER CHECK(team IN (1, 2, 3)),
       lobby_rank INTEGER,
       draft_order INTEGER,
-      last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      PRIMARY KEY (guild_id, discord_id),
+      FOREIGN KEY (discord_id) REFERENCES players(discord_id) ON DELETE CASCADE
     )
   `);
-
-  try {
-    db.exec('ALTER TABLE players ADD COLUMN draft_order INTEGER;');
-  } catch {
-    // Column already exists
-  }
-
-  try {
-    db.exec('ALTER TABLE players RENAME COLUMN draft_rank TO lobby_rank;');
-  } catch {
-    // Column already renamed or draft_rank does not exist
-  }
 
   const createHotsAccountsSQL = generateCreateTableSQL('hots_accounts', HOTS_ACCOUNTS_COLUMNS);
   db.exec(createHotsAccountsSQL);
@@ -64,7 +84,6 @@ const initSchema = db.transaction(() => {
     CREATE INDEX IF NOT EXISTS idx_hots_accounts_discord_id 
     ON hots_accounts(discord_id)
   `);
-
 
   db.exec('DROP INDEX IF EXISTS idx_unique_hots_battle_tag;');
 
@@ -144,15 +163,14 @@ export async function savePlayer(
   hotsBattleTag?: string,
 ): Promise<void> {
   const stmt = db.prepare(`
-    INSERT INTO players (discord_id, discord_name, discord_global_name, discord_display_name, role, active)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO players (discord_id, discord_name, discord_global_name, discord_display_name, role)
+    VALUES (?, ?, ?, ?, ?)
     ON CONFLICT(discord_id) DO UPDATE SET
       discord_name=excluded.discord_name,
       discord_global_name=excluded.discord_global_name,
       discord_display_name=excluded.discord_display_name,
       role=excluded.role,
-      active=excluded.active,
-      last_active=CASE WHEN excluded.active = 1 THEN CURRENT_TIMESTAMP ELSE last_active END
+      last_active=CURRENT_TIMESTAMP
   `);
   stmt.run(
     discordId,
@@ -160,7 +178,6 @@ export async function savePlayer(
     player.usernames.discordGlobalName,
     player.usernames.discordDisplayName,
     player.role,
-    player.active ? 1 : 0,
   );
   if (!hotsBattleTag) {
     return;
@@ -193,7 +210,7 @@ function getPlayerFromRow(row: FlatPlayer, accounts: HotsAccountRow[]): Player {
     },
     role: row.role,
     active: row.active === 1,
-    team: row.team ?? undefined, // Ensure team is undefined if null
+    team: row.team ?? null, // team can be null
     lobbyRank: row.lobby_rank ?? NaN,
     draftOrder: row.draft_order ?? NaN,
     adjustment: row.adjustment,
@@ -226,9 +243,15 @@ function getAccountFromAccountRow(account: HotsAccountRow): HotsAccount {
  * Retrieves all active players from the database, with their hots accounts
  * @returns Map<string, Player> a Map of active players, where the key is the Discord ID and the value is the Player object.
  */
-export function getActivePlayers(): Player[] {
-  const stmt = db.prepare<[], FlatPlayer>('SELECT * FROM players WHERE active = 1 ORDER BY active, team;');
-  const rows: FlatPlayer[] = stmt.all();
+export function getActivePlayers(guildId: string): Player[] {
+  const stmt = db.prepare<[string], FlatPlayer>(`
+    SELECT p.*, lp.*
+    FROM players p
+    JOIN lobby_players lp ON p.discord_id = lp.discord_id AND lp.guild_id = ?
+    WHERE lp.active = 1
+    ORDER BY lp.active, lp.team;
+  `);
+  const rows: FlatPlayer[] = stmt.all(guildId);
   const accountsStmt = db.prepare<[], HotsAccountRow>(
     'SELECT discord_id, hots_battle_tag, is_primary, HP_QM_MMR, HP_SL_MMR, HP_AR_MMR, HP_QM_Games, HP_SL_Games, HP_AR_Games FROM hots_accounts;',
   );
@@ -321,8 +344,10 @@ ${validationResult.rules}
     });
     return false;
   }
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return false;
 
-  const player = getPlayerByDiscordId(discordId);
+  const player = getPlayerByDiscordId(discordId, guildId);
   if (!player) {
     await safeReply(interaction, {
       content: 'Player not found in database',
@@ -418,7 +443,9 @@ ${validationResult.rules}
       return false;
     }
     if (interaction) {
-      await updateLobbyMessage(interaction);
+      const guildId = await requireGuildId(interaction);
+      if (!guildId) return false;
+      await updateLobbyMessage(guildId, interaction);
     }
     if (hotsAccountAlreadyExists) {
       const content = `${userIsSelf ? 'You' : '<@' + discordId + '>'} already ${
@@ -497,8 +524,10 @@ async function handleAccountNotFound(
   discordId: string,
   hotsBattleTag: string,
 ) {
+  const guildId = interaction ? await requireGuildId(interaction) : null;
+  if (!guildId) return;
   deletePlayerHotsAccounts(discordId);
-  interaction && (await updateLobbyMessage(interaction));
+  interaction && (await updateLobbyMessage(guildId, interaction));
   const joinBtn = new ButtonBuilder()
     .setCustomId(`${CommandIds.JOIN_WITH_BATTLE_TAG}_${hotsBattleTag}`)
     .setLabel('Try Again')
@@ -544,12 +573,13 @@ export function deleteHotsAccount(hotsBattleTag: string) {
 
 export async function setPrimaryAccount(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+  guildId: string,
   discordId: string,
   hotsBattleTag: string,
   messageId: string,
   channelId: string,
 ) {
-  const { success, message, player } = await updatePrimaryAccountInDb(discordId, hotsBattleTag);
+  const { success, message, player } = await updatePrimaryAccountInDb(guildId, discordId, hotsBattleTag);
   if (!success || !player?.usernames.accounts) {
     await safeReply(interaction, {
       content: message,
@@ -648,6 +678,7 @@ export function getAccountButtons(
  * @returns An object containing the success status, optional error message, and updated player data.
  */
 async function updatePrimaryAccountInDb(
+  guildId: string,
   discordId: string,
   hotsBattleTag: string,
 ): Promise<{ success: boolean; message?: string; player?: Player }> {
@@ -661,7 +692,7 @@ async function updatePrimaryAccountInDb(
       message: `The specified Heroes of the Storm account \`${hotsBattleTag}\` was not found for this player.`,
     };
   }
-  const player = getPlayerByDiscordId(discordId);
+  const player = getPlayerByDiscordId(discordId, guildId);
   if (!player) {
     return {
       success: false,
@@ -681,25 +712,34 @@ async function updatePrimaryAccountInDb(
  * Marks all players as inactive in the database.
  * @returns void
  */
-export function markAllPlayersInactive(): void {
-  const stmt = db.prepare(
-    'UPDATE players SET active = 0, team = NULL, lobby_rank = NULL WHERE active = 1 OR team IS NOT NULL',
-  );
-  stmt.run();
+export function markAllPlayersInactive(guildId: string): void {
+  const stmt = db.prepare('DELETE FROM lobby_players WHERE guild_id = ?');
+  stmt.run(guildId);
 }
 
 /**
- * Gets a player by their Discord ID.
+ * Gets a player by their Discord ID, optionally joining lobby state for a guild.
  * @param discordId The Discord ID of the player to retrieve.
+ * @param guildId Optional Discord guild ID to populate active/team/lobby_rank/draft_order.
  * @returns Player object if found, undefined otherwise.
  */
-export function getPlayerByDiscordId(discordId: string): Player | undefined {
-  const stmt = db.prepare<[string], FlatPlayer>('SELECT * FROM players WHERE discord_id = ?');
-  const row: FlatPlayer | undefined = stmt.get(discordId);
+export function getPlayerByDiscordId(discordId: string, guildId: string): Player | undefined {
+  const stmt = db.prepare<[string, string], FlatPlayer>(`
+    SELECT p.*,
+           COALESCE(lp.active, 0) as active,
+           lp.team,
+           lp.lobby_rank,
+           lp.draft_order
+    FROM players p
+    LEFT JOIN lobby_players lp ON p.discord_id = lp.discord_id AND lp.guild_id = ?
+    WHERE p.discord_id = ?;
+  `);
+
+  const row = stmt.get(guildId, discordId);
   if (!row) {
     return undefined; // Player not found
   }
-  const accountsStmt = db.prepare<string[], HotsAccountRow>('SELECT * FROM hots_accounts WHERE discord_id = ?');
+  const accountsStmt = db.prepare<[string], HotsAccountRow>('SELECT * FROM hots_accounts WHERE discord_id = ?');
   const accounts = accountsStmt.all(discordId);
 
   return getPlayerFromRow(row, accounts);
@@ -711,11 +751,11 @@ export function getPlayerByDiscordId(discordId: string): Player | undefined {
  * @param role The role to set for the player.
  * @returns Player object if the player was found and the role was set, false otherwise.
  */
-export function setPlayerRole(discordId: string, role: string | null): false | Player {
+export function setPlayerRole(discordId: string, guildId: string, role: string | null): false | Player {
   if (!role) {
     return false; // Invalid role
   }
-  const player = getPlayerByDiscordId(discordId);
+  const player = getPlayerByDiscordId(discordId, guildId);
   if (!player) {
     return false; // Player not found
   }
@@ -737,13 +777,14 @@ export function setPlayerName(
     | ChatInputCommandInteraction<CacheType>
     | ButtonInteraction<CacheType>
     | ModalSubmitInteraction<CacheType>,
+  guildId: string,
   discordId: string,
   hotsBattleTag: string,
 ): false | Player {
   if (!hotsBattleTag) {
     return false; // Invalid name
   }
-  const player = getPlayerByDiscordId(discordId);
+  const player = getPlayerByDiscordId(discordId, guildId);
   if (!player) {
     return false; // Player not found
   }
@@ -757,9 +798,9 @@ export function setPlayerName(
  * @param discordData The Discord user names data to set for the player.
  * @returns boolean true if the player was found and the names were set, false otherwise.
  */
-export function setPlayerDiscordNames(discordId: string, discordData: DiscordUserNames) {
+export function setPlayerDiscordNames(discordId: string, guildId: string, discordData: DiscordUserNames) {
   const { discordName, discordGlobalName, discordDisplayName } = discordData;
-  const player = getPlayerByDiscordId(discordId);
+  const player = getPlayerByDiscordId(discordId, guildId);
   if (!player) {
     return false; // Player not found
   }
@@ -782,9 +823,10 @@ export function setPlayerDiscordNames(discordId: string, discordData: DiscordUse
 export function setPlayerActive(
   discordId: string,
   active: boolean,
+  guildId: string,
   hotsBattleTag?: string,
 ): { updated: boolean; player?: Player } {
-  const player = getPlayerByDiscordId(discordId);
+  const player = getPlayerByDiscordId(discordId, guildId);
   if (!player) {
     return { updated: false, player }; // Player not found
   }
@@ -799,15 +841,30 @@ export function setPlayerActive(
     if (player.usernames.accounts?.length === 0 && hotsBattleTag && active) {
       addDummyHotsAccount(discordId, hotsBattleTag);
     }
-    const stmt = db.prepare(
-      `UPDATE players SET active = ?${active ? ', last_active = CURRENT_TIMESTAMP' : ''}${!active ? ', lobby_rank = NULL, team = NULL, draft_order = NULL' : ''} WHERE discord_id = ?`,
-    );
-    if (!active && player.lobbyRank > 0) {
-      const updateStmt = db.prepare('UPDATE players SET lobby_rank = lobby_rank - 1 WHERE lobby_rank > ?');
-      updateStmt.run(player.lobbyRank);
+    if (active) {
+      const stmt = db.prepare(`
+        INSERT INTO lobby_players (guild_id, discord_id, active, lobby_rank, team, draft_order)
+        VALUES (?, ?, 1, NULL, NULL, NULL)
+        ON CONFLICT(guild_id, discord_id) DO UPDATE SET
+          active = 1,
+          lobby_rank = NULL,
+          team = NULL,
+          draft_order = NULL
+      `);
+      stmt.run(guildId, discordId);
+    } else {
+      if (player.lobbyRank > 0) {
+        const updateStmt = db.prepare(
+          'UPDATE lobby_players SET lobby_rank = lobby_rank - 1 WHERE guild_id = ? AND lobby_rank > ?',
+        );
+        updateStmt.run(guildId, player.lobbyRank);
+      }
+      const deleteStmt = db.prepare('DELETE FROM lobby_players WHERE guild_id = ? AND discord_id = ?');
+      deleteStmt.run(guildId, discordId);
     }
-    stmt.run(active ? 1 : 0, discordId);
-    recalculateLobbyRanks();
+    const lastActive = db.prepare('UPDATE players SET last_active = CURRENT_TIMESTAMP WHERE discord_id = ?');
+    lastActive.run(discordId);
+    recalculateLobbyRanks(guildId);
   });
   transaction();
   player.active = active;
@@ -815,13 +872,13 @@ export function setPlayerActive(
 }
 
 /**
- * Recalculates the lobby ranks for all players in the database.
- * This function first gets all active players sorted by their rank, then updates their lobby ranks in the database.
+ * Recalculates the lobby ranks for all players in a guild.
+ * @param guildId The Discord guild ID
  * It should be called within a db.transaction.
  * @returns void
  */
-export function recalculateLobbyRanks() {
-  const allPlayers = getSortedActivePlayers(true);
+export function recalculateLobbyRanks(guildId: string) {
+  const allPlayers = getSortedActivePlayers(guildId, true);
 
   let currentRank = 1;
   for (let i = 0; i < allPlayers.length; i++) {
@@ -830,8 +887,8 @@ export function recalculateLobbyRanks() {
       const lobbyRank = currentRank++;
       if (player.lobbyRank !== lobbyRank) {
         player.lobbyRank = lobbyRank;
-        const updateStmt = db.prepare('UPDATE players SET lobby_rank = ? WHERE discord_id = ?');
-        updateStmt.run(lobbyRank, player.discordId);
+        const updateStmt = db.prepare('UPDATE lobby_players SET lobby_rank = ? WHERE guild_id = ? AND discord_id = ?');
+        updateStmt.run(lobbyRank, guildId, player.discordId);
       }
     }
   }
@@ -845,46 +902,60 @@ function addDummyHotsAccount(discordId: string, hotsBattleTag: string) {
 }
 
 /**
- * clears the team assignments for all players in the database.
- * This sets the team field to NULL for all players.
+ * clears the team assignments for all players in a specific guild.
+ * @param guildId The Discord guild ID
  * @returns void
  */
-export function clearTeams(): void {
-  const stmt = db.prepare('UPDATE players SET team = NULL, lobby_rank = NULL');
-  stmt.run();
+export function clearTeams(guildId: string): void {
+  const stmt = db.prepare('UPDATE lobby_players SET team = NULL, lobby_rank = NULL WHERE guild_id = ?');
+  stmt.run(guildId);
 }
 
 /**
- * Sets the teams for the players in the database using player objects.
- * This function first clears any existing team assignments and lobby ranks,
- * then assigns players to team 1 and team 2 based on the provided arrays.
+ * Sets the teams for the players in a specific guild.
+ * @param guildId The Discord guild ID
  * @param team1 Array of Player objects for team 1.
  * @param team2 Array of Player objects for team 2.
+ * @param spectators Array of Player objects for spectators.
  * @returns void
  */
-export function setTeamsFromPlayers(team1: Player[], team2: Player[], spectators: Player[]): void {
+export function setTeamsFromPlayers(guildId: string, team1: Player[], team2: Player[], spectators: Player[]): void {
   const transaction = db.transaction(() => {
-    const clearStmt = db.prepare('UPDATE players SET team = NULL, lobby_rank = NULL, draft_order = NULL');
-    const updateStmt = db.prepare('UPDATE players SET team = ?, lobby_rank = ?, draft_order = ? WHERE discord_id = ?');
-    clearStmt.run();
+    const clearStmt = db.prepare(
+      'UPDATE lobby_players SET team = NULL, lobby_rank = NULL, draft_order = NULL WHERE guild_id = ?',
+    );
+    const updateStmt = db.prepare(`
+      INSERT INTO lobby_players (guild_id, discord_id, active, team, lobby_rank, draft_order)
+      VALUES (?, ?, 1, ?, ?, ?)
+      ON CONFLICT(guild_id, discord_id) DO UPDATE SET
+        active = excluded.active,
+        team = excluded.team,
+        lobby_rank = excluded.lobby_rank,
+        draft_order = excluded.draft_order
+    `);
+    clearStmt.run(guildId);
     team1.forEach(p => {
-      updateStmt.run(1, p.lobbyRank, p.draftOrder, p.discordId);
+      updateStmt.run(guildId, p.discordId, 1, p.lobbyRank, p.draftOrder);
     });
     team2.forEach(p => {
-      updateStmt.run(2, p.lobbyRank, p.draftOrder, p.discordId);
+      updateStmt.run(guildId, p.discordId, 2, p.lobbyRank, p.draftOrder);
     });
     spectators.forEach(p => {
-      updateStmt.run(null, p.lobbyRank, p.draftOrder, p.discordId);
+      updateStmt.run(guildId, p.discordId, 3, p.lobbyRank, p.draftOrder);
     });
   });
   transaction();
 }
 
-export function changeTeams(playerChanges: { playerId: string; newTeam: number | null }[]): boolean {
+export function changeTeams(guildId: string, playerChanges: { discordId: string; newTeam: number | null }[]): boolean {
   const transaction = db.transaction(() => {
-    playerChanges.forEach(({ playerId, newTeam }) => {
-      const stmt = db.prepare('UPDATE players SET team = ? WHERE discord_id = ?');
-      stmt.run(newTeam, playerId);
+    playerChanges.forEach(({ discordId, newTeam }) => {
+      const stmt = db.prepare(`
+        INSERT INTO lobby_players (guild_id, discord_id, active, team)
+        VALUES (?, ?, 1, ?)
+        ON CONFLICT(guild_id, discord_id) DO UPDATE SET team = excluded.team
+      `);
+      stmt.run(guildId, discordId, newTeam);
     });
   });
   transaction();
@@ -892,91 +963,102 @@ export function changeTeams(playerChanges: { playerId: string; newTeam: number |
 }
 
 /**
- * Assigns a specific player to a team (1, 2, or null) and draft_order.
+ * Assigns a specific player to a team (1, 2, or null) and draft_order in a specific guild.
  * If a non-null draftOrder is specified and another player already occupies it,
  * the previous occupant is bumped to the next available draft order.
  */
-export function assignPlayerToTeam(discordId: string, team: number | null, draftOrder: number | null = null): void {
+export function assignPlayerToTeam(
+  guildId: string,
+  discordId: string,
+  team: number | null,
+  draftOrder: number | null = null,
+): void {
   const transaction = db.transaction(() => {
     if (draftOrder !== null) {
-      const existingStmt = db.prepare<[number, string], { discord_id: string }>(
-        'SELECT discord_id FROM players WHERE active = 1 AND draft_order = ? AND discord_id != ?',
+      const existingStmt = db.prepare<[string, number, string], { discord_id: string }>(
+        'SELECT discord_id FROM lobby_players WHERE guild_id = ? AND active = 1 AND draft_order = ? AND discord_id != ?',
       );
-      const existingPlayer = existingStmt.get(draftOrder, discordId);
+      const existingPlayer = existingStmt.get(guildId, draftOrder, discordId);
       if (existingPlayer) {
-        const nextRank = getNextDraftOrder();
-        const bumpStmt = db.prepare('UPDATE players SET draft_order = ? WHERE discord_id = ?');
-        bumpStmt.run(nextRank, existingPlayer.discord_id);
+        const nextRank = getNextDraftOrder(guildId);
+        const bumpStmt = db.prepare('UPDATE lobby_players SET draft_order = ? WHERE guild_id = ? AND discord_id = ?');
+        bumpStmt.run(nextRank, guildId, existingPlayer.discord_id);
       }
     }
 
-    const stmt = db.prepare('UPDATE players SET team = ?, draft_order = ? WHERE discord_id = ?');
-    stmt.run(team, draftOrder, discordId);
+    const stmt = db.prepare(`
+      INSERT INTO lobby_players (guild_id, discord_id, active, team, draft_order)
+      VALUES (?, ?, 1, ?, ?)
+      ON CONFLICT(guild_id, discord_id) DO UPDATE SET team = excluded.team, draft_order = excluded.draft_order
+    `);
+    stmt.run(guildId, discordId, team, draftOrder);
   });
   transaction();
 }
 
 /**
- * Resets team and draft_order for all active players.
+ * Resets team and draft_order for all active players in a specific guild.
  */
-export function resetActivePlayerTeams(): void {
-  const stmt = db.prepare('UPDATE players SET team = NULL, draft_order = NULL WHERE active = 1');
-  stmt.run();
+export function resetActivePlayerTeams(guildId: string): void {
+  const stmt = db.prepare('UPDATE lobby_players SET team = NULL, draft_order = NULL WHERE guild_id = ? AND active = 1');
+  stmt.run(guildId);
 }
 
 /**
- * Calculates the next available draft order number for the current draft.
+ * Calculates the next available draft order number for a specific guild draft.
  * Captain 1 = 1, Captain 2 = 2, Picks start at 3.
  */
-export function getNextDraftOrder(): number {
-  const stmt = db.prepare<[], { maxOrder: number | null }>(
-    'SELECT MAX(draft_order) as maxOrder FROM players WHERE active = 1 AND draft_order IS NOT NULL',
+export function getNextDraftOrder(guildId: string): number {
+  const stmt = db.prepare<[string], { maxOrder: number | null }>(
+    'SELECT MAX(draft_order) as maxOrder FROM lobby_players WHERE guild_id = ? AND active = 1 AND draft_order IS NOT NULL',
   );
-  const row = stmt.get();
+  const row = stmt.get(guildId);
   const maxOrder = row?.maxOrder ?? 0;
   return Math.max(2, maxOrder) + 1;
 }
 
 /**
- * Returns the count of non-captain picked players on Team 1 or Team 2.
+ * Returns the count of non-captain picked players on Team 1 or Team 2 for a specific guild.
  */
-export function getDraftPickedCount(t1CaptainId?: string, t2CaptainId?: string): number {
+export function getDraftPickedCount(guildId: string, t1CaptainId?: string, t2CaptainId?: string): number {
   if (t1CaptainId && t2CaptainId) {
-    const stmt = db.prepare<[string, string], { count: number }>(
-      'SELECT COUNT(*) as count FROM players WHERE active = 1 AND (team = 1 OR team = 2) AND discord_id NOT IN (?, ?)',
+    const stmt = db.prepare<[string, string, string], { count: number }>(
+      'SELECT COUNT(*) as count FROM lobby_players WHERE guild_id = ? AND active = 1 AND (team = 1 OR team = 2) AND discord_id NOT IN (?, ?)',
     );
-    const row = stmt.get(t1CaptainId, t2CaptainId);
+    const row = stmt.get(guildId, t1CaptainId, t2CaptainId);
     return row?.count ?? 0;
   }
-  const stmt = db.prepare<[], { count: number }>(
-    'SELECT COUNT(*) as count FROM players WHERE active = 1 AND (team = 1 OR team = 2) AND (draft_order > 2 OR draft_order IS NULL)',
+  const stmt = db.prepare<[string], { count: number }>(
+    'SELECT COUNT(*) as count FROM lobby_players WHERE guild_id = ? AND active = 1 AND (team = 1 OR team = 2) AND (draft_order > 2 OR draft_order IS NULL)',
   );
-  const row = stmt.get();
+  const row = stmt.get(guildId);
   return row?.count ?? 0;
 }
 
-const activePlayersCache: { data: Player[]; timestamp: number } = { data: [], timestamp: 0 };
+const activePlayersCache = new Map<string, { data: Player[]; timestamp: number }>();
 /**
- * Retrieves sorted active players, with caching.
+ * Retrieves sorted active players for a specific guild, with per-guild caching.
  * @returns {Player[]}
  */
-export function getSortedActivePlayers(forceRefesh = false) {
-  if (forceRefesh || Date.now() - activePlayersCache.timestamp >= 5000) {
-    activePlayersCache.data = getActivePlayers().sort((a, b) => getPlayerMMR(b) - getPlayerMMR(a));
-    activePlayersCache.timestamp = Date.now();
-    return activePlayersCache.data;
+export function getSortedActivePlayers(guildId: string, forceRefresh = false): Player[] {
+  const cacheEntry = activePlayersCache.get(guildId);
+  if (forceRefresh || !cacheEntry || Date.now() - cacheEntry.timestamp >= 5000) {
+    const data = getActivePlayers(guildId).sort((a, b) => getPlayerMMR(b) - getPlayerMMR(a));
+    activePlayersCache.set(guildId, { data, timestamp: Date.now() });
+    return data;
   }
-  return activePlayersCache.data;
+  return cacheEntry.data;
 }
 
 /**
- * Gets the teams from the active players cache
+ * Gets the teams from the active players for a specific guild.
  *
+ * @param guildId The Discord guild ID
  * @param activePlayers - The array of active players to get teams from. If not provided, the sorted active players will be used.
  *
  * @returns ({ team1: Player[], team2: Player[], spectators: Player[], t1Captain: Player, t2Captain: Player })
  **/
-export function getTeams(activePlayers = getSortedActivePlayers()) {
+export function getTeams(guildId: string, activePlayers = getSortedActivePlayers(guildId)) {
   const team1 = activePlayers.filter(p => p.team === 1);
   const team2 = activePlayers.filter(p => p.team === 2);
   const spectators = activePlayers.filter(p => p.team !== 1 && p.team !== 2);
@@ -1014,7 +1096,7 @@ export async function loadPlayerDataIntoSqlite() {
   //         ...player.usernames,
   //       },
   //       discordId,
-  //       team: player.team ?? undefined, // Ensure team is undefined if null
+  //       team: player.team ?? null, // team can be null
   //     };
   //     const accounts = player.usernames.accounts ?? [];
   //     savePlayer(undefined, discordId, playerData, accounts[0]?.hotsBattleTag ?? '');

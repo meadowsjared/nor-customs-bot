@@ -4,56 +4,63 @@ import Database from 'better-sqlite3';
 
 const db = new Database('./store/nor_customs.db');
 
-// Ensure the channels table exists
+// Ensure channels table exists
 db.exec(`
   CREATE TABLE IF NOT EXISTS channels (
-    channelType TEXT PRIMARY KEY,
+    guild_id TEXT NOT NULL DEFAULT 'global',
+    channelType TEXT NOT NULL,
     channelId TEXT NOT NULL,
-    channelName TEXT NOT NULL
+    channelName TEXT NOT NULL,
+    PRIMARY KEY (guild_id, channelType)
   )
 `);
 
-// Ensure the lobby_messages table exists for storing lobby announcement message IDs
-// and reset the previous messages
+// Ensure lobby_messages table exists
 db.exec(`
   CREATE TABLE IF NOT EXISTS lobby_messages (
-    messageType TEXT PRIMARY KEY,
+    guild_id TEXT NOT NULL DEFAULT 'global',
+    messageType TEXT NOT NULL,
     messageId TEXT DEFAULT '',
     channelId TEXT DEFAULT '',
-    previousPlayersList TEXT DEFAULT ''
-  );
+    previousPlayersList TEXT DEFAULT '',
+    PRIMARY KEY (guild_id, messageType)
+  )
 `);
 
 /**
- * Saves a Discord VoiceChannel to the local store.
+ * Saves a Discord VoiceChannel to the local store for a specific guild.
+ * @param guildId The Discord guild ID
  * @param channelType The type of the channel, e.g., 'lobby', 'team1', 'team2'
  * @param channel The Discord VoiceChannel object to save
- * @returns {void}
  */
-export function saveChannel(channelType: string, channel: VoiceChannel): void {
+export function saveChannel(guildId: string, channelType: string, channel: VoiceChannel): void {
   const stmt = db.prepare(`
-    INSERT INTO channels (channelType, channelId, channelName)
-    VALUES (?, ?, ?)
-    ON CONFLICT(channelType) DO UPDATE SET
+    INSERT INTO channels (guild_id, channelType, channelId, channelName)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(guild_id, channelType) DO UPDATE SET
       channelId=excluded.channelId,
       channelName=excluded.channelName
   `);
-  stmt.run(channelType, channel.id, channel.name);
+  stmt.run(guildId, channelType, channel.id, channel.name);
 }
 
 type channelTypes = 'lobby' | 'team1' | 'team2';
 
 /**
  * Retrieves a lobby channel
+ * @param guildId The Discord guild ID
+ * @param channelTypes Array of channel types to fetch
  * @return {ChannelLocal} The lobby channel as an object, or undefined if it does not exist.
  */
-export function getChannels(channelTypes: channelTypes[]): ChannelExtended[] | undefined {
+export function getChannels(guildId: string, channelTypes: channelTypes[]): ChannelExtended[] | undefined {
   if (channelTypes.length === 0) {
     return undefined;
   }
-  const placeholders = channelTypes.map(c => `'${c}'`).join(', ');
-  const stmt = db.prepare<string[], ChannelExtended>(`SELECT * FROM channels WHERE channelType IN (${placeholders})`);
-  const rows: ChannelExtended[] = stmt.all();
+  const placeholders = channelTypes.map(() => '?').join(', ');
+  const stmt = db.prepare<[string, ...string[]], ChannelExtended>(
+    `SELECT * FROM channels WHERE guild_id = ? AND channelType IN (${placeholders})`,
+  );
+  const rows: ChannelExtended[] = stmt.all(guildId, ...channelTypes);
   if (!rows || rows.length === 0) {
     return undefined;
   }
@@ -65,61 +72,66 @@ export function getChannels(channelTypes: channelTypes[]): ChannelExtended[] | u
 }
 
 /**
- * Saves the lobby announcement message ID and channel ID to the database
+ * Saves the lobby announcement message ID and channel ID to the database for a specific guild.
+ * @param guildId The Discord guild ID
  * @param messageType The type of the message, e.g., 'new_game'
  * @param messageId The Discord message ID of the lobby announcement
  * @param channelId The Discord channel ID where the announcement was sent
  * @param previousPlayersList The previous players list string to store
  */
 export function saveLobbyMessage(
+  guildId: string,
   messageType: string,
   messageId: string,
   channelId: string,
   previousPlayersList: string,
 ): void {
   const stmt = db.prepare(`
-    INSERT INTO lobby_messages (messageType, messageId, channelId, previousPlayersList)
-    VALUES (?, ?, ?, ?)
-    ON CONFLICT(messageType) DO UPDATE SET
+    INSERT INTO lobby_messages (guild_id, messageType, messageId, channelId, previousPlayersList)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(guild_id, messageType) DO UPDATE SET
       messageId=excluded.messageId,
       channelId=excluded.channelId,
       previousPlayersList=excluded.previousPlayersList
     WHERE messageType = ?
   `);
-  stmt.run(messageType, messageId, channelId, previousPlayersList, messageType);
+  stmt.run(guildId, messageType, messageId, channelId, previousPlayersList, messageType);
 }
 
 /**
- * Retrieves the current lobby announcement message ID and channel ID
- * @param messageType The type of the message, e.g., 'new_game'
+ * Retrieves the current lobby announcement message ID and channel ID for a specific guild.
+ * @param guildId The Discord guild ID
+ * @param messageTypes The type of the message, e.g., 'new_game'
  * @returns The message and channel IDs, or undefined if no announcement exists
  */
 export function getLobbyMessages(
+  guildId: string,
   messageTypes: string[],
 ): { messageType: string; messageId: string; channelId: string; previousPlayersList: string }[] | undefined {
   const stmt = db.prepare<
-    string[],
+    [string, ...string[]],
     { messageType: string; messageId: string; channelId: string; previousPlayersList: string }
   >(`
-    SELECT messageType, messageId, channelId, previousPlayersList FROM lobby_messages WHERE messageType IN (${messageTypes
+    SELECT messageType, messageId, channelId, previousPlayersList FROM lobby_messages WHERE guild_id = ? AND messageType IN (${messageTypes
       .map(() => '?')
       .join(', ')})
   `);
-  const row = stmt.all(...messageTypes);
+  const row = stmt.all(guildId, ...messageTypes);
   return row.length > 0 ? row : undefined;
 }
 
 /**
- * Deletes lobby messages of the specified types from the local store.
+ * Deletes lobby messages of the specified types from the local store for a specific guild.
+ * @param guildId The Discord guild ID
  * @param messageTypes An array of message types to delete, e.g., ['new_game']
  */
-export function deleteLobbyMessages(messageTypes: string[]): void {
+export function deleteLobbyMessages(guildId: string, messageTypes: string[]): void {
   if (messageTypes.length === 0) {
     return;
   }
   const placeholders = messageTypes.map(() => '?').join(', ');
-  const stmt = db.prepare(`DELETE FROM lobby_messages WHERE messageType IN (${placeholders})`);
-  stmt.run(...messageTypes);
+  const stmt = db.prepare(`DELETE FROM lobby_messages WHERE guild_id = ? AND messageType IN (${placeholders})`);
+  stmt.run(guildId, ...messageTypes);
 }
 
 /**
@@ -137,11 +149,12 @@ export function deleteLobbyMessagesById(messageIds: string[]): void {
 
 /**
  * Retrieves all channels from the local store.
+ * @param guildId The Discord guild ID
  * @returns A Map of channel IDs to ChannelLocal objects.
  */
-export function getAllChannels(): Map<string, ChannelLocal> {
-  const stmt = db.prepare<[], ChannelExtended>('SELECT * FROM channels');
-  const rows: ChannelExtended[] = stmt.all();
+export function getAllChannels(guildId: string): Map<string, ChannelLocal> {
+  const stmt = db.prepare<[string, ...string[]], ChannelExtended>('SELECT * FROM channels WHERE guild_id = ?');
+  const rows: ChannelExtended[] = stmt.all(guildId);
   return new Map<string, ChannelLocal>(
     rows.map((row: ChannelExtended) => [
       row.channelType,

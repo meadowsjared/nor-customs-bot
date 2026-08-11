@@ -95,10 +95,10 @@ export interface Player {
   active: boolean;
   /**
    * The team number of the player
-   * undefined = not assigned, 1 = team 1, 2 = team 2
+   * null = not assigned, 1 = team 1, 2 = team 2
    * This is used to determine which team the player is on
    */
-  team: number | undefined;
+  team: number | null;
   lobbyRank: number;
   draftOrder: number;
   adjustment: number | null;

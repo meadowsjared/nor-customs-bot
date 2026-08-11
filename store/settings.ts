@@ -37,10 +37,10 @@ db.exec(`
  * Retrieves a setting value by key and optional guild ID from the database settings table.
  * Defaults guildId to 'global' if not specified.
  * @param key The setting key
- * @param guildId The optional Discord guild ID (server ID)
+ * @param guildId The Discord guild ID (server ID)
  * @returns The string value or undefined if not found
  */
-export function getSetting(key: string, guildId: string | null): string | undefined {
+export function getSetting(key: string, guildId: string): string | undefined {
   if (guildId === null) {
     console.log({ key, guildId }, 'guildId is required');
     return undefined;
@@ -58,9 +58,9 @@ export function getSetting(key: string, guildId: string | null): string | undefi
  * Defaults guildId to 'global' if not specified.
  * @param key The setting key
  * @param value The string value
- * @param guildId The optional Discord guild ID (server ID)
+ * @param guildId The Discord guild ID (server ID)
  */
-export function setSetting(key: string, value: string, guildId: string | null): boolean {
+export function setSetting(key: string, value: string, guildId: string): boolean {
   if (guildId === null) {
     console.log({ key, guildId }, 'guildId is required');
     return false;

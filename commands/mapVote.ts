@@ -30,7 +30,7 @@ import {
   updateMapVoteSessionMessageIds,
 } from '../store/mapVote';
 import { MapDefinition, MapVoteSession, MapVoteTally } from '../types/mapVote';
-import { safeReply } from './index';
+import { safeReply, requireGuildId } from '../utils/interaction';
 
 const MAPS_ASSETS_DIR = path.resolve(process.cwd(), 'assets', 'maps');
 
@@ -107,11 +107,7 @@ function buildSummaryEmbed(
   }
 
   const mainEmbed = new EmbedBuilder()
-    .setTitle(
-      isEnded
-        ? `📊 ${title} — Final Standings`
-        : `📊 ${title} — Live Standings${leaderHeader}`,
-    )
+    .setTitle(isEnded ? `📊 ${title} — Final Standings` : `📊 ${title} — Live Standings${leaderHeader}`)
     .setColor(isEnded ? (topTiedTallies.length > 1 ? 0xf1c40f : 0x2ecc71) : 0xf1c40f)
     .setFooter({ text: `Total Votes: ${totalVotes}` })
     .setTimestamp();
@@ -137,13 +133,13 @@ function buildSummaryEmbed(
 
   const sortedTallies = [...tallies].sort((a, b) => b.count - a.count);
 
-  const displayTallies = isEnded
-    ? sortedTallies.filter(t => t.count > 0)
-    : sortedTallies;
+  const displayTallies = isEnded ? sortedTallies.filter(t => t.count > 0) : sortedTallies;
 
-  const uniqueVoteCounts = Array.from(new Set(sortedTallies.map(t => t.count).filter(c => c > 0))).sort((a, b) => b - a);
+  const uniqueVoteCounts = Array.from(new Set(sortedTallies.map(t => t.count).filter(c => c > 0))).sort(
+    (a, b) => b - a,
+  );
 
-  const lines = displayTallies.map((t) => {
+  const lines = displayTallies.map(t => {
     let medal = '• ';
     if (t.count > 0) {
       const rank = uniqueVoteCounts.indexOf(t.count) + 1;
@@ -210,6 +206,9 @@ const activeSessionInteractions = new Map<string, ChatInputCommandInteraction<Ca
  * Starts a new map vote session in the channel
  */
 export async function handleMapVoteCommand(interaction: ChatInputCommandInteraction<CacheType>) {
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return;
+
   // Publicly defer reply so the command response itself becomes the map buttons message
   await interaction.deferReply();
 
@@ -220,7 +219,7 @@ export async function handleMapVoteCommand(interaction: ChatInputCommandInteract
   }
 
   // Auto-close any active map vote session in this channel
-  const prevSession = getActiveMapVoteSession(channel.id);
+  const prevSession = getActiveMapVoteSession(guildId, channel.id);
   if (prevSession) {
     await closeAndLockMapVoteSession(channel, prevSession);
   }
@@ -281,13 +280,17 @@ export async function handleMapVoteCommand(interaction: ChatInputCommandInteract
   postedMessageIds.push(controlMessage.id);
 
   // Store session in DB
-  startMapVoteSession(sessionId, channel.id, postedMessageIds, createdBy, customTitle);
+  startMapVoteSession(sessionId, guildId, channel.id, postedMessageIds, createdBy, customTitle);
 }
 
 /**
  * Handles clicking a map vote button (acts as a toggle: clicking again removes your vote)
  */
-export async function handleVoteMapButtonClick(interaction: ButtonInteraction<CacheType>, sessionId: string, mapId: string) {
+export async function handleVoteMapButtonClick(
+  interaction: ButtonInteraction<CacheType>,
+  sessionId: string,
+  mapId: string,
+) {
   // Silently acknowledge button click without ephemeral message popups
   await interaction.deferUpdate();
 
@@ -480,7 +483,9 @@ export async function handleEndMapVoteCommand(
   if (sessionIdParam) {
     session = getMapVoteSessionById(sessionIdParam);
   } else {
-    session = getActiveMapVoteSession(channel.id);
+    const guildId = await requireGuildId(interaction);
+    if (!guildId) return;
+    session = getActiveMapVoteSession(guildId, channel.id);
   }
 
   if (!session || !session.active) {
@@ -540,16 +545,22 @@ export async function handleEndMapVoteCommand(
       closedTitle = `${session.title ?? 'Game 1'} : ${winnerMap?.name ?? winners[0].mapName}`;
       closedEmbed
         .setTitle(closedTitle)
-        .setDescription(`🏆 **Winning Map: ${winners[0].mapName}** with ${winners[0].count} vote${winners[0].count === 1 ? '' : 's'}!`)
+        .setDescription(
+          `🏆 **Winning Map: ${winners[0].mapName}** with ${winners[0].count} vote${winners[0].count === 1 ? '' : 's'}!`,
+        )
         .setColor(color);
     } else {
       color = 0xf1c40f;
       closedTitle = `${session.title ?? 'Game 1'} : Tie (${winners.map(w => w.mapName).join(' vs ')})`;
-      const tiedListStr = winners.map(w => `• **${w.mapName}** (${w.count} vote${w.count === 1 ? '' : 's'})`).join('\n');
+      const tiedListStr = winners
+        .map(w => `• **${w.mapName}** (${w.count} vote${w.count === 1 ? '' : 's'})`)
+        .join('\n');
 
       closedEmbed
         .setTitle(closedTitle)
-        .setDescription(`🤝 **Tie for 1st place!** (${maxVotes} vote${maxVotes === 1 ? '' : 's'} each)\n\n**Tied Maps:**\n${tiedListStr}`)
+        .setDescription(
+          `🤝 **Tie for 1st place!** (${maxVotes} vote${maxVotes === 1 ? '' : 's'} each)\n\n**Tied Maps:**\n${tiedListStr}`,
+        )
         .setColor(color);
     }
 
@@ -604,7 +615,9 @@ export async function handleCancelMapVoteCommand(
   if (sessionIdParam) {
     session = getMapVoteSessionById(sessionIdParam);
   } else {
-    session = getActiveMapVoteSession(channel.id) ?? getNewestMapVoteSession(channel.id);
+    const guildId = await requireGuildId(interaction);
+    if (!guildId) return;
+    session = getActiveMapVoteSession(guildId, channel.id) ?? getNewestMapVoteSession(guildId, channel.id);
   }
 
   if (!session) {
@@ -684,9 +697,7 @@ function attachMapImages(
       if (i === 0) {
         mainEmbed.setImage(`attachment://${map.imageFileName}`);
       } else {
-        const extraEmbed = new EmbedBuilder()
-          .setColor(color)
-          .setImage(`attachment://${map.imageFileName}`);
+        const extraEmbed = new EmbedBuilder().setColor(color).setImage(`attachment://${map.imageFileName}`);
         embeds.push(extraEmbed);
       }
     }

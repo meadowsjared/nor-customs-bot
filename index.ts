@@ -40,7 +40,6 @@ import {
   handleDeleteMessageCommand,
   handleAddHotsAccountCommand,
   handleAdminAddHotsAccountCommand,
-  safeReply,
   handleAdminAddHotsAccountButton,
   handleAdminPrimaryCommand,
   handleLookupByDiscordIdCommand,
@@ -65,6 +64,7 @@ import {
   handleChannelCommand,
   handleAdminDeleteHotsAccountCommand,
 } from './commands';
+import { safeReply } from './utils/interaction';
 import { getBotChannel } from './utils/channel';
 import { setSetting } from './store/settings';
 import {
