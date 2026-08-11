@@ -68,7 +68,7 @@ const initSchema = db.transaction(() => {
       guild_id TEXT NOT NULL,
       discord_id TEXT NOT NULL,
       active INTEGER NOT NULL DEFAULT 0,
-      team INTEGER CHECK(team IN (1, 2, 3)),
+      team INTEGER CHECK(team IN (1, 2, NULL)),
       lobby_rank INTEGER,
       draft_order INTEGER,
       PRIMARY KEY (guild_id, discord_id),
@@ -941,7 +941,7 @@ export function setTeamsFromPlayers(guildId: string, team1: Player[], team2: Pla
       updateStmt.run(guildId, p.discordId, 2, p.lobbyRank, p.draftOrder);
     });
     spectators.forEach(p => {
-      updateStmt.run(guildId, p.discordId, 3, p.lobbyRank, p.draftOrder);
+      updateStmt.run(guildId, p.discordId, null, p.lobbyRank, p.draftOrder);
     });
   });
   transaction();
