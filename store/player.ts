@@ -65,7 +65,7 @@ const initSchema = db.transaction(() => {
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS lobby_players (
-      guild_id TEXT NOT NULL,
+      guild_id TEXT NOT NULL DEFAULT 'global',
       discord_id TEXT NOT NULL,
       active INTEGER NOT NULL DEFAULT 0,
       team INTEGER CHECK(team IN (1, 2, NULL)),
@@ -75,6 +75,25 @@ const initSchema = db.transaction(() => {
       FOREIGN KEY (discord_id) REFERENCES players(discord_id) ON DELETE CASCADE
     )
   `);
+
+  const lobbyPlayerCols = db.prepare<[], { name: string }>('PRAGMA table_info(lobby_players)').all();
+  if (lobbyPlayerCols.length > 0 && !lobbyPlayerCols.some(c => c.name === 'guild_id')) {
+    db.exec('ALTER TABLE lobby_players RENAME TO lobby_players_old');
+    db.exec(`
+      CREATE TABLE lobby_players (
+        guild_id TEXT NOT NULL DEFAULT 'global',
+        discord_id TEXT NOT NULL,
+        active INTEGER NOT NULL DEFAULT 0,
+        team INTEGER CHECK(team IN (1, 2, NULL)),
+        lobby_rank INTEGER,
+        draft_order INTEGER,
+        PRIMARY KEY (guild_id, discord_id),
+        FOREIGN KEY (discord_id) REFERENCES players(discord_id) ON DELETE CASCADE
+      )
+    `);
+    db.exec("INSERT INTO lobby_players (guild_id, discord_id, active, team, lobby_rank, draft_order) SELECT 'global', discord_id, active, team, lobby_rank, draft_order FROM lobby_players_old");
+    db.exec('DROP TABLE lobby_players_old');
+  }
 
   const createHotsAccountsSQL = generateCreateTableSQL('hots_accounts', HOTS_ACCOUNTS_COLUMNS);
   db.exec(createHotsAccountsSQL);

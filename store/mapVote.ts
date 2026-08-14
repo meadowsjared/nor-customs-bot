@@ -16,6 +16,25 @@ db.exec(`
   );
 `);
 
+const mapVoteCols = db.prepare<[], { name: string }>('PRAGMA table_info(map_vote_sessions)').all();
+if (mapVoteCols.length > 0 && !mapVoteCols.some(c => c.name === 'guild_id')) {
+  db.exec('ALTER TABLE map_vote_sessions RENAME TO map_vote_sessions_old');
+  db.exec(`
+    CREATE TABLE map_vote_sessions (
+      id TEXT PRIMARY KEY,
+      guild_id TEXT NOT NULL DEFAULT 'global',
+      channel_id TEXT NOT NULL,
+      message_ids TEXT NOT NULL,
+      created_by TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      active INTEGER NOT NULL DEFAULT 1,
+      title TEXT
+    );
+  `);
+  db.exec("INSERT INTO map_vote_sessions (id, guild_id, channel_id, message_ids, created_by, created_at, active, title) SELECT id, 'global', channel_id, message_ids, created_by, created_at, active, title FROM map_vote_sessions_old");
+  db.exec('DROP TABLE map_vote_sessions_old');
+}
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS map_votes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

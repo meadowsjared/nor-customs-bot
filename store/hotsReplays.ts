@@ -244,7 +244,7 @@ interface HotSReplay {
 export type HotSReplayGameStats = InterfaceFromSchema<typeof HOTS_REPLAY_GAME_STATS_COLUMNS>;
 
 function ensureTableColumns(tableName: string, columns: readonly ColumnDefinition[]) {
-  const existingCols: { name: string }[] = db.prepare(`PRAGMA table_info(${tableName})`).all() as { name: string }[];
+  const existingCols = db.prepare<[], { name: string }>(`PRAGMA table_info(${tableName})`).all();
   const existingColNames = new Set(existingCols.map(c => c.name));
 
   for (const col of columns) {

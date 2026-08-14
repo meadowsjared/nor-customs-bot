@@ -15,6 +15,23 @@ db.exec(`
   )
 `);
 
+// Check if existing channels table needs migration to include guild_id column
+const channelCols = db.prepare<[], { name: string }>('PRAGMA table_info(channels)').all();
+if (channelCols.length > 0 && !channelCols.some(c => c.name === 'guild_id')) {
+  db.exec('ALTER TABLE channels RENAME TO channels_old');
+  db.exec(`
+    CREATE TABLE channels (
+      guild_id TEXT NOT NULL DEFAULT 'global',
+      channelType TEXT NOT NULL,
+      channelId TEXT NOT NULL,
+      channelName TEXT NOT NULL,
+      PRIMARY KEY (guild_id, channelType)
+    )
+  `);
+  db.exec("INSERT INTO channels (guild_id, channelType, channelId, channelName) SELECT 'global', channelType, channelId, channelName FROM channels_old");
+  db.exec('DROP TABLE channels_old');
+}
+
 // Ensure lobby_messages table exists
 db.exec(`
   CREATE TABLE IF NOT EXISTS lobby_messages (
@@ -26,6 +43,24 @@ db.exec(`
     PRIMARY KEY (guild_id, messageType)
   )
 `);
+
+// Check if existing lobby_messages table needs migration to include guild_id column
+const lobbyMsgCols = db.prepare<[], { name: string }>('PRAGMA table_info(lobby_messages)').all();
+if (lobbyMsgCols.length > 0 && !lobbyMsgCols.some(c => c.name === 'guild_id')) {
+  db.exec('ALTER TABLE lobby_messages RENAME TO lobby_messages_old');
+  db.exec(`
+    CREATE TABLE lobby_messages (
+      guild_id TEXT NOT NULL DEFAULT 'global',
+      messageType TEXT NOT NULL,
+      messageId TEXT DEFAULT '',
+      channelId TEXT DEFAULT '',
+      previousPlayersList TEXT DEFAULT '',
+      PRIMARY KEY (guild_id, messageType)
+    )
+  `);
+  db.exec("INSERT INTO lobby_messages (guild_id, messageType, messageId, channelId, previousPlayersList) SELECT 'global', messageType, messageId, channelId, previousPlayersList FROM lobby_messages_old");
+  db.exec('DROP TABLE lobby_messages_old');
+}
 
 /**
  * Saves a Discord VoiceChannel to the local store for a specific guild.
