@@ -1180,16 +1180,14 @@ async function generateTeamsMessage(
   if (publish || isDraft) {
     // clear the previous message from the database, so it doesn't get updated until it's published again
     if (messages) {
-      messages
-        .filter(msg => msg.messageType === CommandIds.TEAMS_EPHEMERAL)
-        .forEach(async msg => {
-          // we know it's an ephemeral message so:
-          const message = getStoredInteraction(msg.messageId, msg.channelId);
-          message?.deleteReply().catch(() => {
-            console.log('Failed to delete ephemeral message');
-            console.trace();
-          });
+      for (const msg of messages.filter(msg => msg.messageType === CommandIds.TEAMS_EPHEMERAL)) {
+        // we know it's an ephemeral message so:
+        const message = getStoredInteraction(msg.messageId, msg.channelId);
+        await message?.deleteReply().catch(() => {
+          console.log('Failed to delete ephemeral message');
+          console.trace();
         });
+      }
       messages = messages.filter(msg => msg.messageType !== CommandIds.TEAMS_EPHEMERAL);
     }
 
@@ -1230,39 +1228,51 @@ async function generateTeamsMessage(
   // ephemeral message, OR a published message
   // never both
   const reply = await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-  messages?.forEach(async msg => {
-    const channel = interaction.guild?.channels.cache.get(msg.channelId);
-    if (!channel?.isTextBased()) return;
-    if (messages) {
-      try {
-        if (msg.messageType === CommandIds.TEAMS_EPHEMERAL) {
-          const prevInteraction = getStoredInteraction(msg.messageId, msg.channelId);
-          if (!prevInteraction) return;
-          await prevInteraction.editReply({
+  let updatedMessage = false;
+  if (messages) {
+    for (const msg of messages) {
+      const channel =
+        interaction.guild?.channels.cache.get(msg.channelId) ??
+        (await interaction.guild?.channels.fetch(msg.channelId).catch(() => null));
+      if (!channel?.isTextBased()) continue;
+      if (messages) {
+        try {
+          if (msg.messageType === CommandIds.TEAMS_EPHEMERAL) {
+            const prevInteraction = getStoredInteraction(msg.messageId, msg.channelId);
+            if (!prevInteraction) {
+              deleteLobbyMessages(guildId, [msg.messageType]);
+              continue;
+            }
+            await prevInteraction.editReply({
+              content: `<@${norDiscordId}>`,
+              embeds,
+            });
+            updatedMessage = true;
+            continue;
+          }
+          // so it's not an ephemeral message, so:
+          const previousMessage = await channel.messages.fetch(msg.messageId);
+          if (!previousMessage) continue;
+          const message = await previousMessage.edit({
             content: `<@${norDiscordId}>`,
             embeds,
           });
-          return;
+          // only save the message if we successfully edited it
+          const fetchedMessage = await message.fetch();
+          saveLobbyMessage(guildId, CommandIds.TEAMS, fetchedMessage.id, interaction.channelId, ''); // store the interaction ID as the message ID, so we know it was a draft
+          continue;
+        } catch (error) {
+          // if we couldn't edit the message, then delete it from the database
+          deleteLobbyMessages(guildId, [msg.messageType]);
+          console.error('Failed to update draft message:', [msg.messageType], error);
         }
-        // so it's not an ephemeral message, so:
-        const previousMessage = await channel.messages.fetch(msg.messageId);
-        if (!previousMessage) return;
-        const message = await previousMessage.edit({
-          content: `<@${norDiscordId}>`,
-          embeds,
-        });
-        // only save the message if we successfully edited it
-        const fetchedMessage = await message.fetch();
-        saveLobbyMessage(guildId, CommandIds.TEAMS, fetchedMessage.id, interaction.channelId, ''); // store the interaction ID as the message ID, so we know it was a draft
-        return;
-      } catch (error) {
-        // if we couldn't edit the message, then delete it from the database
-        deleteLobbyMessages(guildId, [msg.messageType]);
-        console.error('Failed to update draft message:', [msg.messageType], error);
       }
     }
+  }
+
+  await reply.delete().catch(error => {
+    console.error('Failed to delete reply:', error);
   });
-  await reply.delete().catch(console.error);
 }
 
 export async function handleSwapTeamsCommand(
@@ -1290,15 +1300,14 @@ export async function handleSwapTeamsCommand(
   // it could cause issues if the MMR of the players has
   // changed since the team command was run.
   // activePlayers.forEach((p, index) => (p.lobbyRank = index));
-  // get the discord_id of the two players
-  const playerA = activePlayers.find(p => (p.lobbyRank ?? NaN) === playerANumber);
-  const playerB = activePlayers.find(p => (p.lobbyRank ?? NaN) === playerBNumber);
+  const playerA = activePlayers[playerANumber];
+  const playerB = activePlayers[playerBNumber];
   // now we have the teams, and we know who to swap
   if (
     playerANumber < 0 ||
-    playerANumber > activePlayers.length ||
+    playerANumber >= activePlayers.length ||
     playerBNumber < 0 ||
-    playerBNumber > activePlayers.length ||
+    playerBNumber >= activePlayers.length ||
     !playerA ||
     !playerB
   ) {
@@ -1321,13 +1330,14 @@ Player B: \`team: ${playerB.team}\` \`${playerBNumber + 1}: ${playerB.mmr}\` <@$
     });
     return;
   }
+
   // swap the teams
   // note we set playerA to playerB's team, and playerB to playerA's team
   changeTeams(guildId, [
     { discordId: playerA.discordId, newTeam: playerB.team ?? null },
     { discordId: playerB.discordId, newTeam: playerA.team ?? null },
   ]);
-  const { team1, team2 } = getTeams(guildId);
+  const { team1, team2 } = getTeams(guildId, getSortedActivePlayers(guildId, true));
   await generateTeamsMessage(interaction, team1, team2);
 }
 
