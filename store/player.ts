@@ -91,7 +91,9 @@ const initSchema = db.transaction(() => {
         FOREIGN KEY (discord_id) REFERENCES players(discord_id) ON DELETE CASCADE
       )
     `);
-    db.exec("INSERT INTO lobby_players (guild_id, discord_id, active, team, lobby_rank, draft_order) SELECT 'global', discord_id, active, team, lobby_rank, draft_order FROM lobby_players_old");
+    db.exec(
+      "INSERT INTO lobby_players (guild_id, discord_id, active, team, lobby_rank, draft_order) SELECT 'global', discord_id, active, team, lobby_rank, draft_order FROM lobby_players_old",
+    );
     db.exec('DROP TABLE lobby_players_old');
   }
 
