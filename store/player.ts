@@ -1091,6 +1091,12 @@ export function getTeams(guildId: string, activePlayers = getSortedActivePlayers
   return { team1, team2, spectators, t1Captain, t2Captain };
 }
 
+/**
+ * Calculates the MMR for a player (including any adjustments).
+ *
+ * @param player The player to calculate the MMR for.
+ * @returns The MMR of the player.
+ */
 function getPlayerMMR(player: Player): number {
   return (
     (player.usernames.accounts?.reduce(
