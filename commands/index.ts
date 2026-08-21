@@ -68,6 +68,8 @@ import {
   getDraftPickedCount,
   getSortedActivePlayers,
   getTeams,
+  setPlayerAdjustment,
+  getPlayerMMR,
 } from '../store/player';
 import {
   saveChannel,
@@ -2144,7 +2146,7 @@ export async function handlePlayersAllCommand(
         components: [row1, row2],
       });
     } catch (error) {
-      await newInteraction.reply({
+      await safeReply(newInteraction, {
         content: `__**All Players**__:\n${playerList}`,
         components: [row1, row2],
         flags: MessageFlags.Ephemeral,
@@ -4425,5 +4427,63 @@ async function processMessageData(msg: Message, identifier?: string) {
     if (r.count < parsedNum) {
       await r.remove();
     }
+  });
+}
+
+/**
+ * Handles the /player-adjust slash command to view or set a player's MMR adjustment.
+ * @param interaction The ChatInputCommandInteraction object from Discord
+ */
+export async function handlePlayerAdjustCommand(interaction: ChatInputCommandInteraction<CacheType>): Promise<void> {
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) {
+    return;
+  }
+
+  const targetUser = interaction.options.getUser('player', true);
+  const amount = interaction.options.getNumber('amount');
+
+  const player = getPlayerByDiscordId(targetUser.id, guildId);
+  if (!player) {
+    await safeReply(interaction, {
+      content: `Player <@${targetUser.id}> was not found in the database.`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const displayName = player.usernames.discordDisplayName || targetUser.username;
+
+  if (amount === null) {
+    // View current adjustment
+    const currentAdj = player.adjustment ?? 0;
+    const adjStr = currentAdj >= 0 ? `+${currentAdj}` : `${currentAdj}`;
+    const netMMR = getPlayerMMR(player);
+    await safeReply(interaction, {
+      content: `**${displayName}**'s current MMR adjustment is **${adjStr}** (Net MMR: **${netMMR}**).`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  // Update adjustment
+  const result = setPlayerAdjustment(targetUser.id, guildId, amount);
+  if (!result) {
+    await safeReply(interaction, {
+      content: `Failed to update MMR adjustment for <@${targetUser.id}>.`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const { previousAdjustment, updatedPlayer } = result;
+  const prevAdjVal = previousAdjustment ?? 0;
+  const prevAdjStr = prevAdjVal >= 0 ? `+${prevAdjVal}` : `${prevAdjVal}`;
+  const newAdjStr = amount >= 0 ? `+${amount}` : `${amount}`;
+  const newNetMMR = getPlayerMMR(updatedPlayer);
+
+  await safeReply(interaction, {
+    content: `Updated MMR adjustment for **${displayName}** from **${prevAdjStr}** to **${newAdjStr}** (Net MMR: **${newNetMMR}**).`,
+    flags: MessageFlags.Ephemeral,
   });
 }

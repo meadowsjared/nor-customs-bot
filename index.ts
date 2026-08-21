@@ -65,6 +65,7 @@ import {
   updateAdminActiveButtons,
   handleChannelCommand,
   handleAdminDeleteHotsAccountCommand,
+  handlePlayerAdjustCommand,
 } from './commands';
 import { safeReply } from './utils/interaction';
 import { getBotChannel } from './utils/channel';
@@ -415,6 +416,16 @@ client.on('interactionCreate', async interaction => {
       break;
     case CommandIds.CANCEL_MAP_VOTE:
       handleCancelMapVoteCommand(interaction);
+      break;
+    case CommandIds.PLAYER_ADJUST:
+      if (!interaction.isChatInputCommand()) {
+        await safeReply(interaction, {
+          content: 'This command can only be used as a slash command.',
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+      handlePlayerAdjustCommand(interaction);
       break;
     default:
       await handleDefaultCommand(interaction, commandName);

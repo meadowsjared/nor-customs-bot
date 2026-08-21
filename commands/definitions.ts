@@ -733,4 +733,23 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     description: 'Cancel the active map vote session and delete its message',
     defaultMemberPermissions: minimumAdminPermissions,
   },
+  {
+    name: CommandIds.PLAYER_ADJUST,
+    description: "View or adjust a player's MMR offset (leave amount blank to view)",
+    defaultMemberPermissions: minimumAdminPermissions,
+    options: [
+      {
+        name: 'player',
+        type: ApplicationCommandOptionType.User,
+        description: 'The player to check or adjust MMR for',
+        required: true,
+      },
+      {
+        name: 'amount',
+        type: ApplicationCommandOptionType.Number,
+        description: 'The MMR adjustment value to set (leave blank to view current adjustment)',
+        required: false,
+      },
+    ],
+  },
 ];

@@ -100,6 +100,7 @@ export const enum CommandIds {
   CANCEL_MAP_VOTE = 'cancel-map-vote',
   VOTE_MAP_BTN = 'vote-map-btn',
   REMOVE_MAP_VOTE = 'remove-map-vote',
+  PLAYER_ADJUST = 'player-adjust',
 }
 
 export const roleMap: Record<string, string> = {

@@ -835,6 +835,34 @@ export function setPlayerDiscordNames(discordId: string, guildId: string, discor
 }
 
 /**
+ * Sets the MMR adjustment for a player in the database.
+ * @param discordId The Discord ID of the player to set adjustment for.
+ * @param guildId The Discord guild ID.
+ * @param adjustment The new MMR adjustment value (or 0 to clear).
+ * @returns An object containing previousAdjustment and updatedPlayer, or false if player not found.
+ */
+export function setPlayerAdjustment(
+  discordId: string,
+  guildId: string,
+  adjustment: number,
+): false | { previousAdjustment: number | null; updatedPlayer: Player } {
+  const existingPlayer = getPlayerByDiscordId(discordId, guildId);
+  if (!existingPlayer) {
+    return false;
+  }
+  const previousAdjustment = existingPlayer.adjustment;
+  const valueToStore = adjustment === 0 ? null : adjustment;
+  const stmt = db.prepare<[number | null, string]>('UPDATE players SET adjustment = ? WHERE discord_id = ?');
+  stmt.run(valueToStore, discordId);
+  activePlayersCache.delete(guildId);
+  const updatedPlayer = getPlayerByDiscordId(discordId, guildId);
+  if (!updatedPlayer) {
+    return false;
+  }
+  return { previousAdjustment, updatedPlayer };
+}
+
+/**
  * Sets the active status of a player in the database.
  * @param discordId The Discord ID of the player to set active status for.
  * @param active Whether the player should be set as active (true) or inactive (false).
@@ -1097,7 +1125,7 @@ export function getTeams(guildId: string, activePlayers = getSortedActivePlayers
  * @param player The player to calculate the MMR for.
  * @returns The MMR of the player.
  */
-function getPlayerMMR(player: Player): number {
+export function getPlayerMMR(player: Player): number {
   return (
     (player.usernames.accounts?.reduce(
       (bestMMR, account) => Math.max(bestMMR, account.hpQmMMR ?? 0, account.hpSlMMR ?? 0, account.hpArMMR ?? 0),
