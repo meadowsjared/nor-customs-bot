@@ -2395,10 +2395,7 @@ async function handleLookupCommandSub(
         .join('\n') || 'No HotS accounts';
 
     // get the player's highest MMR from the max player?.usernames using hpSlMMR, hpArMMR, or hpQmMMR
-    const MMR = hotsAccounts.reduce((max, account) => {
-      const accountMMR = Math.max(account.hpSlMMR || 0, account.hpArMMR || 0, account.hpQmMMR || 0);
-      return accountMMR > max ? accountMMR : max;
-    }, 0);
+    const MMR = player?.mmr ?? 0;
 
     const limit = interaction.options.getInteger(CommandIds.RECENT_MATCHES_LIMIT, false) ?? 30;
     const minHeroGames = interaction.options.getInteger(CommandIds.MIN_HERO_GAMES, false) ?? 5;
