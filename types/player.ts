@@ -154,3 +154,12 @@ export interface FlatPlayer {
   draft_order: number | null;
   last_active: string; // ISO date string
 }
+
+export interface DraftCoinState {
+  status: 'awaiting_call' | 'awaiting_choice' | 'completed';
+  callerTeam: 1 | 2;
+  call?: 'heads' | 'tails';
+  flipResult?: 'heads' | 'tails';
+  isFirstPick?: boolean;
+  firstPickTeam?: 1 | 2;
+}

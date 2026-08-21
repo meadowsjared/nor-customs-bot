@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import { DraftCoinState } from '../types/player';
 
 const db = new Database('./store/nor_customs.db');
 
@@ -91,4 +92,39 @@ export function deleteSetting(key: string, guildId: string | null): boolean {
   `);
   stmt.run(guildId, key);
   return true;
+}
+
+function isDraftCoinState(obj: unknown): obj is DraftCoinState {
+  return typeof obj === 'object' && obj !== null && 'status' in obj && 'callerTeam' in obj;
+}
+
+/**
+ * Retrieves the draft coin toss state for a guild.
+ */
+export function getDraftCoinState(guildId: string): DraftCoinState | null {
+  const raw = getSetting('draft_coin_state', guildId);
+  if (!raw) return null;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (isDraftCoinState(parsed)) {
+      return parsed;
+    }
+  } catch (error) {
+    console.error('Failed to parse draft_coin_state:', error);
+  }
+  return null;
+}
+
+/**
+ * Saves the draft coin toss state for a guild.
+ */
+export function setDraftCoinState(guildId: string, state: DraftCoinState): boolean {
+  return setSetting('draft_coin_state', JSON.stringify(state), guildId);
+}
+
+/**
+ * Resets/deletes the draft coin toss state for a guild.
+ */
+export function resetDraftCoinState(guildId: string): boolean {
+  return deleteSetting('draft_coin_state', guildId);
 }

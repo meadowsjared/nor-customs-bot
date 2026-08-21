@@ -51,6 +51,8 @@ import {
   handleDraftTeamAssignCommand,
   handleDraftModeCommand,
   handleDraftPickButton,
+  handleDraftCoinCallButton,
+  handleDraftChoiceButton,
   handleDraftToggleModeButton,
   handleDraftUndoCommand,
   handlePublishTeamsCommand,
@@ -538,6 +540,18 @@ async function handleDefaultCommand(
   if (interaction.isButton() && interaction.customId.startsWith('draft_pick:')) {
     const pickedPlayerId = interaction.customId.split(':')[1];
     await handleDraftPickButton(interaction, pickedPlayerId);
+    return;
+  }
+  if (interaction.isButton() && interaction.customId.startsWith('draft_coin:')) {
+    const callStr = interaction.customId.split(':')[1];
+    const call: 'heads' | 'tails' = callStr === 'heads' ? 'heads' : 'tails';
+    await handleDraftCoinCallButton(interaction, call);
+    return;
+  }
+  if (interaction.isButton() && interaction.customId.startsWith('draft_choice:')) {
+    const choiceStr = interaction.customId.split(':')[1];
+    const isFirstPick = choiceStr === 'first';
+    await handleDraftChoiceButton(interaction, isFirstPick);
     return;
   }
   if (interaction.isButton() && interaction.customId === 'draft_undo') {

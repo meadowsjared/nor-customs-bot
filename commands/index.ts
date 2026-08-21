@@ -77,10 +77,10 @@ import {
   deleteLobbyMessages,
   deleteLobbyMessagesById,
 } from '../store/channels';
-import { DiscordUserNames, Player } from '../types/player';
+import { DiscordUserNames, Player, DraftCoinState } from '../types/player';
 import { client } from '../index';
 import { parseReplay, saveReplayToDb, getPlayerMatchStats, optimizeDb } from '../store/hotsReplays';
-import { getSetting, setSetting } from '../store/settings';
+import { getSetting, setSetting, getDraftCoinState, setDraftCoinState, resetDraftCoinState } from '../store/settings';
 import path from 'path';
 import { validateBattleTag } from '../utils/heroesOfTheStorm';
 dotenv.config();
@@ -473,6 +473,15 @@ export async function handleDraftCommand(
   assignPlayerToTeam(guildId, t1CaptainId, 1, 1);
   assignPlayerToTeam(guildId, t2CaptainId, 2, 2);
 
+  if (modeOpt === 'captains') {
+    setDraftCoinState(guildId, {
+      status: 'awaiting_call',
+      callerTeam: Math.random() < 0.5 ? 1 : 2,
+    });
+  } else {
+    resetDraftCoinState(guildId);
+  }
+
   const uiData = generateDraftUI(guildId);
 
   const sentMessage = await announce(interaction, uiData);
@@ -490,6 +499,25 @@ export async function handleDraftCommand(
 }
 
 /**
+ * Determines which team gets the 1st pick in the draft rotation order.
+ * Defaults to 1 (Team 1) if coin flip is not completed.
+ */
+export function getFirstPickTeam(coinState: DraftCoinState | null): 1 | 2 {
+  if (!coinState || coinState.status !== 'completed' || coinState.isFirstPick === undefined) {
+    return 1;
+  }
+  if (coinState.firstPickTeam !== undefined) {
+    return coinState.firstPickTeam;
+  }
+  const callerTeam = coinState.callerTeam ?? 1;
+  const callerWon =
+    coinState.call !== undefined && coinState.flipResult !== undefined && coinState.call === coinState.flipResult;
+  const winnerTeam: 1 | 2 = callerWon ? callerTeam : callerTeam === 1 ? 2 : 1;
+  const winnerIsT1 = winnerTeam === 1;
+  return (winnerIsT1 && coinState.isFirstPick) || (!winnerIsT1 && !coinState.isFirstPick) ? 1 : 2;
+}
+
+/**
  * Builds the interactive draft message content and component buttons.
  */
 export function generateDraftUI(guildId: string): {
@@ -502,10 +530,17 @@ export function generateDraftUI(guildId: string): {
   const { team1, team2, spectators, t1Captain, t2Captain } = getTeams(guildId, activePlayers);
 
   const mode = getSetting('draft_mode', guildId) ?? 'captains';
-  const turnInfo = getCurrentDraftTurn({ 1: team1.length, 2: team2.length }, activePlayers.length);
+  const coinState = getDraftCoinState(guildId);
+  const firstPickTeam = getFirstPickTeam(coinState);
+  const turnInfo = getCurrentDraftTurn({ 1: team1.length, 2: team2.length }, activePlayers.length, firstPickTeam);
 
-  const statusHeader = buildDraftStatusHeader(mode, turnInfo, spectators.length, t1Captain, t2Captain);
-  const centeredRotationBlock = buildDraftRotationBlock(turnInfo.activePickIndex, mode, turnInfo.isComplete);
+  const statusHeader = buildDraftStatusHeader(mode, turnInfo, spectators.length, coinState, t1Captain, t2Captain);
+  const centeredRotationBlock = buildDraftRotationBlock(
+    turnInfo.activePickIndex,
+    mode,
+    turnInfo.isComplete,
+    firstPickTeam,
+  );
 
   const sortedTeam1 = sortTeamByDraftOrder(team1, t1Captain?.discordId);
   const sortedTeam2 = sortTeamByDraftOrder(team2, t2Captain?.discordId);
@@ -533,7 +568,7 @@ export function generateDraftUI(guildId: string): {
     unpickedCount: spectators.length,
   });
 
-  const components = buildDraftActionRows(guildId, spectators, turnInfo, mode, t1Captain, t2Captain);
+  const components = buildDraftActionRows(guildId, spectators, turnInfo, mode, coinState, t1Captain, t2Captain);
 
   return { content: '', embeds: [embed], components, allowedMentions: { parse: [] } };
 }
@@ -544,6 +579,7 @@ export function generateDraftUI(guildId: string): {
 export function getCurrentDraftTurn(
   teamPlayerCounts: { [key: number]: number },
   totalActive: number = 10,
+  firstPickTeam: 1 | 2 = 1,
 ): {
   currentTeam: number;
   picksRemaining: number;
@@ -552,28 +588,39 @@ export function getCurrentDraftTurn(
   totalPicksThisTurn: number;
   activePickIndex: number;
 } {
+  const secondPickTeam = 3 - firstPickTeam;
   const Max_Picks = 10;
-  const activePickIndex = Math.min(8, Math.max(0, teamPlayerCounts[1] + teamPlayerCounts[2] - 2));
+  const activePickIndex = Math.min(
+    Max_Picks - 2, // note: we use 8 as the max index, not 10, because the 2 captains are already picked
+    Math.max(0, teamPlayerCounts[firstPickTeam] + teamPlayerCounts[secondPickTeam] - 2),
+  );
   const totalPicksThisTurn =
     activePickIndex === 0
-      ? 1
+      ? firstPickTeam
       : activePickIndex === totalActive && totalActive % 1 === 0
-        ? 1
-        : Math.min(2, totalActive - teamPlayerCounts[1] - teamPlayerCounts[2]);
+        ? firstPickTeam
+        : Math.min(2, totalActive - teamPlayerCounts[firstPickTeam] - teamPlayerCounts[secondPickTeam]);
   const pickNumber = activePickIndex === 0 ? 1 : activePickIndex % 2 === 0 ? 2 : 1;
-  if (teamPlayerCounts[1] + teamPlayerCounts[2] >= Max_Picks) {
-    return { currentTeam: 1, picksRemaining: 0, isComplete: true, totalPicksThisTurn, activePickIndex, pickNumber };
+  if (teamPlayerCounts[firstPickTeam] + teamPlayerCounts[secondPickTeam] >= Max_Picks) {
+    return {
+      currentTeam: firstPickTeam,
+      picksRemaining: 0,
+      isComplete: true,
+      totalPicksThisTurn,
+      activePickIndex,
+      pickNumber,
+    };
   }
 
   for (let i = 2; i < totalActive; i++) {
-    const currentTeam = i % 2 === 0 ? 1 : 2;
+    const currentTeam = i % 2 === 0 ? firstPickTeam : secondPickTeam;
     if (teamPlayerCounts[currentTeam] < i) {
       return {
         currentTeam,
         activePickIndex,
         picksRemaining: Math.min(
           i - teamPlayerCounts[currentTeam],
-          totalActive - teamPlayerCounts[1] - teamPlayerCounts[2],
+          totalActive - teamPlayerCounts[firstPickTeam] - teamPlayerCounts[secondPickTeam],
         ),
         totalPicksThisTurn,
         isComplete: false,
@@ -584,10 +631,24 @@ export function getCurrentDraftTurn(
 
   // Fallback for arbitrary states resulting from free pick mode:
   // Whichever team has fewer players gets the next turn!
-  if (teamPlayerCounts[1] <= teamPlayerCounts[2]) {
-    return { currentTeam: 1, picksRemaining: 1, isComplete: false, totalPicksThisTurn, activePickIndex, pickNumber };
+  if (teamPlayerCounts[firstPickTeam] <= teamPlayerCounts[secondPickTeam]) {
+    return {
+      currentTeam: firstPickTeam,
+      picksRemaining: 1,
+      isComplete: false,
+      totalPicksThisTurn,
+      activePickIndex,
+      pickNumber,
+    };
   } else {
-    return { currentTeam: 2, picksRemaining: 1, isComplete: false, totalPicksThisTurn, activePickIndex, pickNumber };
+    return {
+      currentTeam: secondPickTeam,
+      picksRemaining: 1,
+      isComplete: false,
+      totalPicksThisTurn,
+      activePickIndex,
+      pickNumber,
+    };
   }
 }
 
@@ -598,17 +659,57 @@ function buildDraftStatusHeader(
   mode: string,
   turnInfo: ReturnType<typeof getCurrentDraftTurn>,
   unpickedCount: number,
+  coinState: DraftCoinState | null,
   t1Captain?: Player,
   t2Captain?: Player,
 ): string {
   if (mode === 'captains') {
+    if (coinState?.status === 'awaiting_call') {
+      const callerTeam = coinState.callerTeam ?? 1;
+      const callerCap = callerTeam === 1 ? t1Captain : t2Captain;
+      const callerName = callerCap ? `@${callerCap.usernames?.discordDisplayName}` : `Team ${callerTeam} Captain`;
+      return `## 🪙 Coin Toss Phase: Captain Call Required\n**${callerName}**, call **Heads** or **Tails** to decide who chooses draft position!`;
+    }
+
+    if (coinState?.status === 'awaiting_choice') {
+      const callerTeam = coinState.callerTeam ?? 1;
+      const callerCap = callerTeam === 1 ? t1Captain : t2Captain;
+      const callerName = callerCap ? `@${callerCap.usernames?.discordDisplayName}` : `Team ${callerTeam} Captain`;
+      const call = coinState.call ?? 'heads';
+      const flip = coinState.flipResult ?? 'heads';
+      const callerWon =
+        coinState.call !== undefined && coinState.flipResult !== undefined && coinState.call === coinState.flipResult;
+      const winnerTeam: 1 | 2 = callerWon ? callerTeam : callerTeam === 1 ? 2 : 1;
+      const winnerCap = winnerTeam === 1 ? t1Captain : t2Captain;
+      const winnerName = winnerCap ? `@${winnerCap.usernames?.discordDisplayName}` : 'Coin Toss Winner';
+      const callOutcome = callerWon ? 'won' : 'lost';
+
+      return (
+        `## 🪙 Coin Toss Result!\n` +
+        `${callerName} called **${call.toUpperCase()}**. The coin landed on **${flip.toUpperCase()}**!\n` +
+        `🎉 **${callerName}** ${callOutcome} the toss ${callOutcome === 'won' ? 'and gets to' : 'so **' + winnerName + '** gets to'} pick draft order!\n` +
+        `${winnerName} *Select **1st Pick** or **Following Two** (2nd & 3rd Pick).*`
+      );
+    }
+
     if (turnInfo.isComplete || unpickedCount === 0) {
       return '# 🎉 Draft Complete!\nBoth teams have been picked.';
     } else {
       const activeCaptain = turnInfo.currentTeam === 1 ? t1Captain : t2Captain;
       const activeCaptainName = activeCaptain ? `@${activeCaptain.usernames?.discordDisplayName}` : 'Unassigned';
       const teamLabel = turnInfo.currentTeam === 1 ? '🔵 Team 1' : '🔴 Team 2';
-      return `## ${teamLabel} Captain ${activeCaptainName}'s Turn\n*(Pick ${turnInfo.pickNumber} of ${turnInfo.totalPicksThisTurn})*`;
+      let coinBanner = '';
+      if (coinState?.status === 'completed' && coinState.isFirstPick !== undefined) {
+        const callerTeam = coinState.callerTeam ?? 1;
+        const callerWon =
+          coinState.call !== undefined && coinState.flipResult !== undefined && coinState.call === coinState.flipResult;
+        const winnerTeam: 1 | 2 = callerWon ? callerTeam : callerTeam === 1 ? 2 : 1;
+        const winnerCap = winnerTeam === 1 ? t1Captain : t2Captain;
+        const winnerName = winnerCap ? `@${winnerCap.usernames?.discordDisplayName}` : 'Winner';
+        const choiceText = coinState.isFirstPick ? '1st Pick' : 'Following Two';
+        coinBanner = `🪙 *Coin toss won by ${winnerName} (chose ${choiceText})*\n`;
+      }
+      return `${coinBanner}## ${teamLabel} Captain ${activeCaptainName}'s Turn\n*(Pick ${turnInfo.pickNumber} of ${turnInfo.totalPicksThisTurn})*`;
     }
   } else if (mode === 'free_team1') {
     return '## ⚡ Free Pick Mode ➡️ 🔵 Team 1\n*Click any available player button to assign them to Team 1*';
@@ -622,8 +723,13 @@ function buildDraftStatusHeader(
 /**
  * Generates the 1-2-2 HotS pick rotation sequence tracker string block.
  */
-function buildDraftRotationBlock(activePickIndex: number, mode: string, isComplete: boolean): string {
-  const sequence = [1, 2, 2, 1, 1, 2, 2, 1];
+function buildDraftRotationBlock(
+  activePickIndex: number,
+  mode: string,
+  isComplete: boolean,
+  firstPickTeam: 1 | 2 = 1,
+): string {
+  const sequence = firstPickTeam === 1 ? [1, 2, 2, 1, 1, 2, 2, 1] : [2, 1, 1, 2, 2, 1, 1, 2];
   const arrowRow = sequence
     .map((_, idx) => (idx === activePickIndex && mode === 'captains' && !isComplete ? '⬇️' : '⬛'))
     .join(' ');
@@ -751,13 +857,29 @@ function buildDraftActionRows(
   unpickedPlayers: Player[],
   turnInfo: ReturnType<typeof getCurrentDraftTurn>,
   mode: string,
+  coinState: DraftCoinState | null,
   t1Captain?: Player,
   t2Captain?: Player,
 ): ActionRowBuilder<ButtonBuilder>[] {
   const rows: ActionRowBuilder<ButtonBuilder>[] = [];
   let currentRow = new ActionRowBuilder<ButtonBuilder>();
 
-  if (!turnInfo.isComplete && unpickedPlayers.length > 0) {
+  if (mode === 'captains' && coinState?.status === 'awaiting_call') {
+    const coinCallRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId('draft_coin:heads').setLabel('🪙 Call Heads').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId('draft_coin:tails').setLabel('🪙 Call Tails').setStyle(ButtonStyle.Primary),
+    );
+    rows.push(coinCallRow);
+  } else if (mode === 'captains' && coinState?.status === 'awaiting_choice') {
+    const choiceRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId('draft_choice:first').setLabel('1️⃣ 1st Pick').setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId('draft_choice:second')
+        .setLabel('2️⃣ Following Two (2nd & 3rd)')
+        .setStyle(ButtonStyle.Primary),
+    );
+    rows.push(choiceRow);
+  } else if (!turnInfo.isComplete && unpickedPlayers.length > 0) {
     unpickedPlayers.forEach(p => {
       if (currentRow.components.length >= 5) {
         rows.push(currentRow);
@@ -863,6 +985,94 @@ export async function handleDraftCaptainCommand(
 }
 
 /**
+ * Handles Team 1 Captain's Heads or Tails call button click.
+ */
+export async function handleDraftCoinCallButton(interaction: ButtonInteraction<CacheType>, call: 'heads' | 'tails') {
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return;
+  await interaction.deferUpdate();
+
+  const coinState = getDraftCoinState(guildId);
+  if (!coinState || coinState.status !== 'awaiting_call') {
+    return;
+  }
+
+  const { t1Captain, t2Captain } = getTeams(guildId);
+  const callerTeam = coinState.callerTeam ?? 1;
+  const callerCap = callerTeam === 1 ? t1Captain : t2Captain;
+
+  if (interaction.user.id !== callerCap.discordId) {
+    const callerName = callerCap ? `@${callerCap.usernames?.discordDisplayName}` : `Team ${callerTeam} Captain`;
+    await safeReply(interaction, {
+      content: `⛔ Only ${callerName} can call the coin toss!`,
+      flags: MessageFlags.Ephemeral,
+      allowedMentions: { parse: [] },
+    });
+    return;
+  }
+
+  const flipResult: 'heads' | 'tails' = Math.random() < 0.5 ? 'heads' : 'tails';
+
+  const nextState: DraftCoinState = {
+    ...coinState,
+    status: 'awaiting_choice',
+    callerTeam,
+    call,
+    flipResult,
+  };
+
+  setDraftCoinState(guildId, nextState);
+  await updateDraftUIMessage(guildId, interaction);
+}
+
+/**
+ * Handles the coin toss winner's draft position choice (isFirstPick: boolean).
+ */
+export async function handleDraftChoiceButton(interaction: ButtonInteraction<CacheType>, isFirstPick: boolean) {
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return;
+  await interaction.deferUpdate();
+
+  const coinState = getDraftCoinState(guildId);
+  if (!coinState || coinState.status !== 'awaiting_choice') {
+    return;
+  }
+
+  const { t1Captain, t2Captain } = getTeams(guildId);
+  const callerTeam = coinState.callerTeam ?? 1;
+  const callerWon =
+    coinState.call !== undefined && coinState.flipResult !== undefined && coinState.call === coinState.flipResult;
+  const winnerTeam: 1 | 2 = callerWon ? callerTeam : callerTeam === 1 ? 2 : 1;
+  const winnerCap = winnerTeam === 1 ? t1Captain : t2Captain;
+
+  if (interaction.user.id !== winnerCap.discordId) {
+    const winnerName = winnerCap ? `@${winnerCap.usernames?.discordDisplayName}` : 'Coin Toss Winner';
+    await safeReply(interaction, {
+      content: `⛔ Only the coin toss winner (${winnerName}) can choose draft position!`,
+      flags: MessageFlags.Ephemeral,
+      allowedMentions: { parse: [] },
+    });
+    return;
+  }
+
+  const winnerIsT1 = winnerTeam === 1;
+  const winnerWants1st = isFirstPick;
+
+  const firstPickTeam: 1 | 2 = (winnerIsT1 && winnerWants1st) || (!winnerIsT1 && !winnerWants1st) ? 1 : 2;
+
+  const nextState: DraftCoinState = {
+    ...coinState,
+    status: 'completed',
+    callerTeam,
+    isFirstPick,
+    firstPickTeam,
+  };
+
+  setDraftCoinState(guildId, nextState);
+  await updateDraftUIMessage(guildId, interaction);
+}
+
+/**
  * Handles picking a player via player button click
  */
 export async function handleDraftPickButton(interaction: ButtonInteraction<CacheType>, pickedPlayerDiscordId: string) {
@@ -874,12 +1084,23 @@ export async function handleDraftPickButton(interaction: ButtonInteraction<Cache
 
   const sortedPlayers = getSortedActivePlayers(guildId, true);
   const { team1, team2, t1Captain, t2Captain } = getTeams(guildId, sortedPlayers);
-  const turnInfo = getCurrentDraftTurn({ 1: team1.length, 2: team2.length }, sortedPlayers.length);
+  const coinState = getDraftCoinState(guildId);
+  const firstPickTeam = getFirstPickTeam(coinState);
+  const turnInfo = getCurrentDraftTurn({ 1: team1.length, 2: team2.length }, sortedPlayers.length, firstPickTeam);
 
   const isT1Captain = interaction.user.id === t1Captain.discordId;
   const isT2Captain = interaction.user.id === t2Captain.discordId;
 
   if (mode === 'captains') {
+    if (coinState && coinState.status !== 'completed') {
+      await safeReply(interaction, {
+        content: '✋ Please complete the coin toss & pick order selection before picking players!',
+        flags: MessageFlags.Ephemeral,
+        allowedMentions: { parse: [] },
+      });
+      return;
+    }
+
     // 1. Must be a captain
     if (!isT1Captain && !isT2Captain) {
       await safeReply(interaction, {
@@ -946,6 +1167,16 @@ export async function handleDraftUndoCommand(
   for (const player of picksToUndo) {
     assignPlayerToTeam(guildId, player.discordId, null, null);
   }
+
+  if (all || picksToUndo.length === nonCaptainPicks.length) {
+    if (t1Captain && t2Captain) {
+      setDraftCoinState(guildId, {
+        status: 'awaiting_call',
+        callerTeam: Math.random() < 0.5 ? 1 : 2,
+      });
+    }
+  }
+
   const numUndone = picksToUndo.length;
 
   await updateDraftUIMessage(guildId, interaction);
