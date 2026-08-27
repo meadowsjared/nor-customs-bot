@@ -42,7 +42,7 @@ import {
 } from '../constants';
 import { announce, safePing } from '../utils/announce';
 import { getBotChannel } from '../utils/channel';
-import { safeReply, requireGuildId } from '../utils/interaction';
+import { safeReply, safeUpdate, safeDeferUpdate, requireGuildId } from '../utils/interaction';
 import {
   getActivePlayers,
   getPlayerByDiscordId,
@@ -992,7 +992,7 @@ export async function handleDraftCaptainCommand(
 export async function handleDraftCoinCallButton(interaction: ButtonInteraction<CacheType>, call: 'heads' | 'tails') {
   const guildId = await requireGuildId(interaction);
   if (!guildId) return;
-  await interaction.deferUpdate();
+  await safeDeferUpdate(interaction);
 
   const coinState = getDraftCoinState(guildId);
   if (!coinState || coinState.status !== 'awaiting_call') {
@@ -1033,7 +1033,7 @@ export async function handleDraftCoinCallButton(interaction: ButtonInteraction<C
 export async function handleDraftChoiceButton(interaction: ButtonInteraction<CacheType>, isFirstPick: boolean) {
   const guildId = await requireGuildId(interaction);
   if (!guildId) return;
-  await interaction.deferUpdate();
+  await safeDeferUpdate(interaction);
 
   const coinState = getDraftCoinState(guildId);
   if (!coinState || coinState.status !== 'awaiting_choice') {
@@ -1081,7 +1081,7 @@ export async function handleDraftPickButton(interaction: ButtonInteraction<Cache
   const guildId = await requireGuildId(interaction);
   if (!guildId) return;
   // Instantly acknowledge button interaction to Discord (< 50ms) to prevent timeouts
-  await interaction.deferUpdate();
+  await safeDeferUpdate(interaction);
   const mode = getSetting('draft_mode', guildId) ?? 'captains';
 
   const sortedPlayers = getSortedActivePlayers(guildId, true);
@@ -1154,7 +1154,7 @@ export async function handleDraftUndoCommand(
     all = interaction.options.getBoolean('all') ?? false;
   } else {
     // Instantly acknowledge button interaction to Discord to prevent timeouts
-    await interaction.deferUpdate();
+    await safeDeferUpdate(interaction);
   }
 
   const { team1, team2, t1Captain, t2Captain } = getTeams(guildId);
@@ -1279,7 +1279,7 @@ export async function handleDraftTeamAssignCommand(
 export async function handleDraftToggleModeButton(interaction: ButtonInteraction<CacheType>) {
   const guildId = await requireGuildId(interaction);
   if (!guildId) return;
-  await interaction.deferUpdate();
+  await safeDeferUpdate(interaction);
 
   const currentMode = getSetting('draft_mode', guildId) ?? 'captains';
   let newMode = 'captains';
@@ -2088,7 +2088,7 @@ export async function handlePlayersAllCommand(
     }
   } else {
     if (interaction.isButton()) {
-      await interaction.deferUpdate();
+      await safeDeferUpdate(interaction);
     }
     newInteraction = getStoredInteraction(`${playerId}_${CommandIds.PLAYERS_ALL}`, interaction.channelId);
   }
@@ -3237,19 +3237,19 @@ export async function handleEditRoleButtonCommand(
   const activePrefix = setActive ? 'You must click a role to join the lobby\n' : ''; // Default content for the reply
   switch (action) {
     case CommandIds.ROLE_EDIT_ADD:
-      showAddButtons(interaction, guildId, discordId, player, role, roles, activePrefix, row2, activeSuffix);
+      await showAddButtons(interaction, guildId, discordId, player, role, roles, activePrefix, row2, activeSuffix);
       break;
     case CommandIds.ROLE_EDIT_REMOVE:
-      showRemoveButtons(interaction, guildId, discordId, player, role, roles, activePrefix, row2, activeSuffix);
+      await showRemoveButtons(interaction, guildId, discordId, player, role, roles, activePrefix, row2, activeSuffix);
       break;
     case CommandIds.ROLE_EDIT_REPLACE:
-      showReplaceButtons(interaction, guildId, discordId, player, role, roles, activePrefix, row2, activeSuffix);
+      await showReplaceButtons(interaction, guildId, discordId, player, role, roles, activePrefix, row2, activeSuffix);
       break;
   }
   await updateLobbyMessage(guildId, interaction);
 }
 
-function showAddButtons(
+async function showAddButtons(
   interaction: ButtonInteraction<CacheType>,
   guildId: string,
   discordId: string,
@@ -3266,7 +3266,7 @@ function showAddButtons(
     setPlayerRole(discordId, guildId, newRoles); // Update the player's role in the database
     roles = ', current role: ' + getPlayerRolesFormatted(newRoles);
   }
-  interaction.update({
+  await safeUpdate(interaction, {
     content:
       (interaction.user.id === discordId ? '' : `**User:** <@${discordId}>\n`) + activePrefix + 'Add Mode' + roles,
     components: [
@@ -3280,7 +3280,7 @@ function showAddButtons(
   });
 }
 
-function showRemoveButtons(
+async function showRemoveButtons(
   interaction: ButtonInteraction<CacheType>,
   guildId: string,
   discordId: string,
@@ -3300,7 +3300,7 @@ function showRemoveButtons(
     setPlayerRole(discordId, guildId, newRoles); // Update the player's role in the database
     roles = ', current role: ' + getPlayerRolesFormatted(newRoles);
   }
-  interaction.update({
+  await safeUpdate(interaction, {
     content:
       (interaction.user.id === discordId ? '' : `**User:** <@${discordId}>\n`) + activePrefix + 'Remove Mode' + roles,
     components: [
@@ -3314,7 +3314,7 @@ function showRemoveButtons(
   });
 }
 
-function showReplaceButtons(
+async function showReplaceButtons(
   interaction: ButtonInteraction<CacheType>,
   guildId: string,
   discordId: string,
@@ -3329,7 +3329,7 @@ function showReplaceButtons(
     setPlayerRole(discordId, guildId, role);
     roles = ', current role: ' + getPlayerRolesFormatted(role);
   }
-  interaction.update({
+  await safeUpdate(interaction, {
     content:
       (interaction.user.id === discordId ? '' : `**User:** <@${discordId}>\n`) + activePrefix + 'Replace Mode' + roles,
     components: [

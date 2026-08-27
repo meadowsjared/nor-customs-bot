@@ -15,7 +15,7 @@ import {
 import { updateLobbyMessage } from '../commands';
 import { CommandIds } from '../constants';
 import { getHeroesProfileData } from './heroesProfile';
-import { requireGuildId, safeReply } from '../utils/interaction';
+import { requireGuildId, safeReply, safeDeferUpdate } from '../utils/interaction';
 import { HOTS_ACCOUNTS_COLUMNS } from '../types/csvSpreadsheet';
 import { generateCreateTableSQL } from '../utils/sql';
 import { validateBattleTag } from '../utils/heroesOfTheStorm';
@@ -651,19 +651,24 @@ async function updateButtonInterface(
     await prevInteraction.editReply({
       components: getAccountButtons(accounts, discordId, messageId, channelId),
     });
-    await interaction.deferUpdate(); // Acknowledge the button interaction without showing loading
+    await safeDeferUpdate(interaction); // Acknowledge the button interaction without showing loading
     return { success: true, messageOptions: { content: '' } };
   } catch (error: unknown) {
     removeInteraction(messageId, channelId); // if we can't find the interaction, remove it from the store
     console.error('Error updating button interface:', error);
-    const message = await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-
-    storeInteraction(message.id, interaction.channelId, interaction);
-    await safeReply(interaction, {
-      content:
-        'Previous interaction not found to update buttons\nPlease select the account to set as primary using the buttons below.',
-      components: getAccountButtons(accounts, discordId, message.id, channelId),
-    });
+    try {
+      if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
+        const message = await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+        storeInteraction(message.id, interaction.channelId, interaction);
+      }
+      await safeReply(interaction, {
+        content:
+          'Previous interaction not found to update buttons\nPlease select the account to set as primary using the buttons below.',
+        components: getAccountButtons(accounts, discordId, messageId, channelId),
+      });
+    } catch (fallbackError) {
+      console.error('Failed fallback deferReply/safeReply:', fallbackError);
+    }
     return { success: true, messageOptions: { content: '' } };
   }
 }

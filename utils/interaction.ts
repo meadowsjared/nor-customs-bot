@@ -5,6 +5,8 @@ import {
   ChatInputCommandInteraction,
   Interaction,
   InteractionReplyOptions,
+  InteractionUpdateOptions,
+  MessageComponentInteraction,
   MessageFlags,
   MessagePayload,
   ModalSubmitInteraction,
@@ -98,3 +100,45 @@ export async function requireGuildId(
   }
   return interaction.guildId;
 }
+
+/**
+ * Safely updates a message component interaction (e.g. ButtonInteraction).
+ * If the interaction cannot be updated or throws an error (e.g. Unknown interaction 10062),
+ * catches the error safely to prevent bot crashes.
+ */
+export async function safeUpdate(
+  interaction: ButtonInteraction<CacheType> | MessageComponentInteraction<CacheType> | chatOrButtonOrModal | undefined,
+  options: string | MessagePayload | (InteractionUpdateOptions & InteractionReplyOptions),
+) {
+  if (!interaction) return;
+  try {
+    if ('update' in interaction && typeof interaction.update === 'function') {
+      if (!interaction.replied && !interaction.deferred) {
+        return await interaction.update(options);
+      } else if (interaction.isRepliable()) {
+        return await interaction.followUp(options);
+      }
+    } else if (interaction.isRepliable()) {
+      return await safeReply(interaction, options);
+    }
+  } catch (error) {
+    console.error('Failed to update interaction safely:', error);
+  }
+}
+
+/**
+ * Safely defers updating an interaction, catching any errors (e.g. Unknown interaction 10062).
+ */
+export async function safeDeferUpdate(
+  interaction: ButtonInteraction<CacheType> | MessageComponentInteraction<CacheType> | undefined,
+) {
+  if (!interaction) return;
+  try {
+    if (!interaction.replied && !interaction.deferred) {
+      return await interaction.deferUpdate();
+    }
+  } catch (error) {
+    console.error('Failed to defer update on interaction:', error);
+  }
+}
+

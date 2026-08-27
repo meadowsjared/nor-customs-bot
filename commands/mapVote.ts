@@ -30,7 +30,7 @@ import {
   updateMapVoteSessionMessageIds,
 } from '../store/mapVote';
 import { MapDefinition, MapVoteSession, MapVoteTally } from '../types/mapVote';
-import { safeReply, requireGuildId } from '../utils/interaction';
+import { safeReply, safeDeferUpdate, requireGuildId } from '../utils/interaction';
 
 const MAPS_ASSETS_DIR = path.resolve(process.cwd(), 'assets', 'maps');
 
@@ -292,7 +292,7 @@ export async function handleVoteMapButtonClick(
   mapId: string,
 ) {
   // Silently acknowledge button click without ephemeral message popups
-  await interaction.deferUpdate();
+  await safeDeferUpdate(interaction);
 
   const session = getMapVoteSessionById(sessionId);
   if (!session || !session.active) {
@@ -331,7 +331,7 @@ export async function handleVoteMapButtonClick(
  * Handles clicking the Remove My Vote button
  */
 export async function handleVoteRemoveButtonClick(interaction: ButtonInteraction<CacheType>, sessionId: string) {
-  await interaction.deferUpdate();
+  await safeDeferUpdate(interaction);
 
   const session = getMapVoteSessionById(sessionId);
   if (!session || !session.active) {
@@ -463,7 +463,7 @@ export async function handleEndMapVoteCommand(
   sessionIdParam?: string,
 ) {
   if (interaction.isButton()) {
-    await interaction.deferUpdate();
+    await safeDeferUpdate(interaction);
     try {
       await interaction.deleteReply();
     } catch (err) {
@@ -593,7 +593,7 @@ export async function handleCancelMapVoteCommand(
   sessionIdParam?: string,
 ) {
   if (interaction.isButton()) {
-    await interaction.deferUpdate();
+    await safeDeferUpdate(interaction);
     try {
       await interaction.deleteReply();
     } catch (err) {

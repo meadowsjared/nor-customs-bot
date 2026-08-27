@@ -2,6 +2,14 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+process.on('unhandledRejection', error => {
+  console.error('Unhandled Promise Rejection:', error);
+});
+
+process.on('uncaughtException', error => {
+  console.error('Uncaught Exception:', error);
+});
+
 import {
   Client,
   GatewayIntentBits,
@@ -195,264 +203,268 @@ function getCommandName(
 }
 
 client.on('interactionCreate', async interaction => {
-  if (interaction.isAutocomplete()) {
-    if (
-      interaction.commandName === CommandIds.DRAFT ||
-      interaction.commandName === CommandIds.DRAFT_CAPTAIN ||
-      interaction.commandName === CommandIds.DRAFT_TEAM_ASSIGN
-    ) {
-      await handleDraftAutocomplete(interaction);
-      return;
+  try {
+    if (interaction.isAutocomplete()) {
+      if (
+        interaction.commandName === CommandIds.DRAFT ||
+        interaction.commandName === CommandIds.DRAFT_CAPTAIN ||
+        interaction.commandName === CommandIds.DRAFT_TEAM_ASSIGN
+      ) {
+        await handleDraftAutocomplete(interaction);
+        return;
+      }
     }
-  }
 
-  if (!interaction.isChatInputCommand() && !interaction.isButton()) return;
+    if (!interaction.isChatInputCommand() && !interaction.isButton()) return;
 
-  if (interaction.isButton() && interaction.customId.startsWith('mapvote:')) {
-    const parts = interaction.customId.split(':');
-    const action = parts[1];
-    const sessionId = parts[2];
-    const mapId = parts[3];
+    if (interaction.isButton() && interaction.customId.startsWith('mapvote:')) {
+      const parts = interaction.customId.split(':');
+      const action = parts[1];
+      const sessionId = parts[2];
+      const mapId = parts[3];
 
-    if (action === 'vote') {
-      handleVoteMapButtonClick(interaction, sessionId, mapId);
-      return;
-    } else if (action === 'remove') {
-      handleVoteRemoveButtonClick(interaction, sessionId);
-      return;
-    } else if (action === 'end') {
-      handleEndMapVoteCommand(interaction, sessionId);
-      return;
-    } else if (action === 'cancel') {
-      handleCancelMapVoteCommand(interaction, sessionId);
-      return;
+      if (action === 'vote') {
+        await handleVoteMapButtonClick(interaction, sessionId, mapId);
+        return;
+      } else if (action === 'remove') {
+        await handleVoteRemoveButtonClick(interaction, sessionId);
+        return;
+      } else if (action === 'end') {
+        await handleEndMapVoteCommand(interaction, sessionId);
+        return;
+      } else if (action === 'cancel') {
+        await handleCancelMapVoteCommand(interaction, sessionId);
+        return;
+      }
     }
-  }
 
-  const commandName = getCommandName(interaction);
+    const commandName = getCommandName(interaction);
 
-  switch (commandName) {
-    case CommandIds.NEW_GAME:
-      // Handle load players command
-      handleNewGameCommand(interaction);
-      break;
-    case CommandIds.SET_TEAMS:
-      // Handle load teams command
-      handleSetTeamsCommand(interaction);
-      break;
-    case CommandIds.MAKE_TEAMS:
-      // Handle make teams command (MMR auto-balanced teams)
-      handleMakeTeamsCommand(interaction);
-      break;
-    case CommandIds.DRAFT:
-      // Handle draft command (interactive captain draft)
-      handleDraftCommand(interaction);
-      break;
-    case CommandIds.DRAFT_CAPTAIN:
-      // Handle set draft captain command
-      handleDraftCaptainCommand(interaction);
-      break;
-    case CommandIds.DRAFT_TEAM_ASSIGN:
-      // Handle draft team assign command
-      handleDraftTeamAssignCommand(interaction);
-      break;
-    case CommandIds.DRAFT_MODE:
-      // Handle set draft mode command
-      handleDraftModeCommand(interaction);
-      break;
-    case CommandIds.DRAFT_UNDO:
-      // Handle undo draft command
-      handleDraftUndoCommand(interaction);
-      break;
-    case CommandIds.SWAP_PLAYERS:
-      // Handle swap command
-      handleSwapTeamsCommand(interaction);
-      break;
-    case CommandIds.PUBLISH_TEAMS:
-      // Handle publish teams command
-      handlePublishTeamsCommand(interaction);
-      break;
-    case CommandIds.SET_CHANNEL_TEAM_ID:
-      // Handle set channel team ID command
-      handleSetChannelTeamIdCommand(interaction);
-      break;
-    case CommandIds.SET_LOBBY_CHANNEL:
-      // Handle set lobby channel command
-      handleSetLobbyChannelCommand(interaction);
-      break;
-    case CommandIds.SET_BOT_CHANNEL:
-      // Handle set bot channel command
-      handleSetBotChannelCommand(interaction);
-      break;
-    case CommandIds.RENAME_BOT_CHANNEL:
-      // Handle rename bot channel command
-      handleRenameBotChannelCommand(interaction);
-      break;
-    case CommandIds.MOVE_TO_LOBBY:
-      // Handle gather to lobby command
-      handleMoveToLobbyCommand(interaction);
-      break;
-    case CommandIds.MOVE_TO_TEAMS:
-      // Handle move to teams command
-      handleMoveToTeamsCommand(interaction);
-      break;
-    case CommandIds.HELP:
-    case CommandIds.GUIDE:
-      // Handle guide command
-      handleGuideCommand(interaction);
-      break;
-    case CommandIds.JOIN:
-      // Handle join command
-      handleJoinCommand(interaction);
-      break;
-    case CommandIds.REJOIN:
-      // Handle rejoin command
-      handleRejoinCommand(interaction);
-      break;
-    case CommandIds.LEAVE:
-      // Handle leave command
-      handleLeaveCommand(interaction);
-      break;
-    case CommandIds.CLEAR:
-      // Handle clear command
-      handleClearCommand(interaction);
-      break;
-    case CommandIds.PLAYERS:
-      // Handle players command
-      handlePlayersCommand(interaction);
-      break;
-    case CommandIds.PLAYERS_RAW:
-      // Handle players raw command
-      handlePlayersCommand(interaction, true); // Pass true to get raw player data
-      break;
-    case CommandIds.PLAYERS_ALL:
-      // Handle players all command
-      handlePlayersAllCommand(interaction); // Pass true to get all player data
-      break;
-    case CommandIds.ADD_ACCOUNT:
-      // Handle add HotS account command
-      handleAddHotsAccountCommand(interaction);
-      break;
-    case CommandIds.ROLE:
-      // Handle role command
-      handleEditRoleCommand(interaction); // Pass true to edit roles
-      break;
-    case CommandIds.TWITCH:
-      // Handle twitch command
-      handleTwitchCommand(interaction);
-      break;
-    case `${CommandIds.LOOKUP}_${CommandIds.DISCORD_ID}`:
-      handleLookupByDiscordIdCommand(interaction);
-      break;
-    case CommandIds.LOOKUP:
-      // Handle lookup command
-      handleLookupCommand(interaction); // Pass true to perform a lookup
-      break;
-    case CommandIds.DELETE_PLAYER:
-      // Handle delete player command
-      handleDeletePlayerCommand(interaction);
-      break;
-    case CommandIds.DELETE_HOTS_ACCOUNT:
-      // Handle delete HotS account command
-      handleDeleteHotsAccountCommand(interaction);
-      break;
-    case 'refresh_lobby':
-      handleRefreshLobbyMessage(interaction);
-      break;
-    case CommandIds.MOVE:
-      // Handle move command
-      if (!interaction.isChatInputCommand()) {
-        await safeReply(interaction, {
-          content: 'This command can only be used as a slash command.',
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
-      handleMoveCommand(interaction);
-      break;
-    case CommandIds.DELETE_MESSAGE:
-      // Handle delete message command
-      handleDeleteMessageCommand(interaction);
-      break;
-    case CommandIds.IMPORT_REPLAYS:
-      // Handle import replays command
-      handleImportReplaysCommand(interaction);
-      break;
-    case CommandIds.CHANNEL_COMMAND:
-      if (!interaction.isChatInputCommand()) {
-        await safeReply(interaction, {
-          content: 'This command can only be used as a slash command.',
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
-      handleChannelCommand(interaction);
-      break;
-    case CommandIds.ADMIN:
-      if (!interaction.isChatInputCommand()) {
-        await safeReply(interaction, {
-          content: 'This command can only be used as a slash command.',
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
-      handleAdminSubCommand(interaction);
-      break;
-    case `${CommandIds.ADMIN}_${CommandIds.ACTIVE}_${CommandIds.REFRESH}`:
-      updateAdminActiveButtons(interaction, false, true);
-      break;
-    case CommandIds.MAP_VOTE:
-      if (!interaction.isChatInputCommand()) {
-        await safeReply(interaction, {
-          content: 'This command can only be used as a slash command.',
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
-      handleMapVoteCommand(interaction);
-      break;
-    case CommandIds.END_MAP_VOTE:
-      handleEndMapVoteCommand(interaction);
-      break;
-    case CommandIds.CANCEL_MAP_VOTE:
-      handleCancelMapVoteCommand(interaction);
-      break;
-    case CommandIds.PLAYER_ADJUST:
-      if (!interaction.isChatInputCommand()) {
-        await safeReply(interaction, {
-          content: 'This command can only be used as a slash command.',
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
-      handlePlayerAdjustCommand(interaction);
-      break;
-    default:
-      await handleDefaultCommand(interaction, commandName);
-      break;
+    switch (commandName) {
+      case CommandIds.NEW_GAME:
+        // Handle load players command
+        await handleNewGameCommand(interaction);
+        break;
+      case CommandIds.SET_TEAMS:
+        // Handle load teams command
+        await handleSetTeamsCommand(interaction);
+        break;
+      case CommandIds.MAKE_TEAMS:
+        // Handle make teams command (MMR auto-balanced teams)
+        await handleMakeTeamsCommand(interaction);
+        break;
+      case CommandIds.DRAFT:
+        // Handle draft command (interactive captain draft)
+        await handleDraftCommand(interaction);
+        break;
+      case CommandIds.DRAFT_CAPTAIN:
+        // Handle set draft captain command
+        await handleDraftCaptainCommand(interaction);
+        break;
+      case CommandIds.DRAFT_TEAM_ASSIGN:
+        // Handle draft team assign command
+        await handleDraftTeamAssignCommand(interaction);
+        break;
+      case CommandIds.DRAFT_MODE:
+        // Handle set draft mode command
+        await handleDraftModeCommand(interaction);
+        break;
+      case CommandIds.DRAFT_UNDO:
+        // Handle undo draft command
+        await handleDraftUndoCommand(interaction);
+        break;
+      case CommandIds.SWAP_PLAYERS:
+        // Handle swap command
+        await handleSwapTeamsCommand(interaction);
+        break;
+      case CommandIds.PUBLISH_TEAMS:
+        // Handle publish teams command
+        await handlePublishTeamsCommand(interaction);
+        break;
+      case CommandIds.SET_CHANNEL_TEAM_ID:
+        // Handle set channel team ID command
+        await handleSetChannelTeamIdCommand(interaction);
+        break;
+      case CommandIds.SET_LOBBY_CHANNEL:
+        // Handle set lobby channel command
+        await handleSetLobbyChannelCommand(interaction);
+        break;
+      case CommandIds.SET_BOT_CHANNEL:
+        // Handle set bot channel command
+        await handleSetBotChannelCommand(interaction);
+        break;
+      case CommandIds.RENAME_BOT_CHANNEL:
+        // Handle rename bot channel command
+        await handleRenameBotChannelCommand(interaction);
+        break;
+      case CommandIds.MOVE_TO_LOBBY:
+        // Handle gather to lobby command
+        await handleMoveToLobbyCommand(interaction);
+        break;
+      case CommandIds.MOVE_TO_TEAMS:
+        // Handle move to teams command
+        await handleMoveToTeamsCommand(interaction);
+        break;
+      case CommandIds.HELP:
+      case CommandIds.GUIDE:
+        // Handle guide command
+        await handleGuideCommand(interaction);
+        break;
+      case CommandIds.JOIN:
+        // Handle join command
+        await handleJoinCommand(interaction);
+        break;
+      case CommandIds.REJOIN:
+        // Handle rejoin command
+        await handleRejoinCommand(interaction);
+        break;
+      case CommandIds.LEAVE:
+        // Handle leave command
+        await handleLeaveCommand(interaction);
+        break;
+      case CommandIds.CLEAR:
+        // Handle clear command
+        await handleClearCommand(interaction);
+        break;
+      case CommandIds.PLAYERS:
+        // Handle players command
+        await handlePlayersCommand(interaction);
+        break;
+      case CommandIds.PLAYERS_RAW:
+        // Handle players raw command
+        await handlePlayersCommand(interaction, true); // Pass true to get raw player data
+        break;
+      case CommandIds.PLAYERS_ALL:
+        // Handle players all command
+        await handlePlayersAllCommand(interaction); // Pass true to get all player data
+        break;
+      case CommandIds.ADD_ACCOUNT:
+        // Handle add HotS account command
+        await handleAddHotsAccountCommand(interaction);
+        break;
+      case CommandIds.ROLE:
+        // Handle role command
+        await handleEditRoleCommand(interaction); // Pass true to edit roles
+        break;
+      case CommandIds.TWITCH:
+        // Handle twitch command
+        await handleTwitchCommand(interaction);
+        break;
+      case `${CommandIds.LOOKUP}_${CommandIds.DISCORD_ID}`:
+        await handleLookupByDiscordIdCommand(interaction);
+        break;
+      case CommandIds.LOOKUP:
+        // Handle lookup command
+        await handleLookupCommand(interaction); // Pass true to perform a lookup
+        break;
+      case CommandIds.DELETE_PLAYER:
+        // Handle delete player command
+        await handleDeletePlayerCommand(interaction);
+        break;
+      case CommandIds.DELETE_HOTS_ACCOUNT:
+        // Handle delete HotS account command
+        await handleDeleteHotsAccountCommand(interaction);
+        break;
+      case 'refresh_lobby':
+        await handleRefreshLobbyMessage(interaction);
+        break;
+      case CommandIds.MOVE:
+        // Handle move command
+        if (!interaction.isChatInputCommand()) {
+          await safeReply(interaction, {
+            content: 'This command can only be used as a slash command.',
+            flags: MessageFlags.Ephemeral,
+          });
+          return;
+        }
+        await handleMoveCommand(interaction);
+        break;
+      case CommandIds.DELETE_MESSAGE:
+        // Handle delete message command
+        await handleDeleteMessageCommand(interaction);
+        break;
+      case CommandIds.IMPORT_REPLAYS:
+        // Handle import replays command
+        await handleImportReplaysCommand(interaction);
+        break;
+      case CommandIds.CHANNEL_COMMAND:
+        if (!interaction.isChatInputCommand()) {
+          await safeReply(interaction, {
+            content: 'This command can only be used as a slash command.',
+            flags: MessageFlags.Ephemeral,
+          });
+          return;
+        }
+        await handleChannelCommand(interaction);
+        break;
+      case CommandIds.ADMIN:
+        if (!interaction.isChatInputCommand()) {
+          await safeReply(interaction, {
+            content: 'This command can only be used as a slash command.',
+            flags: MessageFlags.Ephemeral,
+          });
+          return;
+        }
+        await handleAdminSubCommand(interaction);
+        break;
+      case `${CommandIds.ADMIN}_${CommandIds.ACTIVE}_${CommandIds.REFRESH}`:
+        await updateAdminActiveButtons(interaction, false, true);
+        break;
+      case CommandIds.MAP_VOTE:
+        if (!interaction.isChatInputCommand()) {
+          await safeReply(interaction, {
+            content: 'This command can only be used as a slash command.',
+            flags: MessageFlags.Ephemeral,
+          });
+          return;
+        }
+        await handleMapVoteCommand(interaction);
+        break;
+      case CommandIds.END_MAP_VOTE:
+        await handleEndMapVoteCommand(interaction);
+        break;
+      case CommandIds.CANCEL_MAP_VOTE:
+        await handleCancelMapVoteCommand(interaction);
+        break;
+      case CommandIds.PLAYER_ADJUST:
+        if (!interaction.isChatInputCommand()) {
+          await safeReply(interaction, {
+            content: 'This command can only be used as a slash command.',
+            flags: MessageFlags.Ephemeral,
+          });
+          return;
+        }
+        await handlePlayerAdjustCommand(interaction);
+        break;
+      default:
+        await handleDefaultCommand(interaction, commandName);
+        break;
+    }
+  } catch (error) {
+    console.error('Error handling interaction:', error);
   }
 });
 
-function handleAdminSubCommand(interaction: ChatInputCommandInteraction<CacheType>) {
+async function handleAdminSubCommand(interaction: ChatInputCommandInteraction<CacheType>) {
   const subCommand = interaction.options.getSubcommand(true);
   switch (subCommand) {
     case CommandIds.ROLE:
-      handleAdminSetRoleCommand(interaction);
+      await handleAdminSetRoleCommand(interaction);
       break;
     case CommandIds.ACTIVE:
-      handleAdminSetActiveCommand(interaction);
+      await handleAdminSetActiveCommand(interaction);
       break;
     case `${CommandIds.ADD_ACCOUNT}_${CommandIds.DISCORD_ID}`:
-      handleAdminAddHotsAccountByDiscordIdCommand(interaction);
+      await handleAdminAddHotsAccountByDiscordIdCommand(interaction);
       break;
     case CommandIds.ADD_ACCOUNT:
-      handleAdminAddHotsAccountCommand(interaction);
+      await handleAdminAddHotsAccountCommand(interaction);
       break;
     case CommandIds.DELETE_ACCOUNT:
-      handleAdminDeleteHotsAccountCommand(interaction);
+      await handleAdminDeleteHotsAccountCommand(interaction);
       break;
     case CommandIds.PRIMARY:
-      handleAdminPrimaryCommand(interaction);
+      await handleAdminPrimaryCommand(interaction);
       break;
   }
 }
@@ -472,52 +484,52 @@ async function handleDefaultCommand(
   const parts = commandName.split('_');
 
   if (parts[0] === CommandIds.VOTE_MAP_BTN && interaction.isButton()) {
-    handleVoteMapButtonClick(interaction, parts[1], parts[2]);
+    await handleVoteMapButtonClick(interaction, parts[1], parts[2]);
     return;
   }
   if (parts[0] === CommandIds.REMOVE_MAP_VOTE && interaction.isButton()) {
-    handleVoteRemoveButtonClick(interaction, parts[1]);
+    await handleVoteRemoveButtonClick(interaction, parts[1]);
     return;
   }
   if (parts[0] === CommandIds.END_MAP_VOTE && interaction.isButton()) {
-    handleEndMapVoteCommand(interaction, parts[1]);
+    await handleEndMapVoteCommand(interaction, parts[1]);
     return;
   }
 
   if (parts.length === 2) {
     switch (parts[0]) {
       case CommandIds.JOIN:
-        handleAdminSetActiveCommand(interaction, parts[1], true);
+        await handleAdminSetActiveCommand(interaction, parts[1], true);
         return;
       case CommandIds.LEAVE:
-        handleAdminSetActiveCommand(interaction, parts[1], false);
+        await handleAdminSetActiveCommand(interaction, parts[1], false);
         return;
       case CommandIds.ROLE:
-        handleAdminShowRoleButtons(interaction, parts[1]);
+        await handleAdminShowRoleButtons(interaction, parts[1]);
         return;
       case CommandIds.ADD_ACCOUNT:
-        handleAdminAddHotsAccountButton(interaction, parts[1]);
+        await handleAdminAddHotsAccountButton(interaction, parts[1]);
         return;
       case CommandIds.JOIN_WITH_BATTLE_TAG:
-        handleJoinCommand(interaction, parts[1]);
+        await handleJoinCommand(interaction, parts[1]);
         return;
     }
   }
   if (parts.length === 3 && parts[0] === CommandIds.ROLE_ADMIN) {
-    handleAdminSetRoleCommand(interaction, parts[1], parts[2]);
+    await handleAdminSetRoleCommand(interaction, parts[1], parts[2]);
     return;
   }
   if (parts.length === 2 && isRoleCommandId(parts[0])) {
-    handleEditRoleButtonCommand(interaction, parts[1], parts[0]);
+    await handleEditRoleButtonCommand(interaction, parts[1], parts[0]);
     return;
   }
   if (parts.length === 3 && isRoleCommandId(parts[0])) {
     if (parts[1] === CommandIds.ACTIVE) {
       // Handle role edit button commands with active state
-      handleEditRoleButtonCommand(interaction, parts[2], parts[0], undefined, true);
+      await handleEditRoleButtonCommand(interaction, parts[2], parts[0], undefined, true);
     } else if (parts[2] in roleMap) {
       // Handle role edit button commands with user ID
-      handleEditRoleButtonCommand(interaction, parts[1], parts[0], parts[2]);
+      await handleEditRoleButtonCommand(interaction, parts[1], parts[0], parts[2]);
     }
     return;
   }
@@ -525,7 +537,7 @@ async function handleDefaultCommand(
     switch (parts[0]) {
       case CommandIds.PLAYERS_ALL_PAGE:
       case CommandIds.PLAYERS_ALL_PAGE_SORT:
-        handlePlayersAllCommand(
+        await handlePlayersAllCommand(
           interaction,
           true,
           parts[1] === 'mmr' ? 'mmr' : 'alphabetical',
@@ -541,11 +553,11 @@ async function handleDefaultCommand(
   }
   if (parts.length === 5 && isRoleCommandId(parts[0])) {
     // Handle role edit button commands with user ID and active state
-    handleEditRoleButtonCommand(interaction, parts[3], parts[0], parts[4], parts[1] === CommandIds.ACTIVE, parts[2]);
+    await handleEditRoleButtonCommand(interaction, parts[3], parts[0], parts[4], parts[1] === CommandIds.ACTIVE, parts[2]);
     return;
   }
   if (parts.length === 6 && parts[0] === CommandIds.ADMIN && parts[1] === CommandIds.PRIMARY) {
-    handleAdminPrimaryCommand(interaction, parts[2], parts[3], parts[4], parts[5]);
+    await handleAdminPrimaryCommand(interaction, parts[2], parts[3], parts[4], parts[5]);
     return;
   }
   if (interaction.isButton() && interaction.customId.startsWith('draft_pick:')) {
