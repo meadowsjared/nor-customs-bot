@@ -3766,16 +3766,12 @@ async function getPlayersByGuild(
   players.push(...activePlayers.filter(ap => !players.some(p => p.discordId === ap.discordId))); // add the active players that are not already in the players array
 
   if (interaction.guild) {
-    await interaction.guild.members.fetch().catch(() => null);
-    const channels = await interaction.guild.channels.fetch();
-    for (const [, channel] of channels) {
-      if (channel && channel instanceof VoiceChannel) {
-        // add the players from the database that match the discord ids of the channel members
-        players.push(
-          ...channel.members
-            .map(member => getPlayerByDiscordId(member.user.id, guildId))
-            .filter((player): player is Player => !!player && !players.some(p => p.discordId === player.discordId)),
-        ); // add the players from the channel that are not already in the players array
+    for (const [, voiceState] of interaction.guild.voiceStates.cache) {
+      if (voiceState.channelId) {
+        const player = getPlayerByDiscordId(voiceState.id, guildId);
+        if (player && !players.some(p => p.discordId === player.discordId)) {
+          players.push(player);
+        }
       }
     }
   }
