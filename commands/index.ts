@@ -3744,23 +3744,13 @@ async function handleAdminShowPlayerActiveButtons(
 }
 
 /**
- * Gets the players in the voice channel with the given channel id, then looks up those players in the database and returns them as an array.
+ * Gets the players in voice channels across the current server (guild), then looks up those players in the database and returns them as an array.
  * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
- * @param channelId The id of the voice channel to get the players from.
- * @returns An array of Player objects that are in the voice channel and found in the database.
+ * @param previousPlayersList Optional list of previous player IDs.
+ * @returns An array of Player objects that are in voice channels in the server and found in the database.
  */
-async function getPlayersByVoiceChannelId(
+async function getPlayersByGuild(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
-  channelId: string | null,
-  previousPlayersList?: string[],
-): Promise<Player[]>;
-async function getPlayersByVoiceChannelId(
-  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
-  channelId: string | null,
-): Promise<Player[]>;
-async function getPlayersByVoiceChannelId(
-  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
-  channelId: string | null,
   previousPlayersList?: string[],
 ): Promise<Player[]> {
   const guildId = await requireGuildId(interaction);
@@ -3775,18 +3765,19 @@ async function getPlayersByVoiceChannelId(
   players.push(...previousPlayers.filter(lp => !players.some(p => p.discordId === lp.discordId))); // add the lobby players that are not already in the players array
   players.push(...activePlayers.filter(ap => !players.some(p => p.discordId === ap.discordId))); // add the active players that are not already in the players array
 
-  if (channelId) {
-    const channel = await interaction.guild?.channels.fetch(channelId, { force: true });
-    if (!channel || !(channel instanceof VoiceChannel)) {
-      return players;
+  if (interaction.guild) {
+    await interaction.guild.members.fetch().catch(() => null);
+    const channels = await interaction.guild.channels.fetch();
+    for (const [, channel] of channels) {
+      if (channel && channel instanceof VoiceChannel) {
+        // add the players from the database that match the discord ids of the channel members
+        players.push(
+          ...channel.members
+            .map(member => getPlayerByDiscordId(member.user.id, guildId))
+            .filter((player): player is Player => !!player && !players.some(p => p.discordId === player.discordId)),
+        ); // add the players from the channel that are not already in the players array
+      }
     }
-
-    // add the players from the database that match the discord ids of the channel members
-    players.push(
-      ...channel.members
-        .map(member => getPlayerByDiscordId(member.user.id, guildId))
-        .filter((player): player is Player => !!player && !players.some(p => p.discordId === player.discordId)),
-    ); // add the players from the channel that are not already in the players array
   }
 
   return players;
@@ -3886,15 +3877,11 @@ export async function updateAdminActiveButtons(
     });
     return;
   }
-  const commandExecutor = interaction.user.id;
 
-  // get the channel id that the commandExecutor is in
-  const channelId = (await interaction.guild?.members.fetch(commandExecutor))?.voice.channelId ?? null;
-
-  const players = await getPlayersByVoiceChannelId(interaction, channelId, previousPlayersList);
+  const players = await getPlayersByGuild(interaction, previousPlayersList);
   if (players.length === 0) {
     await safeReply(interaction, {
-      content: 'No players found in the voice channel.',
+      content: 'No players found in the server.',
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -3928,7 +3915,7 @@ export async function updateAdminActiveButtons(
     if (storedInteraction.deferred || storedInteraction.replied) {
       try {
         await storedInteraction.editReply({
-          content: 'Click the buttons below to toggle the active status of the players in your voice channel.',
+          content: 'Click the buttons below to toggle the active status of the players in your server.',
           components: createButtonRows(buttons),
         });
       } catch (error) {
@@ -3980,14 +3967,14 @@ async function createNewAdminRoleButton(
   let message: InteractionResponse<boolean> | Message<boolean> | undefined = undefined;
   if (followUp) {
     message = await interaction.followUp({
-      content: 'Click the buttons below to toggle the active status of the players in your voice channel.',
+      content: 'Click the buttons below to toggle the active status of the players in your server.',
       flags: MessageFlags.Ephemeral,
       components: createButtonRows(buttons),
       withResponse: true,
     });
   } else {
     message = await safeReply(interaction, {
-      content: 'Click the buttons below to toggle the active status of the players in your voice channel.',
+      content: 'Click the buttons below to toggle the active status of the players in your server.',
       flags: MessageFlags.Ephemeral,
       components: createButtonRows(buttons),
       withResponse: true,
