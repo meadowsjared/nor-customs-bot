@@ -4335,15 +4335,42 @@ export async function handleChannelCommand(
     return;
   }
   const command = interaction.options.getString(CommandIds.COMMAND, true);
-  const channel = interaction.options.getChannel(CommandIds.CHANNEL, false);
+  const channelOption = interaction.options.getChannel(CommandIds.CHANNEL, false);
   const messageId = interaction.options.getString(CommandIds.MESSAGE_ID, false);
   const field1 = interaction.options.getString(CommandIds.FIELD1, false) ?? undefined;
   const handler = handlers[command] ?? undefined;
-  if (handler && channel && channel instanceof GuildChannel && messageId) {
-    await handler(channel, messageId, field1);
-  } else {
+
+  if (!handler || !channelOption || !messageId) {
     await safeReply(interaction, {
       content: 'Invalid command or missing parameters.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const channel =
+    interaction.guild?.channels.cache.get(channelOption.id) ??
+    (await interaction.guild?.channels.fetch(channelOption.id));
+
+  if (!channel || !channel.isTextBased()) {
+    await safeReply(interaction, {
+      content: 'Target channel not found or is not a text channel.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  try {
+    const resultMessage = await handler(channel, messageId, field1);
+    await safeReply(interaction, {
+      content: resultMessage || `Command \`${command}\` executed successfully.`,
+      flags: MessageFlags.Ephemeral,
+    });
+  } catch (error) {
+    console.error('Error executing channel command:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    await safeReply(interaction, {
+      content: `Failed to execute command: ${errorMessage}`,
       flags: MessageFlags.Ephemeral,
     });
   }
@@ -4369,48 +4396,66 @@ async function userIsAdmin(interaction: chatOrButtonOrModal): Promise<boolean> {
 }
 
 const COMMAND1: string | undefined = process.env.COMMAND1;
-const handlers: { [key: string]: (channel: GuildChannel, messageId?: string, field1?: string) => Promise<void> } = {
-  ...(COMMAND1 && {
-    [COMMAND1]: async (channel: GuildChannel, messageId?: string, field1?: string) => {
-      if (channel instanceof TextChannel) {
-        try {
-          const message = await channel.messages.fetch(messageId ?? '');
-          if (message) {
-            await processMessageData(message, field1 ?? '');
-          }
-        } catch (error) {
-          console.error('Error fetching message:', error);
-        }
+const handlers: {
+  [key: string]: (channel: TextBasedChannel, messageId: string, field1?: string) => Promise<string>;
+} = {
+  'erase-reaction': async (channel: TextBasedChannel, messageId: string, field1?: string): Promise<string> => {
+    const message = await channel.messages.fetch(messageId);
+    if (!message) {
+      throw new Error(`Message with ID ${messageId} not found.`);
+    }
+    return await processMessageData(message, field1);
+  },
+  ...(COMMAND1 && COMMAND1 !== 'erase-reaction' && {
+    [COMMAND1]: async (channel: TextBasedChannel, messageId: string, field1?: string): Promise<string> => {
+      const message = await channel.messages.fetch(messageId);
+      if (!message) {
+        throw new Error(`Message with ID ${messageId} not found.`);
       }
+      return await processMessageData(message, field1);
     },
   }),
 };
 
-async function processMessageData(msg: Message, identifier?: string) {
+async function processMessageData(msg: Message, identifier?: string): Promise<string> {
   const reactions = msg.reactions.cache;
   if (!identifier) {
-    reactions.forEach(async r => {
+    let removedCount = 0;
+    for (const [, r] of reactions) {
       await r.remove();
-    });
-    return;
+      removedCount++;
+    }
+    return `Removed all reactions (${removedCount}) from message.`;
   }
   const parsedNum = parseInt(identifier, 10);
   if (isNaN(parsedNum)) {
+    const customEmojiMatch = identifier.match(/<a?:([a-zA-Z0-9_]+):(\d+)>/);
+    const cleanIdentifier = customEmojiMatch ? customEmojiMatch[1] : identifier.replace(/^:|:$/g, '');
     const target = reactions.find(r => {
-      const identifier2 = r.emoji.name;
-      return identifier === identifier2;
+      const name = r.emoji.name;
+      const id = r.emoji.id;
+      return (
+        name === cleanIdentifier ||
+        name === identifier ||
+        (id && customEmojiMatch && id === customEmojiMatch[2]) ||
+        id === identifier
+      );
     });
     if (target) {
       await target.remove();
+      return `Removed reaction \`${target.emoji.name ?? identifier}\` from message.`;
     }
-    return;
+    return `Reaction \`${identifier}\` not found on message.`;
   }
   // remove any reactions that have less than the parsed number of counts
-  reactions.forEach(async r => {
+  let countRemoved = 0;
+  for (const [, r] of reactions) {
     if (r.count < parsedNum) {
       await r.remove();
+      countRemoved++;
     }
-  });
+  }
+  return `Removed ${countRemoved} reactions with fewer than ${parsedNum} votes.`;
 }
 
 /**
