@@ -102,20 +102,18 @@ function generateLobbyStatusMessage(guildId: string, pPreviousPlayersList?: stri
     (p, index) =>
       `${index + 1}: @${p.usernames.discordDisplayName}: (${(
         p.usernames.accounts?.find(a => a.isPrimary)?.hotsBattleTag ?? 'hots account missing! :scream:'
-      ).replace(/#.*$/, '')}) \`${getPlayerRolesFormatted(p.role)}\`${
-        p.usernames.accounts?.length === 1 &&
+      ).replace(/#.*$/, '')}) \`${getPlayerRolesFormatted(p.role)}\`${p.usernames.accounts?.length === 1 &&
         p.usernames.accounts[0].hpSlGames === null &&
         p.usernames.accounts[0].hpQmGames === null &&
         p.usernames.accounts[0].hpArGames === null
-          ? ' loading MMR...'
-          : ''
-      }${
-        p.usernames.accounts?.length === 1 &&
+        ? ' loading MMR...'
+        : ''
+      }${p.usernames.accounts?.length === 1 &&
         p.usernames.accounts[0].hpSlGames === -1 &&
         p.usernames.accounts[0].hpQmGames === -1 &&
         p.usernames.accounts[0].hpArGames === -1
-          ? ' MMR error!... :scream:'
-          : ''
+        ? ' MMR error!... :scream:'
+        : ''
       }`,
   );
 
@@ -526,7 +524,7 @@ export function generateDraftUI(guildId: string): {
   content: string;
   embeds: EmbedBuilder[];
   components: ActionRowBuilder<ButtonBuilder>[];
-  allowedMentions: { parse: [] };
+  allowedMentions: { parse: []; };
 } {
   const activePlayers = getSortedActivePlayers(guildId, true);
   const { team1, team2, spectators, t1Captain, t2Captain } = getTeams(guildId, activePlayers);
@@ -579,7 +577,7 @@ export function generateDraftUI(guildId: string): {
  * Calculates current turn in HotS 1-2-2-1-1-2-2-1 draft order based on team counts.
  */
 export function getCurrentDraftTurn(
-  teamPlayerCounts: { [key: number]: number },
+  teamPlayerCounts: { [key: number]: number; },
   totalActive: number = 10,
   firstPickTeam: 1 | 2 = 1,
 ): {
@@ -1545,11 +1543,9 @@ export async function handleSwapTeamsCommand(
     !playerB
   ) {
     await safeReply(interaction, {
-      content: `Invalid player numbers (playerANumber: ${playerANumber + 1}, playerBNumber: ${
-        playerBNumber + 1
-      }, playerA: ${playerA?.discordId}, playerB: ${playerB?.discordId}) There are only ${
-        activePlayers.length
-      } players.`,
+      content: `Invalid player numbers (playerANumber: ${playerANumber + 1}, playerBNumber: ${playerBNumber + 1
+        }, playerA: ${playerA?.discordId}, playerB: ${playerB?.discordId}) There are only ${activePlayers.length
+        } players.`,
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -1739,9 +1735,8 @@ export async function handleMoveToTeamsCommand(
     await interaction.editReply({
       content: `Moved ${numberMoved} players to their respective team channels: ${result
         .map(c => `<#${c.channelId}>`)
-        .join(', ')}\nWARNING: **${
-        teams.team1.length + teams.team2.length - numberMoved
-      } players could not be moved.**`,
+        .join(', ')}\nWARNING: **${teams.team1.length + teams.team2.length - numberMoved
+        } players could not be moved.**`,
     });
   } else {
     await interaction.editReply({
@@ -1942,9 +1937,8 @@ export async function handleGetChannelsCommand(
   const team1Channel = channels.find(c => c.channelType === 'team1');
   const team2Channel = channels.find(c => c.channelType === 'team2');
   await safeReply(interaction, {
-    content: `Current channels:\nLobby: ${lobbyChannel ? `<#${lobbyChannel.channelId}>` : 'Not set'}\nTeam 1: ${
-      team1Channel ? `<#${team1Channel.channelId}>` : 'Not set'
-    }\nTeam 2: ${team2Channel ? `<#${team2Channel.channelId}>` : 'Not set'}`,
+    content: `Current channels:\nLobby: ${lobbyChannel ? `<#${lobbyChannel.channelId}>` : 'Not set'}\nTeam 1: ${team1Channel ? `<#${team1Channel.channelId}>` : 'Not set'
+      }\nTeam 2: ${team2Channel ? `<#${team2Channel.channelId}>` : 'Not set'}`,
     flags: MessageFlags.Ephemeral,
   });
 }
@@ -2035,9 +2029,9 @@ export async function handlePlayersCommand(
         return onlyRaw
           ? `<@${discordId}>`
           : `@${user?.displayName}` +
-              `: (${usernames.accounts
-                ?.find(a => a.isPrimary)
-                ?.hotsBattleTag.replace(/#.*$/, '')}) \`${getPlayerRolesFormatted(role)}\``;
+          `: (${usernames.accounts
+            ?.find(a => a.isPrimary)
+            ?.hotsBattleTag.replace(/#.*$/, '')}) \`${getPlayerRolesFormatted(role)}\``;
       })
       .join('\n') || 'No players in the lobby';
   const rawPlayerList = Object.values(players)
@@ -2127,8 +2121,7 @@ export async function handlePlayersAllCommand(
     const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(...buttons);
     const sortAlphbetically = new ButtonBuilder()
       .setCustomId(
-        `${CommandIds.PLAYERS_ALL_PAGE_SORT}_alphabetical_${
-          sort === 'alphabetical' ? !ascending : ascending
+        `${CommandIds.PLAYERS_ALL_PAGE_SORT}_alphabetical_${sort === 'alphabetical' ? !ascending : ascending
         }_${pageNumber}`,
       )
       .setEmoji('🔤')
@@ -2222,8 +2215,8 @@ export async function handleRejoinCommand(
       ` the lobby as: \`${player.usernames.accounts
         ?.find(a => a.isPrimary)
         ?.hotsBattleTag.replace(/#.*$/, '')}\`, \`${getPlayerRolesFormatted(
-        player.role,
-      )}\`\nUse /leave to leave the lobby, or use the buttons below.`;
+          player.role,
+        )}\`\nUse /leave to leave the lobby, or use the buttons below.`;
     await safeReply(interaction, {
       content,
       flags: MessageFlags.Ephemeral,
@@ -2378,8 +2371,8 @@ async function handleLookupCommandSub(
     const message = player
       ? `${hotsBattleTag || 'Player'} found in the lobby with role: \`${getPlayerRolesFormatted(player.role)}\``
       : `${hotsBattleTag || 'Player'} not found in the lobby, adding them with default role \`${getPlayerRolesFormatted(
-          CommandIds.ROLE_FLEX,
-        )}\`.`;
+        CommandIds.ROLE_FLEX,
+      )}\`.`;
     // show the player's hots_accounts.hotsBattleTag
     const hotsAccounts =
       player?.usernames.accounts?.sort((a, b) => {
@@ -2680,9 +2673,8 @@ export async function handleDeletePlayerCommand(
   await updateLobbyMessage(guildId, interaction);
   // reply with the number of players and accounts deleted
   await safeReply(interaction, {
-    content: `Deleted ${playersDeleted} player${
-      playersDeleted === 1 ? '' : 's'
-    } and ${hotsAccountsDeleted} HotS account${hotsAccountsDeleted === 1 ? '' : 's'} for Discord ID: <@${discordId}>.`,
+    content: `Deleted ${playersDeleted} player${playersDeleted === 1 ? '' : 's'
+      } and ${hotsAccountsDeleted} HotS account${hotsAccountsDeleted === 1 ? '' : 's'} for Discord ID: <@${discordId}>.`,
     flags: MessageFlags.Ephemeral,
   });
 }
@@ -3049,9 +3041,8 @@ async function handleAddHotsAccountCommandSub(
       .map(account => `* \`${account.hotsBattleTag}\` ${account.isPrimary ? '(Primary)' : ''}`)
       .join('\n');
     await safeReply(interaction, {
-      content: `${
-        interaction.user.id === discordId ? 'Your' : `<@${discordId}>'s`
-      } associated Heroes of the Storm accounts:\n${accountsList}`,
+      content: `${interaction.user.id === discordId ? 'Your' : `<@${discordId}>'s`
+        } associated Heroes of the Storm accounts:\n${accountsList}`,
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -3721,9 +3712,8 @@ export async function handleAdminSetActiveCommand(
     await updateLobbyMessage(guildId, interaction, previousPlayersList);
   } else {
     await safeReply(interaction, {
-      content: `${player.usernames.accounts?.find(a => a.isPrimary)?.hotsBattleTag.replace(/#.*$/, '')} is already ${
-        isActive ? CommandIds.ACTIVE : CommandIds.INACTIVE
-      }.`,
+      content: `${player.usernames.accounts?.find(a => a.isPrimary)?.hotsBattleTag.replace(/#.*$/, '')} is already ${isActive ? CommandIds.ACTIVE : CommandIds.INACTIVE
+        }.`,
       flags: MessageFlags.Ephemeral,
     });
   }
@@ -4082,13 +4072,13 @@ function isReplayInFilterRange(
       if (!isNaN(d.getTime())) {
         fileTime = d.getTime();
       }
-    } catch {}
+    } catch { }
   }
 
   if (fileTime === null) {
     try {
       fileTime = fs.statSync(file).mtime.getTime();
-    } catch {}
+    } catch { }
   }
 
   if (fileTime === null) {
@@ -4317,7 +4307,7 @@ export async function handleImportReplaysCommand(
       await interaction.editReply({
         content: `No custom .StormReplay games matched the criteria in:\n\`${folderPath}\``,
       });
-    } catch {}
+    } catch { }
   }
 }
 
@@ -4335,15 +4325,48 @@ export async function handleChannelCommand(
     return;
   }
   const command = interaction.options.getString(CommandIds.COMMAND, true);
-  const channel = interaction.options.getChannel(CommandIds.CHANNEL, false);
+  const channelOption = interaction.options.getChannel(CommandIds.CHANNEL, false);
   const messageId = interaction.options.getString(CommandIds.MESSAGE_ID, false);
   const field1 = interaction.options.getString(CommandIds.FIELD1, false) ?? undefined;
   const handler = handlers[command] ?? undefined;
-  if (handler && channel && channel instanceof GuildChannel && messageId) {
-    await handler(channel, messageId, field1);
-  } else {
+
+  if (!handler || !messageId) {
     await safeReply(interaction, {
       content: 'Invalid command or missing parameters.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const channel = channelOption
+    ? interaction.guild?.channels.cache.get(channelOption.id) ??
+    (await interaction.guild?.channels.fetch(channelOption.id))
+    : interaction.channel;
+
+  if (!channel || !channel.isTextBased()) {
+    await safeReply(interaction, {
+      content: 'Target channel not found or is not a text channel.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  try {
+    const resultMessage = await handler(channel, messageId, field1);
+    const messageUrl = `https://discord.com/channels/${interaction.guildId ?? '@me'}/${channel.id}/${messageId}`;
+    let content = resultMessage || `Command \`${command}\` executed successfully.`;
+    if (!content.includes(messageId)) {
+      content = `${content} ([view message](${messageUrl}))`;
+    }
+    await safeReply(interaction, {
+      content,
+      flags: MessageFlags.Ephemeral,
+    });
+  } catch (error) {
+    console.error('Error executing channel command:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    await safeReply(interaction, {
+      content: `Failed to execute command: ${errorMessage}`,
       flags: MessageFlags.Ephemeral,
     });
   }
@@ -4369,48 +4392,60 @@ async function userIsAdmin(interaction: chatOrButtonOrModal): Promise<boolean> {
 }
 
 const COMMAND1: string | undefined = process.env.COMMAND1;
-const handlers: { [key: string]: (channel: GuildChannel, messageId?: string, field1?: string) => Promise<void> } = {
+const handlers: {
+  [key: string]: (channel: TextBasedChannel, messageId: string, field1?: string) => Promise<string>;
+} = {
   ...(COMMAND1 && {
-    [COMMAND1]: async (channel: GuildChannel, messageId?: string, field1?: string) => {
-      if (channel instanceof TextChannel) {
-        try {
-          const message = await channel.messages.fetch(messageId ?? '');
-          if (message) {
-            await processMessageData(message, field1 ?? '');
-          }
-        } catch (error) {
-          console.error('Error fetching message:', error);
-        }
+    [COMMAND1]: async (channel: TextBasedChannel, messageId: string, field1?: string): Promise<string> => {
+      const message = await channel.messages.fetch({ message: messageId, force: true });
+      if (!message) {
+        throw new Error(`Message with ID ${messageId} not found.`);
       }
+      return await processMessageData(message, field1);
     },
   }),
 };
 
-async function processMessageData(msg: Message, identifier?: string) {
+async function processMessageData(msg: Message, identifier?: string): Promise<string> {
   const reactions = msg.reactions.cache;
+  const messageLink = `[message](${msg.url})`;
   if (!identifier) {
-    reactions.forEach(async r => {
+    let removedCount = 0;
+    for (const [, r] of reactions) {
       await r.remove();
-    });
-    return;
+      removedCount++;
+    }
+    return `Removed all reactions (${removedCount}) from ${messageLink}.`;
   }
   const parsedNum = parseInt(identifier, 10);
   if (isNaN(parsedNum)) {
+    const customEmojiMatch = identifier.match(/<a?:([a-zA-Z0-9_]+):(\d+)>/);
+    const cleanIdentifier = customEmojiMatch ? customEmojiMatch[1] : identifier.replace(/^:|:$/g, '');
     const target = reactions.find(r => {
-      const identifier2 = r.emoji.name;
-      return identifier === identifier2;
+      const name = r.emoji.name;
+      const id = r.emoji.id;
+      return (
+        name === cleanIdentifier ||
+        name === identifier ||
+        (id && customEmojiMatch && id === customEmojiMatch[2]) ||
+        id === identifier
+      );
     });
     if (target) {
       await target.remove();
+      return `Removed reaction \`${target.emoji.name ?? identifier}\` from ${messageLink}.`;
     }
-    return;
+    return `Reaction \`${identifier}\` not found on ${messageLink}.`;
   }
   // remove any reactions that have less than the parsed number of counts
-  reactions.forEach(async r => {
+  let countRemoved = 0;
+  for (const [, r] of reactions) {
     if (r.count < parsedNum) {
       await r.remove();
+      countRemoved++;
     }
-  });
+  }
+  return `Removed ${countRemoved} reactions with fewer than ${parsedNum} votes from ${messageLink}.`;
 }
 
 /**
