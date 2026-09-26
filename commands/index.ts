@@ -43,6 +43,7 @@ import {
 import { announce, safePing } from '../utils/announce';
 import { getBotChannel } from '../utils/channel';
 import { safeReply, safeUpdate, safeDeferUpdate, requireGuildId } from '../utils/interaction';
+import { scanLobbyScreenshot, ScanLobbySummary } from '../utils/lobbyScanner';
 import {
   getActivePlayers,
   getPlayerByDiscordId,
@@ -188,6 +189,22 @@ export async function handleNewGameCommand(
   const previousPlayersList = generatePreviousPlayersList(guildId);
   markAllPlayersInactive(guildId);
 
+  let scanSummary: ScanLobbySummary | undefined;
+  if (interaction.isChatInputCommand()) {
+    const screenshot = interaction.options.getAttachment(CommandIds.SCREENSHOT);
+    const sync = interaction.options.getBoolean(CommandIds.SYNC) ?? true;
+    if (screenshot) {
+      try {
+        const response = await fetch(screenshot.url);
+        const arrayBuffer = await response.arrayBuffer();
+        const imageBuffer = Buffer.from(arrayBuffer);
+        scanSummary = await scanLobbyScreenshot(imageBuffer, guildId, sync);
+      } catch (err) {
+        console.error('Failed to scan lobby screenshot in /new-game:', err);
+      }
+    }
+  }
+
   // Generate the initial lobby status message
   const previousPlayersMessage = generatePreviousPlayersMessage(previousPlayersList);
   const lobbyStatusMessage = generateLobbyStatusMessage(guildId, previousPlayersMessage);
@@ -225,6 +242,95 @@ export async function handleNewGameCommand(
   if (adminUserIds.includes(interaction.user.id)) {
     const isFollowUp = botChannel ? interaction.channelId === botChannel.id : false;
     await updateAdminActiveButtons(interaction, previousPlayersList, true, isFollowUp);
+  }
+
+  if (scanSummary) {
+    const report = formatScanSummaryMessage(scanSummary);
+    await interaction.followUp({
+      content: report,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+}
+
+export function formatScanSummaryMessage(summary: ScanLobbySummary): string {
+  const lines: string[] = ['### 📸 HotS Lobby Scan Results'];
+  if (summary.newlyAdded.length > 0) {
+    lines.push(
+      `🟢 **Added (${summary.newlyAdded.length}):** ${summary.newlyAdded
+        .map(p => `@${p.name} (\`${p.hotsBattleTag.replace(/#.*$/, '')}\`)`)
+        .join(', ')}`,
+    );
+  }
+  if (summary.alreadyActive.length > 0) {
+    lines.push(
+      `👥 **Already Active (${summary.alreadyActive.length}):** ${summary.alreadyActive
+        .map(p => `@${p.name}`)
+        .join(', ')}`,
+    );
+  }
+  if (summary.removed.length > 0) {
+    lines.push(
+      `🔴 **Removed from Lobby (${summary.removed.length}):** ${summary.removed
+        .map(p => `@${p.name}`)
+        .join(', ')}`,
+    );
+  } else if (summary.missingFromScreenshot.length > 0) {
+    lines.push(
+      `⚠️ **Missing from HotS Lobby (${summary.missingFromScreenshot.length}):** ${summary.missingFromScreenshot
+        .map(p => `@${p.name}`)
+        .join(', ')}`,
+    );
+  }
+  if (summary.unregistered.length > 0) {
+    lines.push(
+      `❓ **Unregistered in Bot (${summary.unregistered.length}):** ${summary.unregistered
+        .map(u => `\`${u}\``)
+        .join(', ')} *(need to /join or click button)*`,
+    );
+  }
+  lines.push(`\n**Total Lobby:** ${summary.totalLobbyCount} / 10 players`);
+  return lines.join('\n');
+}
+
+export async function handleScanLobbyCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+) {
+  if (!interaction.isChatInputCommand()) {
+    return;
+  }
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return;
+
+  const screenshot = interaction.options.getAttachment(CommandIds.SCREENSHOT);
+  const sync = interaction.options.getBoolean(CommandIds.SYNC) ?? true;
+  if (!screenshot) {
+    await safeReply(interaction, {
+      content: 'Please attach a screenshot of the HotS custom game lobby.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  try {
+    const response = await fetch(screenshot.url);
+    const arrayBuffer = await response.arrayBuffer();
+    const imageBuffer = Buffer.from(arrayBuffer);
+    const summary = await scanLobbyScreenshot(imageBuffer, guildId, sync);
+
+    await updateLobbyMessage(guildId, interaction);
+
+    const report = formatScanSummaryMessage(summary);
+    await interaction.editReply({
+      content: report,
+    });
+  } catch (error) {
+    console.error('Error scanning lobby screenshot:', error);
+    await interaction.editReply({
+      content: '❌ Failed to scan lobby screenshot. Please ensure it is a clear in-game screenshot of the custom game lobby.',
+    });
   }
 }
 

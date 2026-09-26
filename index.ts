@@ -38,6 +38,7 @@ import {
   handleMoveToLobbyCommand,
   handleMoveToTeamsCommand,
   handleNewGameCommand,
+  handleScanLobbyCommand,
   handleLookupCommand,
   handleAdminSetRoleCommand,
   handleAdminSetActiveCommand,
@@ -245,6 +246,10 @@ client.on('interactionCreate', async interaction => {
       case CommandIds.NEW_GAME:
         // Handle load players command
         await handleNewGameCommand(interaction);
+        break;
+      case CommandIds.SCAN_LOBBY:
+        // Handle scan lobby screenshot command
+        await handleScanLobbyCommand(interaction);
         break;
       case CommandIds.SET_TEAMS:
         // Handle load teams command

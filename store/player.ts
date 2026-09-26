@@ -280,6 +280,31 @@ export function getActivePlayers(guildId: string): Player[] {
   return rows.map<Player>(row => getPlayerFromRow(row, accounts));
 }
 
+export interface RegisteredPlayerAccount {
+  discordId: string;
+  hotsBattleTag: string;
+  discordDisplayName: string;
+}
+
+export function getAllRegisteredHotSAccounts(): RegisteredPlayerAccount[] {
+  interface QueryRow {
+    discord_id: string;
+    hots_battle_tag: string;
+    discord_display_name: string;
+  }
+  const stmt = db.prepare<[], QueryRow>(`
+    SELECT ha.discord_id, ha.hots_battle_tag, p.discord_display_name
+    FROM hots_accounts ha
+    JOIN players p ON ha.discord_id = p.discord_id
+  `);
+  const rows: QueryRow[] = stmt.all();
+  return rows.map<RegisteredPlayerAccount>(r => ({
+    discordId: r.discord_id,
+    hotsBattleTag: r.hots_battle_tag,
+    discordDisplayName: r.discord_display_name,
+  }));
+}
+
 export function getAllPlayers(page: number, sort: 'mmr' | 'alphabetical', ascending: boolean): Player[] {
   let stmt;
   if (sort === 'mmr') {

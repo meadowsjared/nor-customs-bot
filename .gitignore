@@ -13,3 +13,4 @@ logs/
 /screenshots
 .running_version
 store_backup/
+*.traineddata

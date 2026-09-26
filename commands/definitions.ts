@@ -82,6 +82,39 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     name: CommandIds.NEW_GAME,
     description: 'Start a new game',
     defaultMemberPermissions: minimumAdminPermissions,
+    options: [
+      {
+        name: CommandIds.SCREENSHOT,
+        type: ApplicationCommandOptionType.Attachment,
+        description: 'Optional HotS lobby screenshot to automatically add players',
+        required: false,
+      },
+      {
+        name: CommandIds.SYNC,
+        type: ApplicationCommandOptionType.Boolean,
+        description: 'Synchronize lobby exactly to screenshot (defaults to True; removes absent players)',
+        required: false,
+      },
+    ],
+  },
+  {
+    name: CommandIds.SCAN_LOBBY,
+    description: 'Scan a HotS custom game lobby screenshot to add players and check who is missing',
+    defaultMemberPermissions: minimumAdminPermissions,
+    options: [
+      {
+        name: CommandIds.SCREENSHOT,
+        type: ApplicationCommandOptionType.Attachment,
+        description: 'HotS lobby screenshot',
+        required: true,
+      },
+      {
+        name: CommandIds.SYNC,
+        type: ApplicationCommandOptionType.Boolean,
+        description: 'Synchronize lobby exactly to screenshot (defaults to True; removes absent players)',
+        required: false,
+      },
+    ],
   },
   {
     name: CommandIds.MAKE_TEAMS,
