@@ -192,12 +192,23 @@ export async function handleNewGameCommand(
   const previousPlayersMessage = generatePreviousPlayersMessage(previousPlayersList);
   const lobbyStatusMessage = generateLobbyStatusMessage(guildId, previousPlayersMessage);
 
-  // announce in the channel that a new game has started and all players have been marked as inactive, so they need to hit the button if they are going to play
-  const sentMessage = await announce(interaction, {
-    content: lobbyStatusMessage,
-    flags: safePing(undefined),
-    components: [new ActionRowBuilder<ButtonBuilder>().addComponents(imPlayingBtn)],
-  });
+  const botChannel = await getBotChannel(interaction.guild);
+  let sentMessage: Message<boolean> | undefined;
+
+  if (botChannel && interaction.channelId === botChannel.id) {
+    await interaction.reply({
+      content: lobbyStatusMessage,
+      flags: safePing(undefined),
+      components: [new ActionRowBuilder<ButtonBuilder>().addComponents(imPlayingBtn)],
+    });
+    sentMessage = await interaction.fetchReply();
+  } else {
+    sentMessage = await announce(interaction, {
+      content: lobbyStatusMessage,
+      flags: safePing(undefined),
+      components: [new ActionRowBuilder<ButtonBuilder>().addComponents(imPlayingBtn)],
+    });
+  }
 
   // Store the message ID so we can update it later
   if (sentMessage) {
@@ -210,14 +221,11 @@ export async function handleNewGameCommand(
     );
   }
 
-  const sentReply = await safeReply(interaction, {
-    content: 'Game announced!', // empty content to avoid sending a message in the channel, since we already announced it'
-    flags: MessageFlags.Ephemeral,
-  });
-  // delete sentReply
-  await sentReply?.delete();
-  // TODO I want to show the admin active buttons here, but if I do it crashes
-  // handleAdminSetActiveCommand(interaction, previousPlayersList);
+  // Send the admin buttons via followUp (or reply if run outside bot channel)
+  if (adminUserIds.includes(interaction.user.id)) {
+    const isFollowUp = botChannel ? interaction.channelId === botChannel.id : false;
+    await updateAdminActiveButtons(interaction, previousPlayersList, true, isFollowUp);
+  }
 }
 
 /**
@@ -3650,7 +3658,7 @@ export async function handleAdminSetActiveCommand(
 
   const discordId = getMemberFromInteraction(interaction, guildId, pDiscordId);
   if (discordId === null) {
-    await handleAdminShowPlayerActiveButtons(interaction);
+    await handleAdminShowPlayerActiveButtons(interaction, previousPlayersList);
     return;
   }
   const storedPlayer = getPlayerByDiscordId(discordId, guildId);
@@ -3686,18 +3694,8 @@ export async function handleAdminSetActiveCommand(
       .setCustomId(`${CommandIds.ROLE}_${id}`)
       .setLabel('Admin Role')
       .setStyle(ButtonStyle.Secondary);
-    if (isAdminActiveButton) {
-      // create a temporary reply, and then delete it
-      await interaction
-        .deferReply({
-          flags: MessageFlags.Ephemeral,
-        })
-        .then(message => {
-          message.delete().catch(console.error);
-        })
-        .catch(console.error);
-    } else {
-      const message = await safeReply(interaction, {
+    if (!isAdminActiveButton) {
+      await safeReply(interaction, {
         content: `Set <@${id}>'s active status to \`${isActive ? CommandIds.ACTIVE : CommandIds.INACTIVE}\``,
         flags: MessageFlags.Ephemeral,
         components: [
@@ -3711,17 +3709,22 @@ export async function handleAdminSetActiveCommand(
     }
     await updateLobbyMessage(guildId, interaction, previousPlayersList);
   } else {
-    await safeReply(interaction, {
-      content: `${player.usernames.accounts?.find(a => a.isPrimary)?.hotsBattleTag.replace(/#.*$/, '')} is already ${isActive ? CommandIds.ACTIVE : CommandIds.INACTIVE
-        }.`,
-      flags: MessageFlags.Ephemeral,
-    });
+    if (isAdminActiveButton) {
+      await updateLobbyMessage(guildId, interaction, previousPlayersList);
+    } else {
+      await safeReply(interaction, {
+        content: `${player.usernames.accounts?.find(a => a.isPrimary)?.hotsBattleTag.replace(/#.*$/, '')} is already ${isActive ? CommandIds.ACTIVE : CommandIds.INACTIVE
+          }.`,
+        flags: MessageFlags.Ephemeral,
+      });
+    }
   }
   // return;
 }
 
 async function handleAdminShowPlayerActiveButtons(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+  previousPlayersList?: string[],
 ) {
   if ((await userIsAdmin(interaction)) === false) {
     await safeReply(interaction, {
@@ -3730,7 +3733,7 @@ async function handleAdminShowPlayerActiveButtons(
     });
     return;
   }
-  await updateAdminActiveButtons(interaction, true);
+  await updateAdminActiveButtons(interaction, previousPlayersList, true);
 }
 
 /**
@@ -3754,6 +3757,12 @@ async function getPlayersByGuild(
   const activePlayers = getActivePlayers(guildId);
   players.push(...previousPlayers.filter(lp => !players.some(p => p.discordId === lp.discordId))); // add the lobby players that are not already in the players array
   players.push(...activePlayers.filter(ap => !players.some(p => p.discordId === ap.discordId))); // add the active players that are not already in the players array
+
+  // Always include the command runner if they are registered
+  const selfPlayer = getPlayerByDiscordId(interaction.user.id, guildId);
+  if (selfPlayer && !players.some(p => p.discordId === selfPlayer.discordId)) {
+    players.push(selfPlayer);
+  }
 
   if (interaction.guild) {
     for (const [, voiceState] of interaction.guild.voiceStates.cache) {
@@ -3812,48 +3821,53 @@ async function getPreviousSetActivePlayers(
 function getLobbyPreviousPlayers(guildId: string, previousPlayersList?: string[]): Player[];
 function getLobbyPreviousPlayers(guildId: string): Player[];
 function getLobbyPreviousPlayers(guildId: string, previousPlayersList?: string[]): Player[] {
+  if (previousPlayersList && previousPlayersList.length > 0) {
+    const players: Player[] = previousPlayersList
+      .map((discordId: string) => getPlayerByDiscordId(discordId, guildId))
+      .filter((player: Player | undefined): player is Player => player !== undefined);
+    return players;
+  }
   const lobbyMessages = getLobbyMessages(guildId, [CommandIds.NEW_GAME]);
   if (!lobbyMessages || lobbyMessages.length === 0) {
     return []; // No lobby message to update
   }
-  const playerIds = previousPlayersList ?? JSON.parse(lobbyMessages[0].previousPlayersList ?? '[]');
-  const players: Player[] = playerIds
+  const playerIds: string[] = JSON.parse(lobbyMessages[0].previousPlayersList ?? '[]');
+  const players: Player[] = (Array.isArray(playerIds) ? playerIds : [])
     .map((discordId: string) => getPlayerByDiscordId(discordId, guildId))
-    .filter((player: Player | undefined) => player !== undefined);
+    .filter((player: Player | undefined): player is Player => player !== undefined);
   return players;
 }
 
+const adminActiveMessageIds = new Map<string, string>();
+
 export async function updateAdminActiveButtons(
-  interaction:
-    | ChatInputCommandInteraction<CacheType>
-    | ButtonInteraction<CacheType>
-    | ModalSubmitInteraction<CacheType>,
+  interaction: chatOrButtonOrModal,
   previousPlayersList?: string[],
+  newMessage?: boolean,
+  isFollowUp?: boolean,
 ): Promise<void>;
 export async function updateAdminActiveButtons(
-  interaction:
-    | ChatInputCommandInteraction<CacheType>
-    | ButtonInteraction<CacheType>
-    | ModalSubmitInteraction<CacheType>,
+  interaction: chatOrButtonOrModal,
   newMessage?: boolean,
   fakeReply?: boolean,
 ): Promise<void>;
 export async function updateAdminActiveButtons(
-  interaction:
-    | ChatInputCommandInteraction<CacheType>
-    | ButtonInteraction<CacheType>
-    | ModalSubmitInteraction<CacheType>,
-  newMessageOrPreviousPlayersList?: boolean | string[],
-  fakeReply = false,
+  interaction: chatOrButtonOrModal,
+  param2?: boolean | string[],
+  param3?: boolean,
+  param4?: boolean,
 ): Promise<void> {
-  let newMessage: boolean | undefined;
-  let previousPlayersList: string[] | undefined;
+  let previousPlayersList: string[] | undefined = undefined;
+  let newMessage = false;
   let followUp = false;
-  if (typeof newMessageOrPreviousPlayersList === 'boolean') {
-    newMessage = newMessageOrPreviousPlayersList;
-  } else if (Array.isArray(newMessageOrPreviousPlayersList)) {
-    previousPlayersList = newMessageOrPreviousPlayersList;
-    newMessage = true;
+
+  if (Array.isArray(param2)) {
+    previousPlayersList = param2;
+    newMessage = param3 ?? false;
+    followUp = param4 ?? false;
+  } else if (typeof param2 === 'boolean') {
+    newMessage = param2;
+    followUp = param4 ?? false;
   }
 
   if (interaction.isModalSubmit()) {
@@ -3889,39 +3903,46 @@ export async function updateAdminActiveButtons(
         .setStyle(isActive ? ButtonStyle.Primary : ButtonStyle.Danger);
     })
     .concat(refreshButton);
+
   if (newMessage) {
-    await createNewAdminRoleButton(interaction, buttons, followUp);
+    if (interaction.isChatInputCommand() || interaction.isButton()) {
+      await createNewAdminRoleButton(interaction, buttons, followUp);
+    }
   } else {
-    const storedInteraction = getStoredInteraction(`${CommandIds.ADMIN}_${CommandIds.ACTIVE}`, interaction.channelId);
-    if (!storedInteraction) {
-      // just create a new message if we can't find the stored interaction, this can happen if the bot was restarted
-      await createNewAdminRoleButton(interaction, buttons);
+    if (interaction.isButton() && interaction.customId.startsWith(`${CommandIds.ADMIN}_${CommandIds.ACTIVE}`)) {
+      await safeUpdate(interaction, {
+        content: 'Click the buttons below to toggle the active status of the players in your server.',
+        components: createButtonRows(buttons),
+      });
       return;
     }
-    if (storedInteraction.deferred || storedInteraction.replied) {
-      try {
+
+    const storedInteraction = getStoredInteraction(`${CommandIds.ADMIN}_${CommandIds.ACTIVE}`, interaction.channelId);
+    const storedMsgId = adminActiveMessageIds.get(interaction.channelId);
+
+    if (!storedInteraction) {
+      if (adminUserIds.includes(interaction.user.id)) {
+        if (interaction.isChatInputCommand() || interaction.isButton()) {
+          await createNewAdminRoleButton(interaction, buttons, followUp);
+        }
+      }
+      return;
+    }
+
+    try {
+      if (storedMsgId && 'webhook' in storedInteraction && storedInteraction.webhook) {
+        await storedInteraction.webhook.editMessage(storedMsgId, {
+          content: 'Click the buttons below to toggle the active status of the players in your server.',
+          components: createButtonRows(buttons),
+        });
+      } else if (storedInteraction.deferred || storedInteraction.replied) {
         await storedInteraction.editReply({
           content: 'Click the buttons below to toggle the active status of the players in your server.',
           components: createButtonRows(buttons),
         });
-      } catch (error) {
-        if (storedInteraction.deferred || storedInteraction.replied) {
-          await storedInteraction?.deleteReply().catch(() => {
-            console.log('Failed to delete ephemeral message');
-            console.trace();
-          });
-        }
-        await createNewAdminRoleButton(interaction, buttons);
       }
-    }
-    if (fakeReply) {
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-      if (interaction.deferred || interaction.replied) {
-        await interaction.deleteReply().catch(() => {
-          console.log('Failed to delete ephemeral message');
-          console.trace();
-        });
-      }
+    } catch {
+      // If edit fails (e.g. interaction expired), do not crash
     }
   }
 }
@@ -3968,6 +3989,9 @@ async function createNewAdminRoleButton(
   }
   if (message) {
     storeInteraction(`${CommandIds.ADMIN}_${CommandIds.ACTIVE}`, interaction.channelId, interaction);
+    if ('id' in message && typeof message.id === 'string') {
+      adminActiveMessageIds.set(interaction.channelId, message.id);
+    }
   }
 }
 
