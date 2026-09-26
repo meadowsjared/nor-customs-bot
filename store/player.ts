@@ -1014,16 +1014,35 @@ export function setTeamsFromPlayers(guildId: string, team1: Player[], team2: Pla
     `);
     clearStmt.run(guildId);
     team1.forEach(p => {
-      updateStmt.run(guildId, p.discordId, 1, p.lobbyRank, p.draftOrder);
+      updateStmt.run(
+        guildId,
+        p.discordId,
+        1,
+        Number.isNaN(p.lobbyRank) || p.lobbyRank === undefined ? null : p.lobbyRank,
+        Number.isNaN(p.draftOrder) || p.draftOrder === undefined ? null : p.draftOrder,
+      );
     });
     team2.forEach(p => {
-      updateStmt.run(guildId, p.discordId, 2, p.lobbyRank, p.draftOrder);
+      updateStmt.run(
+        guildId,
+        p.discordId,
+        2,
+        Number.isNaN(p.lobbyRank) || p.lobbyRank === undefined ? null : p.lobbyRank,
+        Number.isNaN(p.draftOrder) || p.draftOrder === undefined ? null : p.draftOrder,
+      );
     });
     spectators.forEach(p => {
-      updateStmt.run(guildId, p.discordId, null, p.lobbyRank, p.draftOrder);
+      updateStmt.run(
+        guildId,
+        p.discordId,
+        null,
+        Number.isNaN(p.lobbyRank) || p.lobbyRank === undefined ? null : p.lobbyRank,
+        Number.isNaN(p.draftOrder) || p.draftOrder === undefined ? null : p.draftOrder,
+      );
     });
   });
   transaction();
+  activePlayersCache.delete(guildId);
 }
 
 export function changeTeams(guildId: string, playerChanges: { discordId: string; newTeam: number | null }[]): boolean {
@@ -1038,6 +1057,7 @@ export function changeTeams(guildId: string, playerChanges: { discordId: string;
     });
   });
   transaction();
+  activePlayersCache.delete(guildId);
   return true;
 }
 

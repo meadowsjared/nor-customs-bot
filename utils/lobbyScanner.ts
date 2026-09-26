@@ -9,6 +9,8 @@ export interface ScanLobbySummary {
   missingFromScreenshot: { discordId: string; name: string; }[];
   removed: { discordId: string; name: string; }[];
   totalLobbyCount: number;
+  team1DiscordIds: string[];
+  team2DiscordIds: string[];
 }
 
 let workerInstance: Promise<Worker> | null = null;
@@ -162,9 +164,10 @@ export async function scanLobbyScreenshot(
   const worker = await getWorker();
 
   const registeredAccounts = getAllRegisteredHotSAccounts();
-  const detectedNames: string[] = [];
+  const detectedSlots: { slotIndex: number; text: string; }[] = [];
 
-  for (const coord of slotCoords) {
+  for (let i = 0; i < slotCoords.length; i++) {
+    const coord = slotCoords[i];
     try {
       const processedBuffer = await sharp(imageBuffer)
         .extract(coord)
@@ -178,7 +181,7 @@ export async function scanLobbyScreenshot(
       const cleaned = cleanOCRText(rawText);
 
       if (cleaned.length >= 2 && !cleaned.toLowerCase().includes('empty slot')) {
-        detectedNames.push(cleaned);
+        detectedSlots.push({ slotIndex: i, text: cleaned });
       }
     } catch (err) {
       console.error('Error processing slot crop for OCR:', err);
@@ -189,9 +192,11 @@ export async function scanLobbyScreenshot(
   const alreadyActive: { discordId: string; name: string; hotsBattleTag: string; }[] = [];
   const unregistered: string[] = [];
   const processedDiscordIds = new Set<string>();
+  const team1DiscordIds: string[] = [];
+  const team2DiscordIds: string[] = [];
 
-  for (const detected of detectedNames) {
-    const matched = findBestAccountMatch(detected, registeredAccounts);
+  for (const detected of detectedSlots) {
+    const matched = findBestAccountMatch(detected.text, registeredAccounts);
     if (matched) {
       if (processedDiscordIds.has(matched.discordId)) {
         continue;
@@ -210,8 +215,14 @@ export async function scanLobbyScreenshot(
       } else {
         alreadyActive.push(info);
       }
+
+      if (detected.slotIndex < 5) {
+        team1DiscordIds.push(matched.discordId);
+      } else {
+        team2DiscordIds.push(matched.discordId);
+      }
     } else {
-      unregistered.push(detected);
+      unregistered.push(detected.text);
     }
   }
 
@@ -244,5 +255,7 @@ export async function scanLobbyScreenshot(
     missingFromScreenshot,
     removed,
     totalLobbyCount: finalActiveCount,
+    team1DiscordIds,
+    team2DiscordIds,
   };
 }

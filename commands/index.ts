@@ -250,6 +250,7 @@ export async function handleNewGameCommand(
       content: report,
       flags: MessageFlags.Ephemeral,
     });
+    await applyTeamsFromScan(interaction, guildId, scanSummary);
   }
 }
 
@@ -293,6 +294,46 @@ export function formatScanSummaryMessage(summary: ScanLobbySummary): string {
   return lines.join('\n');
 }
 
+async function applyTeamsFromScan(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+  guildId: string,
+  scanSummary: ScanLobbySummary,
+): Promise<void> {
+  if (scanSummary.team1DiscordIds.length === 0 && scanSummary.team2DiscordIds.length === 0) {
+    return;
+  }
+  const sortedPlayers = getSortedActivePlayers(guildId, true);
+  sortedPlayers.forEach((p, index) => {
+    p.lobbyRank = index;
+  });
+
+  const team1 = sortedPlayers
+    .filter(p => scanSummary.team1DiscordIds.includes(p.discordId))
+    .sort((a, b) => scanSummary.team1DiscordIds.indexOf(a.discordId) - scanSummary.team1DiscordIds.indexOf(b.discordId));
+  const team2 = sortedPlayers
+    .filter(p => scanSummary.team2DiscordIds.includes(p.discordId))
+    .sort((a, b) => scanSummary.team2DiscordIds.indexOf(a.discordId) - scanSummary.team2DiscordIds.indexOf(b.discordId));
+  const spectators = sortedPlayers.filter(
+    p => !scanSummary.team1DiscordIds.includes(p.discordId) && !scanSummary.team2DiscordIds.includes(p.discordId),
+  );
+
+  team1.forEach((p, i) => {
+    p.team = 1;
+    p.draftOrder = i === 0 ? 1 : NaN;
+  });
+  team2.forEach((p, i) => {
+    p.team = 2;
+    p.draftOrder = i === 0 ? 2 : NaN;
+  });
+  spectators.forEach(p => {
+    p.team = 0;
+    p.draftOrder = NaN;
+  });
+
+  setTeamsFromPlayers(guildId, team1, team2, spectators);
+  await generateTeamsMessage(interaction, team1, team2, false, true);
+}
+
 export async function handleScanLobbyCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ) {
@@ -326,6 +367,7 @@ export async function handleScanLobbyCommand(
     await interaction.editReply({
       content: report,
     });
+    await applyTeamsFromScan(interaction, guildId, summary);
   } catch (error) {
     console.error('Error scanning lobby screenshot:', error);
     await interaction.editReply({
@@ -1478,6 +1520,18 @@ async function generateTeamsMessage(
   if (!guildId) return;
   const activePlayers = getSortedActivePlayers(guildId);
   activePlayers.forEach((p, index) => (p.lobbyRank = index));
+  team1.forEach(p => {
+    if (p.lobbyRank === undefined || Number.isNaN(p.lobbyRank)) {
+      const idx = activePlayers.findIndex(ap => ap.discordId === p.discordId);
+      if (idx !== -1) p.lobbyRank = idx;
+    }
+  });
+  team2.forEach(p => {
+    if (p.lobbyRank === undefined || Number.isNaN(p.lobbyRank)) {
+      const idx = activePlayers.findIndex(ap => ap.discordId === p.discordId);
+      if (idx !== -1) p.lobbyRank = idx;
+    }
+  });
   const team1List = team1
     .map(
       p =>
@@ -1528,7 +1582,7 @@ async function generateTeamsMessage(
       for (const msg of messages.filter(msg => msg.messageType === CommandIds.TEAMS_EPHEMERAL)) {
         // we know it's an ephemeral message so:
         const message = getStoredInteraction(msg.messageId, msg.channelId);
-        await message?.deleteReply().catch(() => {
+        await message?.deleteReply(msg.messageId).catch(() => {
           console.log('Failed to delete ephemeral message');
           console.trace();
         });
@@ -1588,12 +1642,33 @@ async function generateTeamsMessage(
               deleteLobbyMessages(guildId, [msg.messageType]);
               continue;
             }
-            await prevInteraction.editReply({
-              content: `<@${norDiscordId}>`,
-              embeds,
-            });
-            updatedMessage = true;
-            continue;
+            try {
+              if ('webhook' in prevInteraction && prevInteraction.webhook) {
+                await prevInteraction.webhook.editMessage(msg.messageId, {
+                  content: `<@${norDiscordId}>`,
+                  embeds,
+                });
+              } else {
+                await prevInteraction.editReply({
+                  content: `<@${norDiscordId}>`,
+                  embeds,
+                });
+              }
+              updatedMessage = true;
+              continue;
+            } catch {
+              try {
+                await prevInteraction.editReply({
+                  content: `<@${norDiscordId}>`,
+                  embeds,
+                });
+                updatedMessage = true;
+                continue;
+              } catch (error) {
+                deleteLobbyMessages(guildId, [msg.messageType]);
+                console.error('Failed to update draft message:', [msg.messageType], error);
+              }
+            }
           }
           // so it's not an ephemeral message, so:
           const previousMessage = await channel.messages.fetch(msg.messageId);
