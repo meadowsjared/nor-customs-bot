@@ -309,10 +309,10 @@ async function applyTeamsFromScan(
 
   const team1 = sortedPlayers
     .filter(p => scanSummary.team1DiscordIds.includes(p.discordId))
-    .sort((a, b) => scanSummary.team1DiscordIds.indexOf(a.discordId) - scanSummary.team1DiscordIds.indexOf(b.discordId));
+    .sort((a, b) => (b.mmr ?? getPlayerMMR(b)) - (a.mmr ?? getPlayerMMR(a)));
   const team2 = sortedPlayers
     .filter(p => scanSummary.team2DiscordIds.includes(p.discordId))
-    .sort((a, b) => scanSummary.team2DiscordIds.indexOf(a.discordId) - scanSummary.team2DiscordIds.indexOf(b.discordId));
+    .sort((a, b) => (b.mmr ?? getPlayerMMR(b)) - (a.mmr ?? getPlayerMMR(a)));
   const spectators = sortedPlayers.filter(
     p => !scanSummary.team1DiscordIds.includes(p.discordId) && !scanSummary.team2DiscordIds.includes(p.discordId),
   );
@@ -1532,6 +1532,8 @@ async function generateTeamsMessage(
       if (idx !== -1) p.lobbyRank = idx;
     }
   });
+  team1.sort((a, b) => (b.mmr ?? getPlayerMMR(b)) - (a.mmr ?? getPlayerMMR(a)));
+  team2.sort((a, b) => (b.mmr ?? getPlayerMMR(b)) - (a.mmr ?? getPlayerMMR(a)));
   const team1List = team1
     .map(
       p =>
