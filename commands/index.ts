@@ -44,6 +44,7 @@ import { announce, safePing } from '../utils/announce';
 import { getBotChannel } from '../utils/channel';
 import { safeReply, safeUpdate, safeDeferUpdate, requireGuildId } from '../utils/interaction';
 import { scanLobbyScreenshot, ScanLobbySummary } from '../utils/lobbyScanner';
+import { createTeams, isMakeTeamsMode, MakeTeamsMode } from '../utils/teamMaker';
 import {
   getActivePlayers,
   getPlayerByDiscordId,
@@ -477,6 +478,9 @@ export async function handleMakeTeamsCommand(
   if (!guildId) return;
 
   const publish = interaction.options.getBoolean('publish', false) ?? false;
+  const modeInput = interaction.options.getString('mode', false);
+  const mode: MakeTeamsMode = isMakeTeamsMode(modeInput) ? modeInput : MakeTeamsMode.STANDARD;
+
   const sortedPlayers = getSortedActivePlayers(guildId);
   if (sortedPlayers.length < 1) {
     await safeReply(interaction, {
@@ -485,29 +489,9 @@ export async function handleMakeTeamsCommand(
     });
     return;
   }
-  const team1: Player[] = [];
-  const team2: Player[] = [];
-  const spectators: Player[] = [];
-  // go through the sorted players, and alternate adding them to each team using snake draft (1, 2, 2, 1, 1, 2, 2, 1)
-  let currentLobbyRank = 1;
-  sortedPlayers.forEach((p, index) => {
-    if ((index % 4 == 0 || index % 4 == 3) && team1.length < MAX_PLAYERS_PER_TEAM) {
-      p.draftOrder = currentLobbyRank;
-      p.lobbyRank = currentLobbyRank++;
-      p.team = 1;
-      team1.push(p);
-    } else if ((index % 4 == 1 || index % 4 == 2) && team2.length < MAX_PLAYERS_PER_TEAM) {
-      p.draftOrder = currentLobbyRank;
-      p.lobbyRank = currentLobbyRank++;
-      p.team = 2;
-      team2.push(p);
-    } else {
-      p.draftOrder = NaN;
-      p.lobbyRank = NaN;
-      p.team = 0;
-      spectators.push(p);
-    }
-  });
+
+  const { team1, team2, spectators } = createTeams(sortedPlayers, mode, MAX_PLAYERS_PER_TEAM);
+
   // set the teams in the database
   setTeamsFromPlayers(guildId, team1, team2, spectators);
   await generateTeamsMessage(interaction, team1, team2, publish, true);

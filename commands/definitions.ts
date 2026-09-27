@@ -5,6 +5,7 @@ import {
   PermissionsBitField,
 } from 'discord.js';
 import { CommandIds, roleMap } from '../constants';
+import { makeTeamsModeChoices } from '../utils/teamMaker';
 
 const minimumAdminPermissions: bigint = PermissionsBitField.Flags.MoveMembers;
 /**
@@ -121,6 +122,13 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     description: 'Create proposed teams using MMR balancing',
     defaultMemberPermissions: minimumAdminPermissions,
     options: [
+      {
+        name: 'mode',
+        type: ApplicationCommandOptionType.String,
+        description: 'Team generation mode (defaults to Standard)',
+        required: false,
+        choices: makeTeamsModeChoices,
+      },
       {
         name: 'publish',
         type: ApplicationCommandOptionType.Boolean,
