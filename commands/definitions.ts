@@ -761,6 +761,12 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
         type: ApplicationCommandOptionType.String,
         required: false,
       },
+      {
+        name: 'game-number',
+        description: 'The game number (optional)',
+        type: ApplicationCommandOptionType.Number,
+        required: false,
+      },
     ],
   },
   {

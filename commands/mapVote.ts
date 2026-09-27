@@ -93,7 +93,7 @@ function buildSummaryEmbed(
   recentlyPlayedMaps: MapDefinition[],
   isEnded: boolean,
   winnerMap?: MapDefinition,
-): { embeds: EmbedBuilder[]; files: AttachmentBuilder[] } {
+): { embeds: EmbedBuilder[]; files: AttachmentBuilder[]; } {
   const totalVotes = tallies.reduce((sum, t) => sum + t.count, 0);
 
   const maxVotes = Math.max(...tallies.map(t => t.count));
@@ -225,7 +225,7 @@ export async function handleMapVoteCommand(interaction: ChatInputCommandInteract
   }
 
   const userTitle = interaction.options.getString('title');
-  const gameNumber = getGameNumberTonight();
+  const gameNumber = interaction.options.getNumber('game-number') ?? getGameNumberTonight();
   const customTitle = userTitle ? `${userTitle} - Game ${gameNumber}` : `Game ${gameNumber}`;
   const sessionId = Date.now().toString();
   const createdBy = interaction.user.id;
