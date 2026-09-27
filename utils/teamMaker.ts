@@ -33,24 +33,24 @@ export const makeTeamsModeChoices: MakeTeamsChoice[] = [
  */
 export const TEAM_PREFABS: Record<MakeTeamsMode, { team1: number[]; team2: number[]; }> = {
   [MakeTeamsMode.STANDARD]: {
-    team1: [1, 4, 5, 8, 9],
-    team2: [2, 3, 6, 7, 10],
+    team1: [1, 4, 5, 8, 9], // 27
+    team2: [2, 3, 6, 7, 10], // 28
   },
   [MakeTeamsMode.MIXED_A]: {
-    team1: [1, 3, 5, 8, 10],
-    team2: [2, 4, 6, 7, 9],
+    team1: [1, 3, 5, 8, 10], // 27
+    team2: [2, 4, 6, 7, 9], // 28
   },
   [MakeTeamsMode.MIXED_B]: {
-    team1: [1, 4, 6, 7, 9],
-    team2: [2, 3, 5, 8, 10],
+    team1: [1, 4, 6, 7, 9], // 27
+    team2: [2, 3, 5, 8, 10], // 28
   },
   [MakeTeamsMode.DOUBLE_TROUBLE]: {
-    team1: [1, 2, 6, 8, 10],
-    team2: [3, 4, 5, 7, 9],
+    team1: [1, 2, 6, 8, 10], // 27
+    team2: [3, 4, 5, 7, 9], // 28
   },
   [MakeTeamsMode.FUNZ]: {
-    team1: [1, 7, 8, 9, 10],
-    team2: [2, 3, 4, 5, 6],
+    team1: [1, 7, 8, 9, 10], // 35
+    team2: [2, 3, 4, 5, 6], // 20
   },
 };
 
