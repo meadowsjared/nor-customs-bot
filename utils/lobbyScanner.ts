@@ -154,7 +154,7 @@ function findBestAccountMatch(
 export async function scanLobbyScreenshot(
   imageBuffer: Buffer,
   guildId: string,
-  sync = true,
+  sync = false,
 ): Promise<ScanLobbySummary> {
   const metadata = await sharp(imageBuffer).metadata();
   const width = metadata.width ?? 1920;

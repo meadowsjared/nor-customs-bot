@@ -193,7 +193,7 @@ export async function handleNewGameCommand(
   let scanSummary: ScanLobbySummary | undefined;
   if (interaction.isChatInputCommand()) {
     const screenshot = interaction.options.getAttachment(CommandIds.SCREENSHOT);
-    const sync = interaction.options.getBoolean(CommandIds.SYNC) ?? true;
+    const sync = interaction.options.getBoolean(CommandIds.SYNC) ?? false;
     if (screenshot) {
       try {
         const response = await fetch(screenshot.url);
@@ -345,7 +345,7 @@ export async function handleScanLobbyCommand(
   if (!guildId) return;
 
   const screenshot = interaction.options.getAttachment(CommandIds.SCREENSHOT);
-  const sync = interaction.options.getBoolean(CommandIds.SYNC) ?? true;
+  const sync = interaction.options.getBoolean(CommandIds.SYNC) ?? false;
   if (!screenshot) {
     await safeReply(interaction, {
       content: 'Please attach a screenshot of the HotS custom game lobby.',

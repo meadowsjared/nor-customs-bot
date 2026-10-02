@@ -93,7 +93,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
       {
         name: CommandIds.SYNC,
         type: ApplicationCommandOptionType.Boolean,
-        description: 'Synchronize lobby exactly to screenshot (defaults to True; removes absent players)',
+        description: 'Synchronize lobby exactly to screenshot (defaults to False; removes absent players when True)',
         required: false,
       },
     ],
@@ -112,7 +112,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
       {
         name: CommandIds.SYNC,
         type: ApplicationCommandOptionType.Boolean,
-        description: 'Synchronize lobby exactly to screenshot (defaults to True; removes absent players)',
+        description: 'Synchronize lobby exactly to screenshot (defaults to False; removes absent players when True)',
         required: false,
       },
     ],
