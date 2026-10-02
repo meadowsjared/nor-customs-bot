@@ -1855,6 +1855,9 @@ export async function handleCheckTeamsCommand(
   const guildId = await requireGuildId(interaction);
   if (!guildId) return;
 
+  // Determine whether the result should be public
+  const publish = interaction.options.getBoolean(CommandIds.PUBLISH, false) ?? false;
+
   const screenshot = interaction.options.getAttachment(CommandIds.SCREENSHOT);
   if (!screenshot) {
     await safeReply(interaction, {
@@ -1864,7 +1867,12 @@ export async function handleCheckTeamsCommand(
     return;
   }
 
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  // Defer reply: public unless publish flag is false
+  if (publish) {
+    await interaction.deferReply();
+  } else {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  }
   try {
     const response = await fetch(screenshot.url);
     const arrayBuffer = await response.arrayBuffer();

@@ -198,6 +198,12 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
         description: 'HotS lobby screenshot to verify teams',
         required: true,
       },
+      {
+        name: CommandIds.PUBLISH,
+        type: ApplicationCommandOptionType.Boolean,
+        description: 'Publish the result publicly (defaults to false)',
+        required: false,
+      },
     ],
   },
   {
