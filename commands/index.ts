@@ -1782,6 +1782,13 @@ export async function handlePublishTeamsCommand(
   if (!guildId) return;
   // get the teams from the database
   const { team1, team2 } = getTeams(guildId);
+  if (team1.length === 0 && team2.length === 0) {
+    await safeReply(interaction, {
+      content: '❌ No teams have been set yet. Use `/make_teams`, `/scan_lobby`, or `/draft` first.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
   await generateTeamsMessage(interaction, team1, team2, true);
   // show the move to teams button
   const moveToTeamsBtn = new ButtonBuilder()
@@ -1796,6 +1803,38 @@ export async function handlePublishTeamsCommand(
     flags: MessageFlags.Ephemeral,
     components: [new ActionRowBuilder<ButtonBuilder>().addComponents(moveToTeamsBtn, moveToLobbyBtn)],
   });
+}
+
+/**
+ * Show the teams that are currently stored in the database.
+ * Ephemeral by default; public with voice controls if publish=true.
+ */
+export async function handleShowTeamsCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+) {
+  if (interaction.isButton()) {
+    console.error('Interaction is not a command interaction');
+    return;
+  }
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return;
+
+  const publish = interaction.options.getBoolean(CommandIds.PUBLISH, false) ?? false;
+  const { team1, team2 } = getTeams(guildId);
+
+  if (team1.length === 0 && team2.length === 0) {
+    await safeReply(interaction, {
+      content: '❌ No teams have been set yet. Use `/make_teams`, `/scan_lobby`, or `/draft` first.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  if (publish) {
+    await handlePublishTeamsCommand(interaction);
+  } else {
+    await generateTeamsMessage(interaction, team1, team2, false, true);
+  }
 }
 
 export async function handleMoveToLobbyCommand(

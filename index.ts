@@ -65,6 +65,7 @@ import {
   handleDraftToggleModeButton,
   handleDraftUndoCommand,
   handlePublishTeamsCommand,
+  handleShowTeamsCommand,
   handleSwapTeamsCommand,
   handleImportReplaysCommand,
   handleDeletePlayerCommand,
@@ -286,6 +287,10 @@ client.on('interactionCreate', async interaction => {
       case CommandIds.PUBLISH_TEAMS:
         // Handle publish teams command
         await handlePublishTeamsCommand(interaction);
+        break;
+      case CommandIds.SHOW_TEAMS:
+        // Handle show teams command
+        await handleShowTeamsCommand(interaction);
         break;
       case CommandIds.SET_CHANNEL_TEAM_ID:
         // Handle set channel team ID command

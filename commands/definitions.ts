@@ -175,6 +175,19 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     defaultMemberPermissions: minimumAdminPermissions,
   },
   {
+    name: CommandIds.SHOW_TEAMS,
+    description: 'Show current teams (ephemeral by default, with option to publish)',
+    defaultMemberPermissions: minimumAdminPermissions,
+    options: [
+      {
+        name: CommandIds.PUBLISH,
+        type: ApplicationCommandOptionType.Boolean,
+        description: 'Whether to instantly publish the teams publicly (defaults to False)',
+        required: false,
+      },
+    ],
+  },
+  {
     name: CommandIds.DRAFT,
     description: 'Start an interactive captain draft to pick teams',
     defaultMemberPermissions: minimumAdminPermissions,
