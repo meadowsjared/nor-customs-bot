@@ -36,6 +36,7 @@ export const enum CommandIds {
   TEAMS = 'teams',
   TEAMS_EPHEMERAL = 'teams_ephemeral',
   SHOW_TEAMS = 'show_teams',
+  CHECK_TEAMS = 'check_teams',
   SET_CHANNEL_TEAM_ID = 'set_team_channel',
   SET_LOBBY_CHANNEL = 'set_lobby_channel',
   SET_BOT_CHANNEL = 'set_bot_channel',

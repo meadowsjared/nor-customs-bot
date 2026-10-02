@@ -1837,6 +1837,105 @@ export async function handleShowTeamsCommand(
   }
 }
 
+
+/**
+ * Checks that the current teams stored in the bot match a lobby screenshot.
+ * If they differ, suggests swaps to correct them.
+ */
+export async function handleCheckTeamsCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+) {
+  if (interaction.isButton()) {
+    await safeReply(interaction, {
+      content: 'Interaction must be a command.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return;
+
+  const screenshot = interaction.options.getAttachment(CommandIds.SCREENSHOT);
+  if (!screenshot) {
+    await safeReply(interaction, {
+      content: 'Please attach a screenshot of the HotS custom game lobby.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  try {
+    const response = await fetch(screenshot.url);
+    const arrayBuffer = await response.arrayBuffer();
+    const imageBuffer = Buffer.from(arrayBuffer);
+    const scanSummary = await scanLobbyScreenshot(imageBuffer, guildId, false);
+
+    // Bot's stored teams
+    const { team1, team2 } = getTeams(guildId);
+    const botTeam1Ids = team1.map(p => p.discordId);
+    const botTeam2Ids = team2.map(p => p.discordId);
+
+    const lobbyTeam1Ids = scanSummary.team1DiscordIds ?? [];
+    const lobbyTeam2Ids = scanSummary.team2DiscordIds ?? [];
+
+    // Determine mismatches
+    const mismatchedInTeam1 = botTeam1Ids.filter(id => !lobbyTeam1Ids.includes(id));
+    const mismatchedInTeam2 = botTeam2Ids.filter(id => !lobbyTeam2Ids.includes(id));
+
+    // Players that are on the opposite side in the screenshot
+    const oppositeInTeam1 = lobbyTeam1Ids.filter(id => botTeam2Ids.includes(id));
+    const oppositeInTeam2 = lobbyTeam2Ids.filter(id => botTeam1Ids.includes(id));
+
+    // Build swap suggestions
+    const swaps: string[] = [];
+    const used = new Set<string>();
+    for (const idA of mismatchedInTeam1) {
+      if (used.has(idA)) continue;
+      const partner = oppositeInTeam2.find(id => !used.has(id));
+      if (partner) {
+        swaps.push(`Swap <@${idA}> ↔ <@${partner}>`);
+        used.add(idA);
+        used.add(partner);
+      }
+    }
+    for (const idA of mismatchedInTeam2) {
+      if (used.has(idA)) continue;
+      const partner = oppositeInTeam1.find(id => !used.has(id));
+      if (partner) {
+        swaps.push(`Swap <@${idA}> ↔ <@${partner}>`);
+        used.add(idA);
+        used.add(partner);
+      }
+    }
+
+    // Missing or extra players
+    const missingFromLobby = botTeam1Ids.concat(botTeam2Ids).filter(id => !lobbyTeam1Ids.includes(id) && !lobbyTeam2Ids.includes(id));
+    const extraInLobby = lobbyTeam1Ids.concat(lobbyTeam2Ids).filter(id => !botTeam1Ids.includes(id) && !botTeam2Ids.includes(id));
+
+    let reply = '';
+    if (mismatchedInTeam1.length === 0 && mismatchedInTeam2.length === 0 && missingFromLobby.length === 0 && extraInLobby.length === 0) {
+      reply = '✅ Teams match the lobby screenshot!';
+    } else {
+      if (swaps.length > 0) {
+        reply += '**Suggested swaps:**\n' + swaps.map(s => `- ${s}`).join('\n') + '\n\n';
+      }
+      if (missingFromLobby.length > 0) {
+        reply += `**Missing from lobby:** ${missingFromLobby.map(id => `<@${id}>`).join(', ')}\n`;
+      }
+      if (extraInLobby.length > 0) {
+        reply += `**Extra in lobby:** ${extraInLobby.map(id => `<@${id}>`).join(', ')}\n`;
+      }
+    }
+    await interaction.editReply({ content: reply });
+  } catch (error) {
+    console.error('Error in check_teams command:', error);
+    await interaction.editReply({
+      content: '❌ Failed to process the screenshot. Ensure it is a clear in‑game lobby screenshot.',
+    });
+  }
+}
+
 export async function handleMoveToLobbyCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ) {

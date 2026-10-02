@@ -188,6 +188,19 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     ],
   },
   {
+    name: CommandIds.CHECK_TEAMS,
+    description: 'Check that current teams match a lobby screenshot and suggest swaps',
+    defaultMemberPermissions: minimumAdminPermissions,
+    options: [
+      {
+        name: CommandIds.SCREENSHOT,
+        type: ApplicationCommandOptionType.Attachment,
+        description: 'HotS lobby screenshot to verify teams',
+        required: true,
+      },
+    ],
+  },
+  {
     name: CommandIds.DRAFT,
     description: 'Start an interactive captain draft to pick teams',
     defaultMemberPermissions: minimumAdminPermissions,
