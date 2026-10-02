@@ -11,6 +11,8 @@ export interface ScanLobbySummary {
   totalLobbyCount: number;
   team1DiscordIds: string[];
   team2DiscordIds: string[];
+  team1CaptainDiscordId?: string;
+  team2CaptainDiscordId?: string;
 }
 
 let workerInstance: Promise<Worker> | null = null;
@@ -57,7 +59,12 @@ interface CropCoordinate {
   height: number;
 }
 
-function calculateSlotCoordinates(imageWidth: number, imageHeight: number): CropCoordinate[] {
+interface SlotCropCoordinates {
+  nameCoord: CropCoordinate;
+  badgeCoord: CropCoordinate;
+}
+
+function calculateSlotCoordinates(imageWidth: number, imageHeight: number): SlotCropCoordinates[] {
   const targetAspect = 16 / 9;
   const currentAspect = imageWidth / imageHeight;
   let activeLeft = 0;
@@ -73,51 +80,72 @@ function calculateSlotCoordinates(imageWidth: number, imageHeight: number): Crop
     activeTop = Math.round((imageHeight - activeHeight) / 2);
   }
 
-  const crops: CropCoordinate[] = [];
+  const crops: SlotCropCoordinates[] = [];
 
   // Team 1 slots (5 slots)
   for (let i = 0; i < 5; i++) {
+    const baseLeft = activeLeft + Math.round(activeWidth * 0.160);
+    const top = activeTop + Math.round(activeHeight * (0.252 + i * 0.0485));
+    const height = Math.round(activeHeight * 0.042);
     crops.push({
-      left: activeLeft + Math.round(activeWidth * 0.160),
-      top: activeTop + Math.round(activeHeight * (0.252 + i * 0.0485)),
-      width: Math.round(activeWidth * 0.280),
-      height: Math.round(activeHeight * 0.042),
+      nameCoord: {
+        left: baseLeft,
+        top,
+        width: Math.round(activeWidth * 0.220),
+        height,
+      },
+      badgeCoord: {
+        left: baseLeft + Math.round(activeWidth * 0.215),
+        top,
+        width: Math.round(activeWidth * 0.095),
+        height,
+      },
     });
   }
 
   // Team 2 slots (5 slots)
   for (let i = 0; i < 5; i++) {
+    const baseLeft = activeLeft + Math.round(activeWidth * 0.535);
+    const top = activeTop + Math.round(activeHeight * (0.252 + i * 0.0485));
+    const height = Math.round(activeHeight * 0.042);
     crops.push({
-      left: activeLeft + Math.round(activeWidth * 0.535),
-      top: activeTop + Math.round(activeHeight * (0.252 + i * 0.0485)),
-      width: Math.round(activeWidth * 0.280),
-      height: Math.round(activeHeight * 0.042),
+      nameCoord: {
+        left: baseLeft,
+        top,
+        width: Math.round(activeWidth * 0.220),
+        height,
+      },
+      badgeCoord: {
+        left: baseLeft + Math.round(activeWidth * 0.215),
+        top,
+        width: Math.round(activeWidth * 0.095),
+        height,
+      },
     });
   }
-
-  // // Observers slots (6 slots)
-  // for (let i = 0; i < 6; i++) {
-  //   crops.push({
-  //     left: activeLeft + Math.round(activeWidth * 0.160),
-  //     top: activeTop + Math.round(activeHeight * (0.555 + i * 0.0485)),
-  //     width: Math.round(activeWidth * 0.280),
-  //     height: Math.round(activeHeight * 0.042),
-  //   });
-  // }
 
   return crops;
 }
 
 function cleanOCRText(raw: string): string {
-  // Strip parenthesized tags like (Host), (Captain), (Observer)
-  let text = raw.replace(/\(.*?\)/g, ' ');
+  // Strip parenthesized or bracketed tags like (Host), [Captain], (Observer)
+  let text = raw.replace(/[([<{].*?[\])}>]/g, ' ');
   // Strip trailing or isolated role/status keywords like Host, Captain, Capta, Caopta, Observer, Referee, Ref
-  text = text.replace(/\b(host|captain|capta|caopta|observer|referee|ref)\b/gi, ' ');
+  text = text.replace(/[[({|Il1]*\s*(host|captain|capta|caopta|observer|referee|ref)\s*[\])}|Il1]*/gi, ' ');
   // Strip non-alphanumeric chars at beginning and end
   text = text.replace(/^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$/g, '').trim();
   // Collapse whitespace
   text = text.replace(/\s+/g, ' ').trim();
   return text;
+}
+
+function isCaptainBadgeText(raw: string): boolean {
+  const cleaned = raw.toLowerCase().replace(/[^a-z]/g, '');
+  if (!cleaned) return false;
+  if (/captain|ceptoin|coptaln|capta|capt/.test(cleaned)) {
+    return true;
+  }
+  return levenshteinDistance(cleaned, 'captain') <= 3;
 }
 
 function findBestAccountMatch(
@@ -134,6 +162,17 @@ function findBestAccountMatch(
     }
   }
 
+  // 1b. Exact match against first word if multi-word OCR
+  const firstWord = normalizedOcr.split(/\s+/)[0];
+  if (firstWord && firstWord !== normalizedOcr) {
+    for (const acc of accounts) {
+      const prefix = acc.hotsBattleTag.split('#')[0].toLowerCase();
+      if (prefix === firstWord) {
+        return acc;
+      }
+    }
+  }
+
   // 2. Fuzzy match using Levenshtein distance
   let bestMatch: RegisteredPlayerAccount | undefined = undefined;
   let minDistance = 999;
@@ -145,6 +184,19 @@ function findBestAccountMatch(
     if (dist <= maxAllowedDistance && dist < minDistance) {
       minDistance = dist;
       bestMatch = acc;
+    }
+  }
+
+  // 2b. Fuzzy match against first word if multi-word OCR
+  if (!bestMatch && firstWord && firstWord !== normalizedOcr && firstWord.length >= 3) {
+    const firstWordMaxDist = firstWord.length <= 5 ? 1 : 2;
+    for (const acc of accounts) {
+      const prefix = acc.hotsBattleTag.split('#')[0].toLowerCase();
+      const dist = levenshteinDistance(firstWord, prefix);
+      if (dist <= firstWordMaxDist && dist < minDistance) {
+        minDistance = dist;
+        bestMatch = acc;
+      }
     }
   }
 
@@ -164,24 +216,40 @@ export async function scanLobbyScreenshot(
   const worker = await getWorker();
 
   const registeredAccounts = getAllRegisteredHotSAccounts();
-  const detectedSlots: { slotIndex: number; text: string; }[] = [];
+  const detectedSlots: { slotIndex: number; text: string; isCaptain: boolean; }[] = [];
 
   for (let i = 0; i < slotCoords.length; i++) {
-    const coord = slotCoords[i];
+    const { nameCoord, badgeCoord } = slotCoords[i];
     try {
       const processedBuffer = await sharp(imageBuffer)
-        .extract(coord)
-        .resize({ width: coord.width * 3 })
+        .extract(nameCoord)
+        .resize({ width: nameCoord.width * 3 })
         .grayscale()
-        .threshold(145)
+        .threshold(140)
         .toBuffer();
 
       const result = await worker.recognize(processedBuffer);
       const rawText = result.data.text.trim();
       const cleaned = cleanOCRText(rawText);
 
+      // Check captain badge in badge area
+      let isCaptain = false;
+      try {
+        const badgeBuffer = await sharp(imageBuffer)
+          .extract(badgeCoord)
+          .resize({ width: badgeCoord.width * 3 })
+          .grayscale()
+          .threshold(130)
+          .toBuffer();
+        const badgeResult = await worker.recognize(badgeBuffer);
+        const badgeText = badgeResult.data.text.trim();
+        isCaptain = isCaptainBadgeText(badgeText);
+      } catch (badgeErr) {
+        console.error('Error checking badge crop for OCR:', badgeErr);
+      }
+
       if (cleaned.length >= 2 && !cleaned.toLowerCase().includes('empty slot')) {
-        detectedSlots.push({ slotIndex: i, text: cleaned });
+        detectedSlots.push({ slotIndex: i, text: cleaned, isCaptain });
       }
     } catch (err) {
       console.error('Error processing slot crop for OCR:', err);
@@ -194,6 +262,8 @@ export async function scanLobbyScreenshot(
   const processedDiscordIds = new Set<string>();
   const team1DiscordIds: string[] = [];
   const team2DiscordIds: string[] = [];
+  let team1CaptainDiscordId: string | undefined;
+  let team2CaptainDiscordId: string | undefined;
 
   for (const detected of detectedSlots) {
     const matched = findBestAccountMatch(detected.text, registeredAccounts);
@@ -218,8 +288,14 @@ export async function scanLobbyScreenshot(
 
       if (detected.slotIndex < 5) {
         team1DiscordIds.push(matched.discordId);
+        if (detected.isCaptain && !team1CaptainDiscordId) {
+          team1CaptainDiscordId = matched.discordId;
+        }
       } else {
         team2DiscordIds.push(matched.discordId);
+        if (detected.isCaptain && !team2CaptainDiscordId) {
+          team2CaptainDiscordId = matched.discordId;
+        }
       }
     } else {
       unregistered.push(detected.text);
@@ -257,5 +333,7 @@ export async function scanLobbyScreenshot(
     totalLobbyCount: finalActiveCount,
     team1DiscordIds,
     team2DiscordIds,
+    team1CaptainDiscordId,
+    team2CaptainDiscordId,
   };
 }

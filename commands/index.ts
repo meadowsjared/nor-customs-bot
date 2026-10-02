@@ -291,6 +291,21 @@ export function formatScanSummaryMessage(summary: ScanLobbySummary): string {
         .join(', ')} *(need to /join or click button)*`,
     );
   }
+  if (summary.team1CaptainDiscordId || summary.team2CaptainDiscordId) {
+    const captains: string[] = [];
+    const allKnown = [...summary.newlyAdded, ...summary.alreadyActive];
+    if (summary.team1CaptainDiscordId) {
+      const p = allKnown.find(x => x.discordId === summary.team1CaptainDiscordId);
+      if (p) captains.push(`Team 1: @${p.name}`);
+    }
+    if (summary.team2CaptainDiscordId) {
+      const p = allKnown.find(x => x.discordId === summary.team2CaptainDiscordId);
+      if (p) captains.push(`Team 2: @${p.name}`);
+    }
+    if (captains.length > 0) {
+      lines.push(`👑 **Captains:** ${captains.join(' | ')}`);
+    }
+  }
   lines.push(`\n**Total Lobby:** ${summary.totalLobbyCount} / 10 players`);
   return lines.join('\n');
 }
@@ -320,11 +335,17 @@ async function applyTeamsFromScan(
 
   team1.forEach((p, i) => {
     p.team = 1;
-    p.draftOrder = i === 0 ? 1 : NaN;
+    const isCaptain = scanSummary.team1CaptainDiscordId
+      ? p.discordId === scanSummary.team1CaptainDiscordId
+      : i === 0;
+    p.draftOrder = isCaptain ? 1 : NaN;
   });
   team2.forEach((p, i) => {
     p.team = 2;
-    p.draftOrder = i === 0 ? 2 : NaN;
+    const isCaptain = scanSummary.team2CaptainDiscordId
+      ? p.discordId === scanSummary.team2CaptainDiscordId
+      : i === 0;
+    p.draftOrder = isCaptain ? 2 : NaN;
   });
   spectators.forEach(p => {
     p.team = 0;
