@@ -710,6 +710,37 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
           },
         ],
       },
+      {
+        name: CommandIds.REAL_ID_NAME,
+        description: "Set, view, or clear a player's Battle.net Real ID name.",
+        type: ApplicationCommandOptionType.Subcommand,
+        options: [
+          {
+            name: CommandIds.BATTLE_TAG,
+            description: 'The Heroes of the Storm battle tag (e.g. Name#1234).',
+            type: ApplicationCommandOptionType.String,
+            required: false,
+          },
+          {
+            name: CommandIds.DISCORD_ID,
+            description: 'The Discord user (defaults to primary account if battle-tag omitted).',
+            type: ApplicationCommandOptionType.User,
+            required: false,
+          },
+          {
+            name: 'name',
+            description: 'The Real ID name to set (leave blank to view or clear).',
+            type: ApplicationCommandOptionType.String,
+            required: false,
+          },
+          {
+            name: 'clear',
+            description: 'Set to true to clear the Real ID name.',
+            type: ApplicationCommandOptionType.Boolean,
+            required: false,
+          },
+        ],
+      },
     ],
   },
   {

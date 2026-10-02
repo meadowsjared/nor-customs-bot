@@ -72,6 +72,8 @@ import {
   getTeams,
   setPlayerAdjustment,
   getPlayerMMR,
+  setHotsAccountRealIdName,
+  getHotsAccountByBattleTag,
 } from '../store/player';
 import {
   saveChannel,
@@ -2727,7 +2729,8 @@ async function handleLookupCommandSub(
         ?.map(
           (a, index) =>
             `${index + 1}. ${Math.max(a.hpSlMMR || 0, a.hpArMMR || 0, a.hpQmMMR || 0)} ${a.hotsBattleTag}` +
-            (a.isPrimary ? ' (Primary)' : ''),
+            (a.isPrimary ? ' (Primary)' : '') +
+            (a.realIdName ? ` [Real ID: ${a.realIdName}]` : ''),
         )
         .join('\n') || 'No HotS accounts';
 
@@ -3321,6 +3324,164 @@ export async function handleAdminPrimaryCommand(
     return;
   }
   await setPrimaryAccount(interaction, guildId, discordId, battleTag, messageIdParam, channelIdParam);
+}
+
+export async function handleAdminRealIdNameCommand(
+  interaction: ChatInputCommandInteraction<CacheType>,
+) {
+  const guildId = await requireGuildId(interaction);
+  if (!guildId) return;
+
+  const discordId = getDiscordId(interaction, guildId);
+  const battleTag = getBattleTag(interaction);
+
+  if (!discordId && !battleTag) {
+    await safeReply(interaction, {
+      content: 'Please provide either a BattleTag (`battle-tag`) or a Discord user (`discord-id`).',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const clear = interaction.options.getBoolean('clear') ?? false;
+  const name = interaction.options.getString('name');
+
+  // Case 1: battleTag provided without discordId
+  if (!discordId && battleTag) {
+    const account = getHotsAccountByBattleTag(battleTag.trim());
+    if (!account) {
+      await safeReply(interaction, {
+        content: `HotS account \`${battleTag}\` was not found in the database.`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const ownerInfo = account.discord_id ? `<@${account.discord_id}>` : 'unlinked';
+
+    if (clear) {
+      setHotsAccountRealIdName(account.hots_battle_tag, null);
+      await safeReply(interaction, {
+        content: `Cleared Real ID name for \`${account.hots_battle_tag}\` (${ownerInfo}).`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    if (name !== null && name !== undefined) {
+      const trimmed = name.trim();
+      if (trimmed.length === 0) {
+        setHotsAccountRealIdName(account.hots_battle_tag, null);
+        await safeReply(interaction, {
+          content: `Cleared Real ID name for \`${account.hots_battle_tag}\` (${ownerInfo}).`,
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      setHotsAccountRealIdName(account.hots_battle_tag, trimmed);
+      await safeReply(interaction, {
+        content: `Set Real ID name for \`${account.hots_battle_tag}\` (${ownerInfo}) to **${trimmed}**.`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    // View mode for single battleTag
+    await safeReply(interaction, {
+      content: `• \`${account.hots_battle_tag}\` (${ownerInfo}): ${
+        account.real_id_name ? `**${account.real_id_name}**` : '*None*'
+      }`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  // Case 2: discordId is provided (with optional battleTag)
+  if (!discordId) return;
+
+  const player = getPlayerByDiscordId(discordId, guildId);
+  if (!player) {
+    await safeReply(interaction, {
+      content: `Player <@${discordId}> was not found in the database.`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const accounts = player.usernames.accounts ?? [];
+  if (accounts.length === 0) {
+    await safeReply(interaction, {
+      content: `Player <@${discordId}> does not have any Heroes of the Storm accounts registered.`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  let targetAccount = accounts[0];
+  if (battleTag) {
+    const found = accounts.find(
+      acc => acc.hotsBattleTag.toLowerCase() === battleTag.trim().toLowerCase(),
+    );
+    if (!found) {
+      await safeReply(interaction, {
+        content: `Account \`${battleTag}\` was not found for <@${discordId}>. Registered accounts: ${accounts.map(a => `\`${a.hotsBattleTag}\``).join(', ')}`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    targetAccount = found;
+  } else {
+    const primary = accounts.find(acc => acc.isPrimary);
+    if (primary) {
+      targetAccount = primary;
+    }
+  }
+
+  const displayName = player.usernames.discordDisplayName || player.usernames.discordName;
+
+  if (clear) {
+    setHotsAccountRealIdName(targetAccount.hotsBattleTag, null);
+    await safeReply(interaction, {
+      content: `Cleared Real ID name for **${displayName}** (\`${targetAccount.hotsBattleTag}\`).`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  if (name !== null && name !== undefined) {
+    const trimmed = name.trim();
+    if (trimmed.length === 0) {
+      setHotsAccountRealIdName(targetAccount.hotsBattleTag, null);
+      await safeReply(interaction, {
+        content: `Cleared Real ID name for **${displayName}** (\`${targetAccount.hotsBattleTag}\`).`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    setHotsAccountRealIdName(targetAccount.hotsBattleTag, trimmed);
+    await safeReply(interaction, {
+      content: `Set Real ID name for **${displayName}** (\`${targetAccount.hotsBattleTag}\`) to **${trimmed}**.`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  // View current Real ID names for the player
+  const accountList = accounts
+    .map(
+      a =>
+        `• \`${a.hotsBattleTag}\`${a.isPrimary ? ' *(Primary)*' : ''}: ${
+          a.realIdName ? `**${a.realIdName}**` : '*None*'
+        }`,
+    )
+    .join('\n');
+
+  await safeReply(interaction, {
+    content: `Real ID name(s) for **${displayName}**:\n${accountList}`,
+    flags: MessageFlags.Ephemeral,
+  });
 }
 
 function getDiscordId(

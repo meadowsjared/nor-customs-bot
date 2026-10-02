@@ -154,10 +154,13 @@ function findBestAccountMatch(
 ): RegisteredPlayerAccount | undefined {
   const normalizedOcr = ocrName.toLowerCase();
 
-  // 1. Exact match against BattleTag prefix
+  // 1. Exact match against BattleTag prefix or Real ID Name
   for (const acc of accounts) {
     const prefix = acc.hotsBattleTag.split('#')[0].toLowerCase();
     if (prefix === normalizedOcr) {
+      return acc;
+    }
+    if (acc.realIdName && acc.realIdName.trim().toLowerCase() === normalizedOcr) {
       return acc;
     }
   }
@@ -168,6 +171,9 @@ function findBestAccountMatch(
     for (const acc of accounts) {
       const prefix = acc.hotsBattleTag.split('#')[0].toLowerCase();
       if (prefix === firstWord) {
+        return acc;
+      }
+      if (acc.realIdName && acc.realIdName.trim().toLowerCase() === firstWord) {
         return acc;
       }
     }
@@ -185,6 +191,16 @@ function findBestAccountMatch(
       minDistance = dist;
       bestMatch = acc;
     }
+
+    if (acc.realIdName) {
+      const realIdNorm = acc.realIdName.trim().toLowerCase();
+      const realIdDist = levenshteinDistance(normalizedOcr, realIdNorm);
+      const realIdMaxDist = realIdNorm.length <= 5 ? 1 : realIdNorm.length <= 10 ? 2 : 3;
+      if (realIdDist <= realIdMaxDist && realIdDist < minDistance) {
+        minDistance = realIdDist;
+        bestMatch = acc;
+      }
+    }
   }
 
   // 2b. Fuzzy match against first word if multi-word OCR
@@ -196,6 +212,16 @@ function findBestAccountMatch(
       if (dist <= firstWordMaxDist && dist < minDistance) {
         minDistance = dist;
         bestMatch = acc;
+      }
+      if (acc.realIdName) {
+        const realIdFirstWord = acc.realIdName.trim().toLowerCase().split(/\s+/)[0];
+        if (realIdFirstWord && realIdFirstWord.length >= 3) {
+          const rDist = levenshteinDistance(firstWord, realIdFirstWord);
+          if (rDist <= firstWordMaxDist && rDist < minDistance) {
+            minDistance = rDist;
+            bestMatch = acc;
+          }
+        }
       }
     }
   }

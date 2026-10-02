@@ -51,6 +51,7 @@ export const enum CommandIds {
   BATTLE_TAG = 'battle-tag',
   ADD_ACCOUNT = 'add-account',
   PRIMARY = 'primary',
+  REAL_ID_NAME = 'real-id-name',
   DISCORD_ID = 'discord-id',
   DISCORD_DISPLAY_NAME = 'discord-display-name',
   DISCORD_NAME = 'discord-name',

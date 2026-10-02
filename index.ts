@@ -51,6 +51,7 @@ import {
   handleAdminAddHotsAccountCommand,
   handleAdminAddHotsAccountButton,
   handleAdminPrimaryCommand,
+  handleAdminRealIdNameCommand,
   handleLookupByDiscordIdCommand,
   handleAdminAddHotsAccountByDiscordIdCommand,
   handleMakeTeamsCommand,
@@ -480,6 +481,9 @@ async function handleAdminSubCommand(interaction: ChatInputCommandInteraction<Ca
       break;
     case CommandIds.PRIMARY:
       await handleAdminPrimaryCommand(interaction);
+      break;
+    case CommandIds.REAL_ID_NAME:
+      await handleAdminRealIdNameCommand(interaction);
       break;
   }
 }

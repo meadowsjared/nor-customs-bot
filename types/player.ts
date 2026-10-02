@@ -22,6 +22,10 @@ export interface HotsAccount {
    */
   isPrimary: boolean;
   /**
+   * The Battle.net Real ID name of the player on this account (if any)
+   */
+  realIdName?: string | null;
+  /**
    * The database ID of the account
    * Used for updating/deleting the account
    */
@@ -47,6 +51,10 @@ export interface HotsAccountRow {
    * Whether this is the player's primary account
    */
   is_primary: boolean;
+  /**
+   * The Battle.net Real ID name of the player on this account (if any)
+   */
+  real_id_name: string | null;
   /**
    * The database ID of the account
    * Used for updating/deleting the account
