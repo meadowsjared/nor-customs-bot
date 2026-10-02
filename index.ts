@@ -76,6 +76,7 @@ import {
   handleChannelCommand,
   handleAdminDeleteHotsAccountCommand,
   handlePlayerAdjustCommand,
+  handleCheckTeamsCommand,
 } from './commands';
 import { safeReply } from './utils/interaction';
 import { getBotChannel } from './utils/channel';
@@ -446,6 +447,9 @@ client.on('interactionCreate', async interaction => {
           return;
         }
         await handlePlayerAdjustCommand(interaction);
+        break;
+      case CommandIds.CHECK_TEAMS:
+        await handleCheckTeamsCommand(interaction);
         break;
       default:
         await handleDefaultCommand(interaction, commandName);
