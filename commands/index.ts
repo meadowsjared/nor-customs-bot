@@ -74,6 +74,8 @@ import {
   getPlayerMMR,
   setHotsAccountRealIdName,
   getHotsAccountByBattleTag,
+  findPlayersByHotSAccount,
+  getAllRegisteredHotSAccounts,
 } from '../store/player';
 import {
   saveChannel,
@@ -2671,6 +2673,63 @@ export async function handleLookupByDiscordIdCommand(
   return await handleLookupCommandSub(interaction, discordId, discordData, guildId);
 }
 
+export async function handleLookupAutocomplete(interaction: AutocompleteInteraction): Promise<void> {
+  const focusedOption = interaction.options.getFocused(true);
+  if (focusedOption.name !== CommandIds.BATTLE_TAG) {
+    await interaction.respond([]);
+    return;
+  }
+
+  const query = focusedOption.value.trim().toLowerCase();
+  const registeredAccounts = getAllRegisteredHotSAccounts();
+
+  let filtered = registeredAccounts;
+  if (query.length > 0) {
+    filtered = registeredAccounts.filter(acc => {
+      const tag = acc.hotsBattleTag.toLowerCase();
+      const tagPrefix = tag.split('#')[0];
+      const realId = acc.realIdName?.toLowerCase() ?? '';
+      const discordDisplayName = acc.discordDisplayName.toLowerCase();
+      const discordName = acc.discordName?.toLowerCase() ?? '';
+
+      return (
+        tag.startsWith(query) ||
+        tagPrefix === query ||
+        tag.includes(query) ||
+        realId.includes(query) ||
+        discordDisplayName.includes(query) ||
+        discordName.includes(query)
+      );
+    });
+
+    filtered.sort((a, b) => {
+      const aTag = a.hotsBattleTag.toLowerCase();
+      const bTag = b.hotsBattleTag.toLowerCase();
+      const aPrefix = aTag.split('#')[0];
+      const bPrefix = bTag.split('#')[0];
+
+      const aStarts = aPrefix.startsWith(query) || aTag.startsWith(query);
+      const bStarts = bPrefix.startsWith(query) || bTag.startsWith(query);
+      if (aStarts && !bStarts) return -1;
+      if (!aStarts && bStarts) return 1;
+
+      return aTag.localeCompare(bTag);
+    });
+  }
+
+  const choices = filtered.slice(0, 25).map(acc => {
+    const realIdStr = acc.realIdName ? ` [${acc.realIdName}]` : '';
+    const discordStr = `@${acc.discordDisplayName}`;
+    const label = `${acc.hotsBattleTag}${realIdStr} (${discordStr})`.slice(0, 100);
+    return {
+      name: label,
+      value: acc.hotsBattleTag,
+    };
+  });
+
+  await interaction.respond(choices);
+}
+
 export async function handleLookupCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ) {
@@ -2680,27 +2739,130 @@ export async function handleLookupCommand(
   }
   const guildId = await requireGuildId(interaction);
   if (!guildId) return;
+
   const member = interaction.options.getMember(CommandIds.DISCORD_ID);
-  if (!member || 'user' in member === false) {
-    const discordId = interaction.options.get(CommandIds.DISCORD_ID)?.value;
-    // check if it's a string of numbers
-    if (typeof discordId === 'string') {
-      const player = getPlayerByDiscordId(discordId, guildId); // look up the player in the database by discord id
-      if (player) {
-        const discordData = fetchDiscordNames(interaction, discordId);
-        return await handleLookupCommandSub(interaction, discordId, discordData, guildId);
-      }
+  const rawDiscordId = interaction.options.get(CommandIds.DISCORD_ID)?.value;
+  const hotsBattleTag = interaction.options.getString(CommandIds.BATTLE_TAG, false)?.trim();
+
+  // 1. If a Discord member was selected via option
+  if (member && 'user' in member) {
+    const discordId = member.user.id;
+    let discordData = fetchDiscordNames(interaction, discordId);
+    const player = getPlayerByDiscordId(discordId, guildId);
+    if (discordData.discordDisplayName === 'N/A' && player) {
+      discordData = {
+        discordName: player.usernames.discordName,
+        discordDisplayName: player.usernames.discordDisplayName,
+        discordGlobalName: player.usernames.discordGlobalName,
+      };
     }
-    await safeReply(interaction, {
-      content: 'Please provide a valid Discord member to look up.',
-      flags: MessageFlags.Ephemeral,
-    });
+    return await handleLookupCommandSub(interaction, discordId, discordData, guildId, true);
+  }
+
+  // 2. If a Discord ID string was typed
+  if (typeof rawDiscordId === 'string' && rawDiscordId.length > 0) {
+    const discordId = rawDiscordId.replace(/[<@>]/g, '');
+    const player = getPlayerByDiscordId(discordId, guildId);
+    if (player) {
+      let discordData = fetchDiscordNames(interaction, discordId);
+      if (discordData.discordDisplayName === 'N/A') {
+        discordData = {
+          discordName: player.usernames.discordName,
+          discordDisplayName: player.usernames.discordDisplayName,
+          discordGlobalName: player.usernames.discordGlobalName,
+        };
+      }
+      return await handleLookupCommandSub(interaction, discordId, discordData, guildId, true);
+    }
+    if (!hotsBattleTag) {
+      await safeReply(interaction, {
+        content: 'Please provide a valid Discord member to look up.',
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+  }
+
+  // 3. If HotS BattleTag or account name was provided (without discord-id)
+  if (hotsBattleTag) {
+    const matches = findPlayersByHotSAccount(hotsBattleTag, guildId);
+
+    if (matches.length === 0) {
+      await safeReply(interaction, {
+        content: `❌ No registered player found with HotS BattleTag or account name matching \`${hotsBattleTag}\`.`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    if (matches.length === 1) {
+      const { player, matchedAccounts } = matches[0];
+      const discordId = player.discordId;
+      let discordData = fetchDiscordNames(interaction, discordId);
+      if (discordData.discordDisplayName === 'N/A') {
+        discordData = {
+          discordName: player.usernames.discordName,
+          discordDisplayName: player.usernames.discordDisplayName,
+          discordGlobalName: player.usernames.discordGlobalName,
+        };
+      }
+      return await handleLookupCommandSub(
+        interaction,
+        discordId,
+        discordData,
+        guildId,
+        false,
+        matchedAccounts[0]?.hotsBattleTag,
+      );
+    }
+
+    // Multiple matches found: list all matched players
+    const publish = interaction.options.getString(CommandIds.PUBLISH) === 'true';
+    const list = matches
+      .map(({ player, matchedAccounts }) => {
+        const accountsStr =
+          player.usernames.accounts
+            ?.map(
+              a =>
+                `\`${a.hotsBattleTag}\`` +
+                (a.realIdName ? ` [Real ID: ${a.realIdName}]` : '') +
+                (a.isPrimary ? ' (Primary)' : ''),
+            )
+            .join(', ') || 'No HotS accounts';
+        const matchedTags = matchedAccounts
+          .map(a => `\`${a.hotsBattleTag}\`${a.realIdName ? ` [Real ID: ${a.realIdName}]` : ''}`)
+          .join(', ');
+        return (
+          `• <@${player.discordId}> (**${player.usernames.discordDisplayName}** | \`${player.usernames.discordName}\`)\n` +
+          `  Matched: ${matchedTags}\n` +
+          `  Accounts: ${accountsStr}\n` +
+          `  Highest MMR: **${player.mmr}** | Role: \`${getPlayerRolesFormatted(player.role)}\``
+        );
+      })
+      .join('\n\n');
+
+    const embed = new EmbedBuilder()
+      .setTitle(`HotS Lookup: Multiple Players Found for "${hotsBattleTag}"`)
+      .setColor(0x3498db)
+      .setDescription(`Found **${matches.length}** players matching **"${hotsBattleTag}"**:\n\n${list}`)
+      .setFooter({ text: 'Use /lookup with the Discord user or specific BattleTag to view full stats.' });
+
+    if (publish) {
+      await announce(interaction, { embeds: [embed] });
+    } else {
+      await safeReply(interaction, {
+        embeds: [embed],
+        flags: safePing(MessageFlags.Ephemeral),
+      });
+    }
     return;
   }
-  const discordId = member.user.id;
-  const discordData = fetchDiscordNames(interaction, discordId);
-  return await handleLookupCommandSub(interaction, discordId, discordData, guildId);
-  // return;
+
+  // 4. Neither option provided
+  await safeReply(interaction, {
+    content: 'Please provide either a Discord user (via `discord-id`) or a HotS BattleTag / account name (via `battle-tag`) to look up.',
+    flags: MessageFlags.Ephemeral,
+  });
 }
 
 async function handleLookupCommandSub(
@@ -2708,12 +2870,16 @@ async function handleLookupCommandSub(
   discordId: string,
   discordData: DiscordUserNames,
   guildId: string,
+  allowAccountMutation: boolean = true,
+  matchedHotSTag?: string,
 ) {
-  const hotsBattleTag = interaction.options.getString(CommandIds.BATTLE_TAG, false) ?? '';
+  const hotsBattleTag = matchedHotSTag ?? (interaction.options.getString(CommandIds.BATTLE_TAG, false) ?? '');
   const player = getPlayerByDiscordId(discordId, guildId);
   if (player || (!player && hotsBattleTag === '')) {
     const message = player
-      ? `${hotsBattleTag || 'Player'} found in the lobby with role: \`${getPlayerRolesFormatted(player.role)}\``
+      ? (matchedHotSTag
+        ? `Matched HotS account \`${matchedHotSTag}\` • ${player.active ? 'Active in lobby' : 'Registered player'} • Role: \`${getPlayerRolesFormatted(player.role)}\``
+        : `${hotsBattleTag || 'Player'} found with role: \`${getPlayerRolesFormatted(player.role)}\`${player.active ? ' (Active in lobby)' : ''}`)
       : `${hotsBattleTag || 'Player'} not found in the lobby, adding them with default role \`${getPlayerRolesFormatted(
         CommandIds.ROLE_FLEX,
       )}\`.`;
@@ -2959,6 +3125,9 @@ async function handleLookupCommandSub(
         flags: safePing(MessageFlags.Ephemeral),
       });
     }
+  }
+  if (!allowAccountMutation) {
+    return;
   }
   // save the player to the database if they are not already there
   if (!player) {
@@ -3389,9 +3558,8 @@ export async function handleAdminRealIdNameCommand(
 
     // View mode for single battleTag
     await safeReply(interaction, {
-      content: `• \`${account.hots_battle_tag}\` (${ownerInfo}): ${
-        account.real_id_name ? `**${account.real_id_name}**` : '*None*'
-      }`,
+      content: `• \`${account.hots_battle_tag}\` (${ownerInfo}): ${account.real_id_name ? `**${account.real_id_name}**` : '*None*'
+        }`,
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -3472,8 +3640,7 @@ export async function handleAdminRealIdNameCommand(
   const accountList = accounts
     .map(
       a =>
-        `• \`${a.hotsBattleTag}\`${a.isPrimary ? ' *(Primary)*' : ''}: ${
-          a.realIdName ? `**${a.realIdName}**` : '*None*'
+        `• \`${a.hotsBattleTag}\`${a.isPrimary ? ' *(Primary)*' : ''}: ${a.realIdName ? `**${a.realIdName}**` : '*None*'
         }`,
     )
     .join('\n');

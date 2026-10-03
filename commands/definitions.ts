@@ -431,19 +431,20 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
   },
   {
     name: CommandIds.LOOKUP,
-    description: "Import a player's Discord information",
+    description: "Look up a player's Discord information, HotS accounts, and stats",
     options: [
       {
         name: CommandIds.DISCORD_ID,
         type: ApplicationCommandOptionType.User,
-        description: 'The Discord ID of the player to lookup',
-        required: true,
+        description: 'The Discord user of the player to lookup',
+        required: false,
       },
       {
         name: CommandIds.BATTLE_TAG,
         type: ApplicationCommandOptionType.String,
-        description: 'The Heroes of the Storm battle tag of the player (including the # and number)',
+        description: 'HotS BattleTag or account name (e.g. Name#1234 or Name)',
         required: false,
+        autocomplete: true,
       },
       {
         name: CommandIds.RECENT_MATCHES_LIMIT,

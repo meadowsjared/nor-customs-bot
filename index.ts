@@ -57,6 +57,7 @@ import {
   handleMakeTeamsCommand,
   handleDraftCommand,
   handleDraftAutocomplete,
+  handleLookupAutocomplete,
   handleDraftCaptainCommand,
   handleDraftTeamAssignCommand,
   handleDraftModeCommand,
@@ -216,6 +217,10 @@ client.on('interactionCreate', async interaction => {
         interaction.commandName === CommandIds.DRAFT_TEAM_ASSIGN
       ) {
         await handleDraftAutocomplete(interaction);
+        return;
+      }
+      if (interaction.commandName === CommandIds.LOOKUP) {
+        await handleLookupAutocomplete(interaction);
         return;
       }
     }

@@ -290,6 +290,8 @@ export interface RegisteredPlayerAccount {
   discordId: string;
   hotsBattleTag: string;
   discordDisplayName: string;
+  discordName?: string;
+  discordGlobalName?: string;
   realIdName: string | null;
 }
 
@@ -298,10 +300,12 @@ export function getAllRegisteredHotSAccounts(): RegisteredPlayerAccount[] {
     discord_id: string;
     hots_battle_tag: string;
     discord_display_name: string;
+    discord_name: string;
+    discord_global_name: string;
     real_id_name: string | null;
   }
   const stmt = db.prepare<[], QueryRow>(`
-    SELECT ha.discord_id, ha.hots_battle_tag, ha.real_id_name, p.discord_display_name
+    SELECT ha.discord_id, ha.hots_battle_tag, ha.real_id_name, p.discord_display_name, p.discord_name, p.discord_global_name
     FROM hots_accounts ha
     JOIN players p ON ha.discord_id = p.discord_id
   `);
@@ -310,8 +314,112 @@ export function getAllRegisteredHotSAccounts(): RegisteredPlayerAccount[] {
     discordId: r.discord_id,
     hotsBattleTag: r.hots_battle_tag,
     discordDisplayName: r.discord_display_name,
+    discordName: r.discord_name,
+    discordGlobalName: r.discord_global_name,
     realIdName: r.real_id_name ?? null,
   }));
+}
+
+export interface HotSAccountMatch {
+  player: Player;
+  matchedAccounts: HotsAccount[];
+}
+
+export function findPlayersByHotSAccount(
+  query: string,
+  guildId: string,
+): HotSAccountMatch[] {
+  const trimmed = query.trim();
+  if (!trimmed) {
+    return [];
+  }
+
+  interface DiscordIdRow {
+    discord_id: string;
+  }
+
+  let discordIds: string[] = [];
+
+  if (trimmed.includes('#')) {
+    const exactStmt = db.prepare<[string], DiscordIdRow>(`
+      SELECT DISTINCT discord_id
+      FROM hots_accounts
+      WHERE hots_battle_tag = ? COLLATE NOCASE
+    `);
+    discordIds = exactStmt.all(trimmed).map(r => r.discord_id);
+
+    if (discordIds.length === 0) {
+      const prefixStmt = db.prepare<[string], DiscordIdRow>(`
+        SELECT DISTINCT discord_id
+        FROM hots_accounts
+        WHERE hots_battle_tag LIKE ? || '%' COLLATE NOCASE
+      `);
+      discordIds = prefixStmt.all(trimmed).map(r => r.discord_id);
+    }
+  } else {
+    // 1. Exact match on BattleTag prefix (before #), exact tag without #, or exact Real ID name
+    const exactPrefixStmt = db.prepare<[string, string, string], DiscordIdRow>(`
+      SELECT DISTINCT discord_id
+      FROM hots_accounts
+      WHERE hots_battle_tag LIKE ? || '#%' COLLATE NOCASE
+         OR hots_battle_tag = ? COLLATE NOCASE
+         OR real_id_name = ? COLLATE NOCASE
+    `);
+    discordIds = exactPrefixStmt.all(trimmed, trimmed, trimmed).map(r => r.discord_id);
+
+    // 2. If no exact match, try prefix match on BattleTag or Real ID
+    if (discordIds.length === 0) {
+      const prefixStmt = db.prepare<[string, string], DiscordIdRow>(`
+        SELECT DISTINCT discord_id
+        FROM hots_accounts
+        WHERE hots_battle_tag LIKE ? || '%' COLLATE NOCASE
+           OR real_id_name LIKE ? || '%' COLLATE NOCASE
+      `);
+      discordIds = prefixStmt.all(trimmed, trimmed).map(r => r.discord_id);
+    }
+
+    // 3. If still no match, try substring match
+    if (discordIds.length === 0) {
+      const partialStmt = db.prepare<[string, string], DiscordIdRow>(`
+        SELECT DISTINCT discord_id
+        FROM hots_accounts
+        WHERE hots_battle_tag LIKE '%' || ? || '%' COLLATE NOCASE
+           OR real_id_name LIKE '%' || ? || '%' COLLATE NOCASE
+      `);
+      discordIds = partialStmt.all(trimmed, trimmed).map(r => r.discord_id);
+    }
+  }
+
+  const results: HotSAccountMatch[] = [];
+  const qLower = trimmed.toLowerCase();
+
+  for (const discordId of discordIds) {
+    const player = getPlayerByDiscordId(discordId, guildId);
+    if (!player) continue;
+
+    const matchedAccounts = (player.usernames.accounts || []).filter(acc => {
+      const tagLower = acc.hotsBattleTag.toLowerCase();
+      const realLower = acc.realIdName?.toLowerCase();
+      if (trimmed.includes('#')) {
+        return tagLower === qLower || tagLower.startsWith(qLower);
+      }
+      const tagPrefix = tagLower.split('#')[0];
+      return (
+        tagPrefix === qLower ||
+        tagLower === qLower ||
+        realLower === qLower ||
+        tagLower.includes(qLower) ||
+        (realLower !== undefined && realLower !== null && realLower.includes(qLower))
+      );
+    });
+
+    results.push({
+      player,
+      matchedAccounts: matchedAccounts.length > 0 ? matchedAccounts : (player.usernames.accounts || []),
+    });
+  }
+
+  return results;
 }
 
 export function getAllPlayers(page: number, sort: 'mmr' | 'alphabetical', ascending: boolean): Player[] {
