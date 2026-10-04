@@ -132,8 +132,12 @@ function cleanOCRText(raw: string): string {
   let text = raw.replace(/[([<{].*?[\])}>]/g, ' ');
   // Strip trailing or isolated role/status keywords like Host, Captain, Capta, Caopta, Observer, Referee, Ref
   text = text.replace(/[[({|Il1]*\s*(host|captain|capta|caopta|observer|referee|ref)\s*[\])}|Il1]*/gi, ' ');
+  // Strip stray symbols often produced by lobby icons/party brackets/borders (e.g. «, », _, +, ~, *, ^, |, =)
+  text = text.replace(/[«»_+~*^|=#\\/\])}>]/g, ' ');
   // Strip non-alphanumeric chars at beginning and end
   text = text.replace(/^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$/g, '').trim();
+  // Strip isolated 1-2 character garbage tokens at the beginning if followed by a real word
+  text = text.replace(/^[a-zA-Z0-9]{1,2}\s+(?=[a-zA-Z0-9]{3,})/g, '');
   // Collapse whitespace
   text = text.replace(/\s+/g, ' ').trim();
   return text;
@@ -152,7 +156,7 @@ function findBestAccountMatch(
   ocrName: string,
   accounts: RegisteredPlayerAccount[],
 ): RegisteredPlayerAccount | undefined {
-  const normalizedOcr = ocrName.toLowerCase();
+  const normalizedOcr = ocrName.toLowerCase().trim();
 
   // 1. Exact match against BattleTag prefix or Real ID Name
   for (const acc of accounts) {
@@ -165,21 +169,41 @@ function findBestAccountMatch(
     }
   }
 
-  // 1b. Exact match against first word if multi-word OCR
-  const firstWord = normalizedOcr.split(/\s+/)[0];
-  if (firstWord && firstWord !== normalizedOcr) {
+  // 2. Extract alphanumeric word tokens (ignoring symbols and punctuation)
+  const tokens = normalizedOcr
+    .split(/[^a-z0-9]+/i)
+    .filter(t => t.length > 0);
+
+  // 2a. Exact match against individual tokens (prefer longer tokens first)
+  const sortedTokens = [...tokens].sort((a, b) => b.length - a.length);
+  for (const token of sortedTokens) {
+    if (token.length < 3) continue;
     for (const acc of accounts) {
       const prefix = acc.hotsBattleTag.split('#')[0].toLowerCase();
-      if (prefix === firstWord) {
+      if (prefix === token) {
         return acc;
       }
-      if (acc.realIdName && acc.realIdName.trim().toLowerCase() === firstWord) {
+      if (acc.realIdName && acc.realIdName.trim().toLowerCase() === token) {
         return acc;
       }
     }
   }
 
-  // 2. Fuzzy match using Levenshtein distance
+  // 2b. Check if any account's prefix or real ID name is contained as a whole token or substring
+  for (const acc of accounts) {
+    const prefix = acc.hotsBattleTag.split('#')[0].toLowerCase();
+    if (prefix.length >= 3 && tokens.includes(prefix)) {
+      return acc;
+    }
+    if (acc.realIdName) {
+      const realIdNorm = acc.realIdName.trim().toLowerCase();
+      if (realIdNorm.length >= 3 && (normalizedOcr.includes(realIdNorm) || tokens.includes(realIdNorm))) {
+        return acc;
+      }
+    }
+  }
+
+  // 3. Fuzzy match using Levenshtein distance against full string
   let bestMatch: RegisteredPlayerAccount | undefined = undefined;
   let minDistance = 999;
   const maxAllowedDistance = ocrName.length <= 5 ? 1 : 2;
@@ -203,27 +227,29 @@ function findBestAccountMatch(
     }
   }
 
-  // 2b. Fuzzy match against first word if multi-word OCR
-  if (!bestMatch && firstWord && firstWord !== normalizedOcr && firstWord.length >= 3) {
-    const firstWordMaxDist = firstWord.length <= 5 ? 1 : 2;
+  if (bestMatch) return bestMatch;
+
+  // 4. Fuzzy match against individual tokens (length >= 3)
+  for (const token of sortedTokens) {
+    if (token.length < 3) continue;
+    const tokenMaxDist = token.length <= 5 ? 1 : 2;
     for (const acc of accounts) {
       const prefix = acc.hotsBattleTag.split('#')[0].toLowerCase();
-      const dist = levenshteinDistance(firstWord, prefix);
-      if (dist <= firstWordMaxDist && dist < minDistance) {
+      const dist = levenshteinDistance(token, prefix);
+      if (dist <= tokenMaxDist && dist < minDistance) {
         minDistance = dist;
         bestMatch = acc;
       }
       if (acc.realIdName) {
-        const realIdFirstWord = acc.realIdName.trim().toLowerCase().split(/\s+/)[0];
-        if (realIdFirstWord && realIdFirstWord.length >= 3) {
-          const rDist = levenshteinDistance(firstWord, realIdFirstWord);
-          if (rDist <= firstWordMaxDist && rDist < minDistance) {
-            minDistance = rDist;
-            bestMatch = acc;
-          }
+        const realIdNorm = acc.realIdName.trim().toLowerCase();
+        const rDist = levenshteinDistance(token, realIdNorm);
+        if (rDist <= tokenMaxDist && rDist < minDistance) {
+          minDistance = rDist;
+          bestMatch = acc;
         }
       }
     }
+    if (bestMatch) return bestMatch;
   }
 
   return bestMatch;
