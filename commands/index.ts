@@ -2829,7 +2829,7 @@ export async function handleLookupCommand(
             )
             .join(', ') || 'No HotS accounts';
         const matchedTags = matchedAccounts
-          .map(a => `\`${a.hotsBattleTag}\`${a.realIdName ? ` [Real ID: ${a.realIdName}]` : ''}`)
+          .map(a => `\`${a.hotsBattleTag}\`${a.realIdName}`)
           .join(', ');
         return (
           `• <@${player.discordId}> (**${player.usernames.discordDisplayName}** | \`${player.usernames.discordName}\`)\n` +
