@@ -2824,12 +2824,11 @@ export async function handleLookupCommand(
             ?.map(
               a =>
                 `\`${a.hotsBattleTag}\`` +
-                (a.realIdName ? ` [Real ID: ${a.realIdName}]` : '') +
                 (a.isPrimary ? ' (Primary)' : ''),
             )
             .join(', ') || 'No HotS accounts';
         const matchedTags = matchedAccounts
-          .map(a => `\`${a.hotsBattleTag}\`${a.realIdName}`)
+          .map(a => `\`${a.hotsBattleTag}\``)
           .join(', ');
         return (
           `• <@${player.discordId}> (**${player.usernames.discordDisplayName}** | \`${player.usernames.discordName}\`)\n` +
@@ -2894,8 +2893,7 @@ async function handleLookupCommandSub(
         ?.map(
           (a, index) =>
             `${index + 1}. ${Math.max(a.hpSlMMR || 0, a.hpArMMR || 0, a.hpQmMMR || 0)} ${a.hotsBattleTag}` +
-            (a.isPrimary ? ' (Primary)' : '') +
-            (a.realIdName ? ` [Real ID: ${a.realIdName}]` : ''),
+            (a.isPrimary ? ' (Primary)' : ''),
         )
         .join('\n') || 'No HotS accounts';
 
