@@ -72,6 +72,8 @@ import {
   getTeams,
   setPlayerAdjustment,
   getPlayerMMR,
+  getPlayerRolesFormatted,
+  formatPlayerDisplay,
   setHotsAccountRealIdName,
   getHotsAccountByBattleTag,
   findPlayersByHotSAccount,
@@ -1544,31 +1546,16 @@ async function generateTeamsMessage(
   team1.sort((a, b) => (b.mmr ?? getPlayerMMR(b)) - (a.mmr ?? getPlayerMMR(a)));
   team2.sort((a, b) => (b.mmr ?? getPlayerMMR(b)) - (a.mmr ?? getPlayerMMR(a)));
   const team1List = team1
-    .map(
-      p =>
-        `\`${p.lobbyRank + 1}: ${p.mmr}\` ${`<@${p.discordId}>`} ${p.usernames.accounts
-          ?.find(account => account.isPrimary)
-          ?.hotsBattleTag.replace(/#.*$/, '')} \`${getPlayerRolesFormatted(p.role)}\``,
-    )
+    .map(p => formatPlayerDisplay(p, { includeBattleTag: true, includeRole: true }))
     .join('\n');
   const team2List = team2
-    .map(
-      p =>
-        `\`${p.lobbyRank + 1}: ${p.mmr}\` ${`<@${p.discordId}>`} ${p.usernames.accounts
-          ?.find(account => account.isPrimary)
-          ?.hotsBattleTag.replace(/#.*$/, '')} \`${getPlayerRolesFormatted(p.role)}\``,
-    )
+    .map(p => formatPlayerDisplay(p, { includeBattleTag: true, includeRole: true }))
     .join('\n');
   const spectators = activePlayers.filter(
     p => team1.every(t => t.discordId !== p.discordId) && team2.every(t => t.discordId !== p.discordId),
   );
   const spectatorList = spectators
-    .map(
-      p =>
-        `\`${p.lobbyRank + 1}: ${p.mmr}\` ${`<@${p.discordId}>`} ${p.usernames.accounts
-          ?.find(account => account.isPrimary)
-          ?.hotsBattleTag.replace(/#.*$/, '')}`,
-    )
+    .map(p => formatPlayerDisplay(p, { includeBattleTag: true }))
     .join('\n');
 
   const team1lengthMessage = team1.length === 5 ? '' : ` (${team1.length} players)`;
@@ -1884,39 +1871,44 @@ export async function handleCheckTeamsCommand(
     const scanSummary = await scanLobbyScreenshot(imageBuffer, guildId, false);
 
     // Bot's stored teams
-    const { team1, team2 } = getTeams(guildId);
-    const botTeam1Ids = team1.map(p => p.discordId);
-    const botTeam2Ids = team2.map(p => p.discordId);
+    const activePlayers = getSortedActivePlayers(guildId);
+    activePlayers.forEach((p, index) => {
+      p.lobbyRank = index;
+    });
+    const { team1, team2 } = getTeams(guildId, activePlayers);
 
     const lobbyTeam1Ids = scanSummary.team1DiscordIds ?? [];
     const lobbyTeam2Ids = scanSummary.team2DiscordIds ?? [];
 
     // Determine mismatches
-    const mismatchedInTeam1 = botTeam1Ids.filter(id => !lobbyTeam1Ids.includes(id));
-    const mismatchedInTeam2 = botTeam2Ids.filter(id => !lobbyTeam2Ids.includes(id));
+    const mismatchedInTeam1 = team1.filter(p => !lobbyTeam1Ids.includes(p.discordId));
+    const mismatchedInTeam2 = team2.filter(p => !lobbyTeam2Ids.includes(p.discordId));
 
     // Players that are on the opposite side in the screenshot
-    const oppositeInTeam1 = lobbyTeam1Ids.filter(id => botTeam2Ids.includes(id));
-    const oppositeInTeam2 = lobbyTeam2Ids.filter(id => botTeam1Ids.includes(id));
+    const team1InLobbyTeam2 = team1.filter(p => lobbyTeam2Ids.includes(p.discordId));
+    const team2InLobbyTeam1 = team2.filter(p => lobbyTeam1Ids.includes(p.discordId));
 
     // Build swap suggestions
     const swaps: string[] = [];
-    const minSwaps = Math.min(oppositeInTeam1.length, oppositeInTeam2.length);
+    const minSwaps = Math.min(team1InLobbyTeam2.length, team2InLobbyTeam1.length);
     for (let i = 0; i < minSwaps; i++) {
-      swaps.push(`Swap <@${oppositeInTeam2[i]}> ↔ <@${oppositeInTeam1[i]}>`);
+      swaps.push(`Swap ${formatPlayerDisplay(team1InLobbyTeam2[i])} ↔ ${formatPlayerDisplay(team2InLobbyTeam1[i])}`);
     }
 
     const moves: string[] = [];
-    for (let i = minSwaps; i < oppositeInTeam1.length; i++) {
-      moves.push(`Move <@${oppositeInTeam1[i]}> to Team 2`);
+    for (let i = minSwaps; i < team2InLobbyTeam1.length; i++) {
+      moves.push(`Move ${formatPlayerDisplay(team2InLobbyTeam1[i])} to Team 2`);
     }
-    for (let i = minSwaps; i < oppositeInTeam2.length; i++) {
-      moves.push(`Move <@${oppositeInTeam2[i]}> to Team 1`);
+    for (let i = minSwaps; i < team1InLobbyTeam2.length; i++) {
+      moves.push(`Move ${formatPlayerDisplay(team1InLobbyTeam2[i])} to Team 1`);
     }
 
     // Missing or extra players
-    const missingFromLobby = botTeam1Ids.concat(botTeam2Ids).filter(id => !lobbyTeam1Ids.includes(id) && !lobbyTeam2Ids.includes(id));
-    const extraInLobby = lobbyTeam1Ids.concat(lobbyTeam2Ids).filter(id => !botTeam1Ids.includes(id) && !botTeam2Ids.includes(id));
+    const missingFromLobby = [...team1, ...team2].filter(
+      p => !lobbyTeam1Ids.includes(p.discordId) && !lobbyTeam2Ids.includes(p.discordId),
+    );
+    const botPlayerIds = new Set([...team1, ...team2].map(p => p.discordId));
+    const extraInLobby = [...lobbyTeam1Ids, ...lobbyTeam2Ids].filter(id => !botPlayerIds.has(id));
     const unregisteredInLobby = scanSummary.unregistered ?? [];
 
     let reply = '';
@@ -1936,10 +1928,13 @@ export async function handleCheckTeamsCommand(
         reply += '**Suggested moves:**\n' + moves.map(m => `- ${m}`).join('\n') + '\n\n';
       }
       if (missingFromLobby.length > 0) {
-        reply += `**Missing from lobby:** ${missingFromLobby.map(id => `<@${id}>`).join(', ')}\n`;
+        reply += `**Missing from lobby:** ${missingFromLobby.map(p => formatPlayerDisplay(p)).join(', ')}\n`;
       }
       if (extraInLobby.length > 0) {
-        reply += `**Extra in lobby:** ${extraInLobby.map(id => `<@${id}>`).join(', ')}\n`;
+        reply += `**Extra in lobby:** ${extraInLobby.map(id => {
+          const p = getPlayerByDiscordId(id, guildId);
+          return p ? formatPlayerDisplay(p) : `<@${id}>`;
+        }).join(', ')}\n`;
       }
       if (unregisteredInLobby.length > 0) {
         reply += `**Unregistered in lobby:** ${unregisteredInLobby.map(name => `\`${name}\``).join(', ')}\n`;
@@ -4007,20 +4002,7 @@ async function showReplaceButtons(
   });
 }
 
-/**
- * gets the roles of the player as a pretty string
- * @param player The player object to get the roles from.
- * @returns A string of the player's roles, formatted as a list.
- */
-function getPlayerRolesFormatted(role?: string): string {
-  if (!role) {
-    return 'role not set';
-  }
-  return role
-    .split('')
-    .map(r => roleMap[r])
-    .join(', ');
-}
+
 
 export async function handleTwitchCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,

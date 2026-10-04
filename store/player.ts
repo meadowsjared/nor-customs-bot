@@ -13,7 +13,7 @@ import {
   ModalSubmitInteraction,
 } from 'discord.js';
 import { updateLobbyMessage } from '../commands';
-import { CommandIds } from '../constants';
+import { CommandIds, roleMap } from '../constants';
 import { getHeroesProfileData } from './heroesProfile';
 import { requireGuildId, safeReply, safeDeferUpdate } from '../utils/interaction';
 import { HOTS_ACCOUNTS_COLUMNS } from '../types/csvSpreadsheet';
@@ -1276,6 +1276,9 @@ export function getSortedActivePlayers(guildId: string, forceRefresh = false): P
   const cacheEntry = activePlayersCache.get(guildId);
   if (forceRefresh || !cacheEntry || Date.now() - cacheEntry.timestamp >= 5000) {
     const data = getActivePlayers(guildId).sort((a, b) => getPlayerMMR(b) - getPlayerMMR(a));
+    data.forEach((p, index) => {
+      p.lobbyRank = index;
+    });
     activePlayersCache.set(guildId, { data, timestamp: Date.now() });
     return data;
   }
@@ -1315,6 +1318,58 @@ export function getPlayerMMR(player: Player): number {
       0,
     ) ?? 0) + (player.adjustment ?? 0)
   );
+}
+
+/**
+ * Gets the roles of the player as a pretty string
+ * @param role The role string to format.
+ * @returns A string of the player's roles, formatted as a list.
+ */
+export function getPlayerRolesFormatted(role?: string): string {
+  if (!role) {
+    return 'role not set';
+  }
+  return role
+    .split('')
+    .map(r => roleMap[r])
+    .join(', ');
+}
+
+export interface FormatPlayerDisplayOptions {
+  includeBattleTag?: boolean;
+  includeRole?: boolean;
+}
+
+/**
+ * Formats a player's display representation (e.g. `1: 3167` <@123456789> Battletag `Assassin, Flex`).
+ * @param player The player to format.
+ * @param options Display options: whether to include BattleTag and roles.
+ * @returns The formatted string representation of the player.
+ */
+export function formatPlayerDisplay(
+  player: Player,
+  options: FormatPlayerDisplayOptions = {},
+): string {
+  const mmr = player.mmr ?? getPlayerMMR(player);
+  const rank =
+    player.lobbyRank !== undefined && !Number.isNaN(player.lobbyRank)
+      ? `${player.lobbyRank + 1}: ${mmr}`
+      : `${mmr}`;
+
+  let result = `\`${rank}\` <@${player.discordId}>`;
+
+  if (options.includeBattleTag) {
+    const primaryAccount = player.usernames.accounts?.find(account => account.isPrimary);
+    if (primaryAccount) {
+      result += ` ${primaryAccount.hotsBattleTag.replace(/#.*$/, '')}`;
+    }
+  }
+
+  if (options.includeRole) {
+    result += ` \`${getPlayerRolesFormatted(player.role)}\``;
+  }
+
+  return result;
 }
 
 export async function loadPlayerDataIntoSqlite() {
