@@ -721,6 +721,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
             description: 'The Heroes of the Storm battle tag (e.g. Name#1234).',
             type: ApplicationCommandOptionType.String,
             required: false,
+            autocomplete: true,
           },
           {
             name: CommandIds.DISCORD_ID,

@@ -219,7 +219,11 @@ client.on('interactionCreate', async interaction => {
         await handleDraftAutocomplete(interaction);
         return;
       }
-      if (interaction.commandName === CommandIds.LOOKUP) {
+      if (
+        interaction.commandName === CommandIds.LOOKUP ||
+        (interaction.commandName === CommandIds.ADMIN &&
+          interaction.options.getSubcommand(false) === CommandIds.REAL_ID_NAME)
+      ) {
         await handleLookupAutocomplete(interaction);
         return;
       }
