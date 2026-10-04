@@ -2718,9 +2718,8 @@ export async function handleLookupAutocomplete(interaction: AutocompleteInteract
   }
 
   const choices = filtered.slice(0, 25).map(acc => {
-    const realIdStr = acc.realIdName ? ` [${acc.realIdName}]` : '';
     const discordStr = `@${acc.discordDisplayName}`;
-    const label = `${acc.hotsBattleTag}${realIdStr} (${discordStr})`.slice(0, 100);
+    const label = `${acc.hotsBattleTag} (${discordStr})`.slice(0, 100);
     return {
       name: label,
       value: acc.hotsBattleTag,
