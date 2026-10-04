@@ -1901,36 +1901,39 @@ export async function handleCheckTeamsCommand(
 
     // Build swap suggestions
     const swaps: string[] = [];
-    const used = new Set<string>();
-    for (const idA of mismatchedInTeam1) {
-      if (used.has(idA)) continue;
-      const partner = oppositeInTeam2.find(id => !used.has(id));
-      if (partner) {
-        swaps.push(`Swap <@${idA}> ↔ <@${partner}>`);
-        used.add(idA);
-        used.add(partner);
-      }
+    const minSwaps = Math.min(oppositeInTeam1.length, oppositeInTeam2.length);
+    for (let i = 0; i < minSwaps; i++) {
+      swaps.push(`Swap <@${oppositeInTeam2[i]}> ↔ <@${oppositeInTeam1[i]}>`);
     }
-    for (const idA of mismatchedInTeam2) {
-      if (used.has(idA)) continue;
-      const partner = oppositeInTeam1.find(id => !used.has(id));
-      if (partner) {
-        swaps.push(`Swap <@${idA}> ↔ <@${partner}>`);
-        used.add(idA);
-        used.add(partner);
-      }
+
+    const moves: string[] = [];
+    for (let i = minSwaps; i < oppositeInTeam1.length; i++) {
+      moves.push(`Move <@${oppositeInTeam1[i]}> to Team 2`);
+    }
+    for (let i = minSwaps; i < oppositeInTeam2.length; i++) {
+      moves.push(`Move <@${oppositeInTeam2[i]}> to Team 1`);
     }
 
     // Missing or extra players
     const missingFromLobby = botTeam1Ids.concat(botTeam2Ids).filter(id => !lobbyTeam1Ids.includes(id) && !lobbyTeam2Ids.includes(id));
     const extraInLobby = lobbyTeam1Ids.concat(lobbyTeam2Ids).filter(id => !botTeam1Ids.includes(id) && !botTeam2Ids.includes(id));
+    const unregisteredInLobby = scanSummary.unregistered ?? [];
 
     let reply = '';
-    if (mismatchedInTeam1.length === 0 && mismatchedInTeam2.length === 0 && missingFromLobby.length === 0 && extraInLobby.length === 0) {
+    if (
+      mismatchedInTeam1.length === 0 &&
+      mismatchedInTeam2.length === 0 &&
+      missingFromLobby.length === 0 &&
+      extraInLobby.length === 0 &&
+      unregisteredInLobby.length === 0
+    ) {
       reply = '✅ Teams match the lobby screenshot!';
     } else {
       if (swaps.length > 0) {
         reply += '**Suggested swaps:**\n' + swaps.map(s => `- ${s}`).join('\n') + '\n\n';
+      }
+      if (moves.length > 0) {
+        reply += '**Suggested moves:**\n' + moves.map(m => `- ${m}`).join('\n') + '\n\n';
       }
       if (missingFromLobby.length > 0) {
         reply += `**Missing from lobby:** ${missingFromLobby.map(id => `<@${id}>`).join(', ')}\n`;
@@ -1938,8 +1941,11 @@ export async function handleCheckTeamsCommand(
       if (extraInLobby.length > 0) {
         reply += `**Extra in lobby:** ${extraInLobby.map(id => `<@${id}>`).join(', ')}\n`;
       }
+      if (unregisteredInLobby.length > 0) {
+        reply += `**Unregistered in lobby:** ${unregisteredInLobby.map(name => `\`${name}\``).join(', ')}\n`;
+      }
     }
-    await interaction.editReply({ content: reply });
+    await interaction.editReply({ content: reply.trim() });
   } catch (error) {
     console.error('Error in check_teams command:', error);
     await interaction.editReply({
