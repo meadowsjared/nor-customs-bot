@@ -2,6 +2,7 @@ import dotenv from 'dotenv';
 import fs from 'fs';
 import {
   ActionRowBuilder,
+  Attachment,
   AutocompleteInteraction,
   ButtonBuilder,
   ButtonComponent,
@@ -190,42 +191,51 @@ export async function handleNewGameCommand(
   const guildId = await requireGuildId(interaction);
   if (!guildId) return;
 
+  const botChannel = await getBotChannel(interaction.guild);
+  const isBotChannel = botChannel ? interaction.channelId === botChannel.id : false;
+
+  const screenshot = interaction.isChatInputCommand()
+    ? interaction.options.getAttachment(CommandIds.SCREENSHOT)
+    : null;
+  const sync = interaction.isChatInputCommand()
+    ? (interaction.options.getBoolean(CommandIds.SYNC) ?? false)
+    : false;
+
+  if (screenshot) {
+    if (isBotChannel) {
+      await interaction.deferReply();
+    } else {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    }
+  }
+
   /**
    * Array of discord IDs of the players that were active before starting the new game
    */
   const previousPlayersList = generatePreviousPlayersList(guildId);
   markAllPlayersInactive(guildId);
 
-  let scanSummary: ScanLobbySummary | undefined;
-  if (interaction.isChatInputCommand()) {
-    const screenshot = interaction.options.getAttachment(CommandIds.SCREENSHOT);
-    const sync = interaction.options.getBoolean(CommandIds.SYNC) ?? false;
-    if (screenshot) {
-      try {
-        const response = await fetch(screenshot.url);
-        const arrayBuffer = await response.arrayBuffer();
-        const imageBuffer = Buffer.from(arrayBuffer);
-        scanSummary = await scanLobbyScreenshot(imageBuffer, guildId, sync);
-      } catch (err) {
-        console.error('Failed to scan lobby screenshot in /new-game:', err);
-      }
-    }
-  }
-
   // Generate the initial lobby status message
   const previousPlayersMessage = generatePreviousPlayersMessage(previousPlayersList);
   const lobbyStatusMessage = generateLobbyStatusMessage(guildId, previousPlayersMessage);
 
-  const botChannel = await getBotChannel(interaction.guild);
   let sentMessage: Message<boolean> | undefined;
 
-  if (botChannel && interaction.channelId === botChannel.id) {
-    await interaction.reply({
-      content: lobbyStatusMessage,
-      flags: safePing(undefined),
-      components: [new ActionRowBuilder<ButtonBuilder>().addComponents(imPlayingBtn)],
-    });
-    sentMessage = await interaction.fetchReply();
+  if (isBotChannel) {
+    if (screenshot) {
+      await interaction.editReply({
+        content: lobbyStatusMessage,
+        components: [new ActionRowBuilder<ButtonBuilder>().addComponents(imPlayingBtn)],
+      });
+      sentMessage = await interaction.fetchReply();
+    } else {
+      await interaction.reply({
+        content: lobbyStatusMessage,
+        flags: safePing(undefined),
+        components: [new ActionRowBuilder<ButtonBuilder>().addComponents(imPlayingBtn)],
+      });
+      sentMessage = await interaction.fetchReply();
+    }
   } else {
     sentMessage = await announce(interaction, {
       content: lobbyStatusMessage,
@@ -245,19 +255,29 @@ export async function handleNewGameCommand(
     );
   }
 
-  // Send the admin buttons via followUp (or reply if run outside bot channel)
+  // Send the admin buttons via followUp (or reply if run outside bot channel without defer)
   if (adminUserIds.includes(interaction.user.id)) {
-    const isFollowUp = botChannel ? interaction.channelId === botChannel.id : false;
+    const isFollowUp = screenshot ? true : isBotChannel;
     await updateAdminActiveButtons(interaction, previousPlayersList, true, isFollowUp);
+  } else if (!isBotChannel && screenshot) {
+    await interaction.editReply({
+      content: 'A new game has been started in the bot channel.',
+    });
   }
 
-  if (scanSummary) {
-    const report = formatScanSummaryMessage(scanSummary);
-    await interaction.followUp({
-      content: report,
-      flags: MessageFlags.Ephemeral,
-    });
-    await applyTeamsFromScan(interaction, guildId, scanSummary);
+  if (screenshot) {
+    try {
+      await processAndApplyLobbyScan(interaction, guildId, screenshot, sync, {
+        updateLobby: true,
+        reportAsFollowUp: isBotChannel,
+      });
+    } catch (scanErr) {
+      console.error('Failed to scan lobby screenshot in /new_game:', scanErr);
+      await interaction.followUp({
+        content: '❌ Failed to scan lobby screenshot. Please ensure it is a clear in-game screenshot of the custom game lobby.',
+        flags: MessageFlags.Ephemeral,
+      });
+    }
   }
 }
 
@@ -362,6 +382,47 @@ async function applyTeamsFromScan(
   await generateTeamsMessage(interaction, team1, team2, false, true);
 }
 
+export async function processAndApplyLobbyScan(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+  guildId: string,
+  screenshot: Attachment,
+  sync = false,
+  options?: {
+    updateLobby?: boolean;
+    reportAsFollowUp?: boolean;
+  },
+): Promise<ScanLobbySummary> {
+  const response = await fetch(screenshot.url);
+  const arrayBuffer = await response.arrayBuffer();
+  const imageBuffer = Buffer.from(arrayBuffer);
+  const summary = await scanLobbyScreenshot(imageBuffer, guildId, sync);
+
+  if (options?.updateLobby) {
+    await updateLobbyMessage(guildId, interaction);
+  }
+
+  const report = formatScanSummaryMessage(summary);
+  if (options?.reportAsFollowUp || interaction.replied) {
+    await interaction.followUp({
+      content: report,
+      flags: MessageFlags.Ephemeral,
+    });
+  } else if (interaction.deferred) {
+    await interaction.editReply({
+      content: report,
+    });
+  } else {
+    await safeReply(interaction, {
+      content: report,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  await applyTeamsFromScan(interaction, guildId, summary);
+
+  return summary;
+}
+
 export async function handleScanLobbyCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ) {
@@ -384,18 +445,10 @@ export async function handleScanLobbyCommand(
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   try {
-    const response = await fetch(screenshot.url);
-    const arrayBuffer = await response.arrayBuffer();
-    const imageBuffer = Buffer.from(arrayBuffer);
-    const summary = await scanLobbyScreenshot(imageBuffer, guildId, sync);
-
-    await updateLobbyMessage(guildId, interaction);
-
-    const report = formatScanSummaryMessage(summary);
-    await interaction.editReply({
-      content: report,
+    await processAndApplyLobbyScan(interaction, guildId, screenshot, sync, {
+      updateLobby: true,
+      reportAsFollowUp: false,
     });
-    await applyTeamsFromScan(interaction, guildId, summary);
   } catch (error) {
     console.error('Error scanning lobby screenshot:', error);
     await interaction.editReply({
