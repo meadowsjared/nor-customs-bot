@@ -2667,7 +2667,7 @@ ${validationResult.rules}
   const discordData = fetchDiscordNames(modalInteraction);
   const player = getPlayerByDiscordId(modalInteraction.user.id, guildId);
   if (!player) {
-    savePlayer(
+    await savePlayer(
       interaction,
       modalInteraction.user.id,
       {
@@ -2682,10 +2682,11 @@ ${validationResult.rules}
         lastActive: new Date(),
       },
       hotsBattleTag,
-    ); // Save player data to the database with default role Flex
+    );
     hpCalled = true;
   }
-  if (!player?.role) {
+  const currentPlayer = player ?? getPlayerByDiscordId(modalInteraction.user.id, guildId);
+  if (!currentPlayer?.role) {
     // only show the edit role buttons if the player doesn't have a role yet
     await handleEditRoleCommand(modalInteraction, true, hotsBattleTag); // Show the edit role buttons
     roleSelectMenuDisplayed = true;
@@ -2961,9 +2962,7 @@ async function handleLookupCommandSub(
       ? (matchedHotSTag
         ? `Matched HotS account \`${matchedHotSTag}\` • ${player.active ? 'Active in lobby' : 'Registered player'} • Role: \`${getPlayerRolesFormatted(player.role)}\``
         : `${hotsBattleTag || 'Player'} found with role: \`${getPlayerRolesFormatted(player.role)}\`${player.active ? ' (Active in lobby)' : ''}`)
-      : `${hotsBattleTag || 'Player'} not found in the lobby, adding them with default role \`${getPlayerRolesFormatted(
-        CommandIds.ROLE_FLEX,
-      )}\`.`;
+      : `${hotsBattleTag || 'Player'} not found in the lobby, adding them to the database.`;
     // show the player's hots_accounts.hotsBattleTag
     const hotsAccounts =
       player?.usernames.accounts?.sort((a, b) => {
