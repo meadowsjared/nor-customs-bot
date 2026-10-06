@@ -614,8 +614,9 @@ ${validationResult.rules}
       }
     }
     if (hotsAccountAlreadyExists) {
+      const reasonText = profileData.detectedRolesReason ? `\n(${profileData.detectedRolesReason})` : '';
       const roleText = profileData.detectedRoles && player.role === profileData.detectedRoles
-        ? `\nAuto-populated role: ${getPlayerRolesFormatted(player.role)}`
+        ? `\nAuto-populated role: ${getPlayerRolesFormatted(player.role)}${reasonText}`
         : '';
       const content = `${userIsSelf ? 'You' : '<@' + discordId + '>'} already ${userIsSelf ? 'have' : 'has'
         } this HotS account linked: \`${hotsBattleTag}\`\n\nHowever, ${userIsSelf ? 'your' : '<@' + discordId + '>' + "'s"
@@ -631,8 +632,9 @@ ${validationResult.rules}
         });
       }
     } else {
+      const reasonText = profileData.detectedRolesReason ? `\n(${profileData.detectedRolesReason})` : '';
       const roleText = profileData.detectedRoles && player.role === profileData.detectedRoles
-        ? `\nAuto-populated role: ${getPlayerRolesFormatted(player.role)}`
+        ? `\nAuto-populated role: ${getPlayerRolesFormatted(player.role)}${reasonText}`
         : '';
       await safeReply(interaction, {
         content: `${discordId === interaction?.user.id ? 'Your' : '<@' + discordId + ">'s"

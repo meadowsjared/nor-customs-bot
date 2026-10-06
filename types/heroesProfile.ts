@@ -8,6 +8,7 @@ export interface HPData {
   region: number;
   blizz_id: string;
   detectedRoles?: string;
+  detectedRolesReason?: string;
 }
 
 interface HPLatestMap {

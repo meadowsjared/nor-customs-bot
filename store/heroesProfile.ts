@@ -82,7 +82,9 @@ export async function getHeroesProfileData(battleTag: string): Promise<HPData | 
       blizz_id,
     );
 
-    const detectedRoles = determineFavoriteRoles(hpDataReturned);
+    const detectionResult = determineFavoriteRoles(hpDataReturned);
+    const detectedRoles = detectionResult?.roles;
+    const detectedRolesReason = detectionResult?.reason;
 
     const hpData: HPData = {
       region,
@@ -94,12 +96,13 @@ export async function getHeroesProfileData(battleTag: string): Promise<HPData | 
       slGames: (hpDataReturned.sl_mmr_data?.win ?? 0) + (hpDataReturned.sl_mmr_data?.loss ?? 0),
       arGames: (hpDataReturned.ar_mmr_data?.win ?? 0) + (hpDataReturned.ar_mmr_data?.loss ?? 0),
       detectedRoles,
+      detectedRolesReason,
     };
 
     const endTime = Date.now();
     const elapsedTime = (endTime - startTime) / 1000;
     console.log(
-      `qm: ${hpData.qmMmr}/${hpData.qmGames}, sl: ${hpData.slMmr}/${hpData.slGames}, ar: ${hpData.arMmr}/${hpData.arGames}, detectedRoles: ${detectedRoles}`,
+      `qm: ${hpData.qmMmr}/${hpData.qmGames}, sl: ${hpData.slMmr}/${hpData.slGames}, ar: ${hpData.arMmr}/${hpData.arGames}, detectedRoles: ${detectedRoles} (${detectedRolesReason})`,
     );
     console.log(`Elapsed time: ${elapsedTime.toFixed(2)} seconds`);
     return hpData;
@@ -125,12 +128,17 @@ export function mapHotSRoleToBotRole(roleOrNewRole?: string | null): 'T' | 'B' |
   return 'A';
 }
 
+export interface DetectedRolesResult {
+  roles: string;
+  reason: string;
+}
+
 /**
  * Determines favorite roles from Heroes Profile player data based on last 15-20 matches.
  * Uses top played / latest heroes as fallbacks or tiebreakers.
- * Returns a concatenated string of top qualifying roles (e.g. "AT", "A", "TAB").
+ * Returns a concatenated string of top qualifying roles (e.g. "AT", "A", "TAB") and a descriptive reason.
  */
-export function determineFavoriteRoles(hpData: HPPlayerStatsData): string | undefined {
+export function determineFavoriteRoles(hpData: HPPlayerStatsData): DetectedRolesResult | undefined {
   const counts: Record<'T' | 'B' | 'H' | 'A', number> = {
     T: 0,
     B: 0,
@@ -139,7 +147,8 @@ export function determineFavoriteRoles(hpData: HPPlayerStatsData): string | unde
   };
 
   // 1. Primary source: matchData (last 15-20 matches)
-  if (Array.isArray(hpData.matchData) && hpData.matchData.length > 0) {
+  const hasMatchData = Array.isArray(hpData.matchData) && hpData.matchData.length > 0;
+  if (hasMatchData) {
     for (const match of hpData.matchData) {
       const roleStr = match.hero?.new_role || match.hero?.role;
       const botRole = mapHotSRoleToBotRole(roleStr);
@@ -206,7 +215,14 @@ export function determineFavoriteRoles(hpData: HPPlayerStatsData): string | unde
     .filter(([_, count]) => count > 0 && count >= 0.5 * topCount)
     .map(([role]) => role);
 
-  return qualifyingRoles.join('');
+  const reason = hasMatchData
+    ? `Recent matches: ${entries.map(([role, count]) => `${role}: ${count}`).join(', ')}`
+    : `Most played heroes: ${entries.filter(([_, count]) => count > 0).map(([role, count]) => `${role}: ${count}`).join(', ')}`;
+
+  return {
+    roles: qualifyingRoles.join(''),
+    reason,
+  };
 }
 
 /**
