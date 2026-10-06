@@ -3991,6 +3991,7 @@ async function showAddButtons(
     // If the role is specified and does not exist in the player's roles, add it
     const newRoles = (player.role ?? '') + role; // Append the new role
     setPlayerRole(discordId, guildId, newRoles); // Update the player's role in the database
+    player.role = newRoles;
     roles = ', current role: ' + getPlayerRolesFormatted(newRoles);
   }
   await safeUpdate(interaction, {
@@ -4025,6 +4026,7 @@ async function showRemoveButtons(
       .filter(r => r !== role)
       .join('');
     setPlayerRole(discordId, guildId, newRoles); // Update the player's role in the database
+    player.role = newRoles || undefined;
     roles = ', current role: ' + getPlayerRolesFormatted(newRoles);
   }
   await safeUpdate(interaction, {
@@ -4054,6 +4056,7 @@ async function showReplaceButtons(
 ) {
   if (role) {
     setPlayerRole(discordId, guildId, role);
+    player.role = role;
     roles = ', current role: ' + getPlayerRolesFormatted(role);
   }
   await safeUpdate(interaction, {

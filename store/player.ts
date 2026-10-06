@@ -946,17 +946,15 @@ export function getPlayerByDiscordId(discordId: string, guildId: string): Player
  * @param role The role to set for the player.
  * @returns Player object if the player was found and the role was set, false otherwise.
  */
-export function setPlayerRole(discordId: string, guildId: string, role: string | null): false | Player {
-  if (!role) {
-    return false; // Invalid role
-  }
+export function setPlayerRole(discordId: string, guildId: string, role: string | null | undefined): false | Player {
   const player = getPlayerByDiscordId(discordId, guildId);
   if (!player) {
     return false; // Player not found
   }
+  const roleToSet = role && role.trim() !== '' ? role : null;
   const stmt = db.prepare('UPDATE players SET role = ? WHERE discord_id = ?');
-  stmt.run(role, discordId);
-  player.role = role;
+  stmt.run(roleToSet, discordId);
+  player.role = roleToSet ?? undefined;
   return player;
 }
 
