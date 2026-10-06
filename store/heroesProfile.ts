@@ -27,7 +27,7 @@ export async function getHeroesProfileData(battleTag: string): Promise<HPData | 
   try {
     const startTime = Date.now();
     // first check if we have their region and blizz_id stored already
-    const hpRegionStmt = db.prepare<string, { HP_Blizz_ID: string; HP_Region: number }>(
+    const hpRegionStmt = db.prepare<string, { HP_Blizz_ID: string; HP_Region: number; }>(
       'SELECT HP_Blizz_ID, HP_Region FROM hots_accounts WHERE hots_battle_tag = ? COLLATE NOCASE',
     );
     const row = hpRegionStmt.get(battleTag);
@@ -82,6 +82,8 @@ export async function getHeroesProfileData(battleTag: string): Promise<HPData | 
       blizz_id,
     );
 
+    const detectedRoles = determineFavoriteRoles(hpDataReturned);
+
     const hpData: HPData = {
       region,
       blizz_id,
@@ -91,12 +93,13 @@ export async function getHeroesProfileData(battleTag: string): Promise<HPData | 
       qmGames: (hpDataReturned.qm_mmr_data?.win ?? 0) + (hpDataReturned.qm_mmr_data?.loss ?? 0),
       slGames: (hpDataReturned.sl_mmr_data?.win ?? 0) + (hpDataReturned.sl_mmr_data?.loss ?? 0),
       arGames: (hpDataReturned.ar_mmr_data?.win ?? 0) + (hpDataReturned.ar_mmr_data?.loss ?? 0),
+      detectedRoles,
     };
 
     const endTime = Date.now();
     const elapsedTime = (endTime - startTime) / 1000;
     console.log(
-      `qm: ${hpData.qmMmr}/${hpData.qmGames}, sl: ${hpData.slMmr}/${hpData.slGames}, ar: ${hpData.arMmr}/${hpData.arGames}`,
+      `qm: ${hpData.qmMmr}/${hpData.qmGames}, sl: ${hpData.slMmr}/${hpData.slGames}, ar: ${hpData.arMmr}/${hpData.arGames}, detectedRoles: ${detectedRoles}`,
     );
     console.log(`Elapsed time: ${elapsedTime.toFixed(2)} seconds`);
     return hpData;
@@ -104,9 +107,106 @@ export async function getHeroesProfileData(battleTag: string): Promise<HPData | 
     console.error('An error occurred:', error);
   } finally {
     if (browser) {
-      await browser.close().catch(() => {});
+      await browser.close().catch(() => { });
     }
   }
+}
+
+/**
+ * Maps HotS roles to bot role codes.
+ * HotS roles: Tank -> T, Bruiser -> B, Healer -> H, everything else (Melee/Ranged Assassin, Support, etc.) -> A
+ */
+export function mapHotSRoleToBotRole(roleOrNewRole?: string | null): 'T' | 'B' | 'H' | 'A' {
+  if (!roleOrNewRole) return 'A';
+  const normalized = roleOrNewRole.toLowerCase().trim();
+  if (normalized === 'tank') return 'T';
+  if (normalized === 'bruiser') return 'B';
+  if (normalized === 'healer') return 'H';
+  return 'A';
+}
+
+/**
+ * Determines favorite roles from Heroes Profile player data based on last 15-20 matches.
+ * Uses top played / latest heroes as fallbacks or tiebreakers.
+ * Returns a concatenated string of top qualifying roles (e.g. "AT", "A", "TAB").
+ */
+export function determineFavoriteRoles(hpData: HPPlayerStatsData): string | undefined {
+  const counts: Record<'T' | 'B' | 'H' | 'A', number> = {
+    T: 0,
+    B: 0,
+    H: 0,
+    A: 0,
+  };
+
+  // 1. Primary source: matchData (last 15-20 matches)
+  if (Array.isArray(hpData.matchData) && hpData.matchData.length > 0) {
+    for (const match of hpData.matchData) {
+      const roleStr = match.hero?.new_role || match.hero?.role;
+      const botRole = mapHotSRoleToBotRole(roleStr);
+      counts[botRole]++;
+    }
+  }
+
+  const totalMatches = counts.T + counts.B + counts.H + counts.A;
+
+  // 2. If no matchData available, fall back to latest or most played heroes
+  if (totalMatches === 0) {
+    const fallbackHeroes =
+      Array.isArray(hpData.heroes_three_latest_played) && hpData.heroes_three_latest_played.length > 0
+        ? hpData.heroes_three_latest_played
+        : Array.isArray(hpData.heroes_three_most_played) && hpData.heroes_three_most_played.length > 0
+          ? hpData.heroes_three_most_played
+          : [];
+
+    for (const item of fallbackHeroes) {
+      const roleStr = item.hero?.new_role || item.hero?.role;
+      const botRole = mapHotSRoleToBotRole(roleStr);
+      counts[botRole] += item.games_played || 1;
+    }
+  }
+
+  const total = counts.T + counts.B + counts.H + counts.A;
+  if (total === 0) {
+    return undefined;
+  }
+
+  const entries: [string, number][] = [
+    ['T', counts.T],
+    ['B', counts.B],
+    ['H', counts.H],
+    ['A', counts.A],
+  ];
+
+  entries.sort((a, b) => {
+    if (b[1] !== a[1]) {
+      return b[1] - a[1];
+    }
+    // Tiebreaker: check all-time most played heroes if available
+    if (Array.isArray(hpData.heroes_three_most_played)) {
+      const aGames = hpData.heroes_three_most_played
+        .filter(item => mapHotSRoleToBotRole(item.hero?.new_role || item.hero?.role) === a[0])
+        .reduce((sum, item) => sum + (item.games_played || 0), 0);
+      const bGames = hpData.heroes_three_most_played
+        .filter(item => mapHotSRoleToBotRole(item.hero?.new_role || item.hero?.role) === b[0])
+        .reduce((sum, item) => sum + (item.games_played || 0), 0);
+      if (bGames !== aGames) {
+        return bGames - aGames;
+      }
+    }
+    return 0;
+  });
+
+  const topCount = entries[0][1];
+  if (topCount === 0) {
+    return undefined;
+  }
+
+  // Include top role and any subsequent roles that have >= 50% of the top role's play count
+  const qualifyingRoles = entries
+    .filter(([_, count]) => count > 0 && count >= 0.5 * topCount)
+    .map(([role]) => role);
+
+  return qualifyingRoles.join('');
 }
 
 /**

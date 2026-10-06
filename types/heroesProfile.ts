@@ -7,6 +7,7 @@ export interface HPData {
   arGames: number | null;
   region: number;
   blizz_id: string;
+  detectedRoles?: string;
 }
 
 interface HPLatestMap {

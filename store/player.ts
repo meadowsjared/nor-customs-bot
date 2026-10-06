@@ -603,15 +603,23 @@ ${validationResult.rules}
       await handleAccountNotFound(interaction, discordId, hotsBattleTag);
       return false;
     }
-    if (interaction) {
-      const guildId = await requireGuildId(interaction);
-      if (!guildId) return false;
-      await updateLobbyMessage(guildId, interaction);
+    const guildId = interaction ? await requireGuildId(interaction) : 'global';
+    if (guildId) {
+      if (profileData.detectedRoles && !player.role) {
+        setPlayerRole(discordId, guildId, profileData.detectedRoles);
+        player.role = profileData.detectedRoles;
+      }
+      if (interaction) {
+        await updateLobbyMessage(guildId, interaction);
+      }
     }
     if (hotsAccountAlreadyExists) {
+      const roleText = profileData.detectedRoles && player.role === profileData.detectedRoles
+        ? `\nAuto-populated role: ${getPlayerRolesFormatted(player.role)}`
+        : '';
       const content = `${userIsSelf ? 'You' : '<@' + discordId + '>'} already ${userIsSelf ? 'have' : 'has'
         } this HotS account linked: \`${hotsBattleTag}\`\n\nHowever, ${userIsSelf ? 'your' : '<@' + discordId + '>' + "'s"
-        } Heroes profile data and BattleTag formatting have been updated.`;
+        } Heroes profile data and BattleTag formatting have been updated.${roleText}`;
       try {
         await interaction?.editReply({
           content,
@@ -623,9 +631,12 @@ ${validationResult.rules}
         });
       }
     } else {
+      const roleText = profileData.detectedRoles && player.role === profileData.detectedRoles
+        ? `\nAuto-populated role: ${getPlayerRolesFormatted(player.role)}`
+        : '';
       await safeReply(interaction, {
         content: `${discordId === interaction?.user.id ? 'Your' : '<@' + discordId + ">'s"
-          } HotS account has been added: \`${hotsBattleTag}\``,
+          } HotS account has been added: \`${hotsBattleTag}\`${roleText}`,
         flags: MessageFlags.Ephemeral,
       });
     }
