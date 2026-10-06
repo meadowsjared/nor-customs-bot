@@ -620,7 +620,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
       },
       {
         name: CommandIds.ACTIVE,
-        description: 'Change if a player is active.',
+        description: 'Change if a player is active in the lobby.',
         type: ApplicationCommandOptionType.Subcommand,
         options: [
           {
@@ -628,6 +628,13 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
             description: 'The user to modify.',
             type: ApplicationCommandOptionType.User,
             required: false,
+          },
+          {
+            name: CommandIds.BATTLE_TAG,
+            description: 'HotS BattleTag or account name',
+            type: ApplicationCommandOptionType.String,
+            required: false,
+            autocomplete: true,
           },
           {
             name: CommandIds.ACTIVE,

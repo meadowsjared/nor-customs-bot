@@ -4374,7 +4374,70 @@ export async function handleAdminSetActiveCommand(
     pDiscordId = pDiscordIdOrDiscordIdArray;
   }
 
-  const discordId = getMemberFromInteraction(interaction, guildId, pDiscordId);
+  let discordId: string | null = null;
+  let matchedBattleTag: string | undefined = undefined;
+
+  if (interaction.isChatInputCommand()) {
+    const targetDiscordId = extractDiscordIdFromInteraction(interaction, CommandIds.DISCORD_ID);
+    const battleTag = interaction.options.getString(CommandIds.BATTLE_TAG, false)?.trim();
+
+    if (battleTag) {
+      const matches = findPlayersByHotSAccount(battleTag, guildId);
+      if (matches.length === 0) {
+        await safeReply(interaction, {
+          content: `❌ No registered player found with HotS BattleTag or account name matching \`${battleTag}\`.`,
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      let matchedPlayer: Player | undefined = undefined;
+      if (targetDiscordId) {
+        const matchWithDiscordId = matches.find(m => m.player.discordId === targetDiscordId);
+        if (matchWithDiscordId) {
+          matchedPlayer = matchWithDiscordId.player;
+          matchedBattleTag = matchWithDiscordId.matchedAccounts[0]?.hotsBattleTag;
+        }
+      }
+
+      if (!matchedPlayer) {
+        if (matches.length === 1) {
+          matchedPlayer = matches[0].player;
+          matchedBattleTag = matches[0].matchedAccounts[0]?.hotsBattleTag;
+        } else {
+          const exactMatch = matches.find(m =>
+            m.matchedAccounts.some(a => a.hotsBattleTag.toLowerCase() === battleTag.toLowerCase()),
+          );
+          if (exactMatch) {
+            matchedPlayer = exactMatch.player;
+            matchedBattleTag = exactMatch.matchedAccounts.find(
+              a => a.hotsBattleTag.toLowerCase() === battleTag.toLowerCase(),
+            )?.hotsBattleTag;
+          } else {
+            const matchesSummary = matches
+              .slice(0, 10)
+              .map(m => `• <@${m.player.discordId}> (${m.matchedAccounts.map(a => `\`${a.hotsBattleTag}\``).join(', ')})`)
+              .join('\n');
+            await safeReply(interaction, {
+              content: `Multiple players matched \`${battleTag}\`. Please choose a specific BattleTag from autocomplete or specify the Discord user:\n${matchesSummary}`,
+              flags: MessageFlags.Ephemeral,
+            });
+            return;
+          }
+        }
+      }
+
+      discordId = matchedPlayer.discordId;
+    } else if (targetDiscordId) {
+      discordId = targetDiscordId;
+    }
+  } else if (pDiscordId) {
+    const player = getPlayerByDiscordId(pDiscordId, guildId);
+    if (player) {
+      discordId = pDiscordId;
+    }
+  }
+
   if (discordId === null) {
     await handleAdminShowPlayerActiveButtons(interaction, previousPlayersList);
     return;
@@ -4386,8 +4449,8 @@ export async function handleAdminSetActiveCommand(
     pActive = pActive ?? true; // Default to true if not provided
   }
   const isActive = getActiveFromInteraction(interaction, pActive); // Get the active status from the interaction or use the provided value
-  const id = discordId ?? pDiscordId;
-  const { player, updated } = setPlayerActive(id, isActive, guildId); // Set player as active in the database
+  const id = discordId;
+  const { player, updated } = setPlayerActive(id, isActive, guildId, matchedBattleTag); // Set player as active in the database
   if (!player) {
     await safeReply(interaction, {
       content: 'Player not found in the lobby. Please make sure they have joined first.',
@@ -4413,8 +4476,9 @@ export async function handleAdminSetActiveCommand(
       .setLabel('Admin Role')
       .setStyle(ButtonStyle.Secondary);
     if (!isAdminActiveButton) {
+      const tagText = matchedBattleTag ? ` (\`${matchedBattleTag}\`)` : '';
       await safeReply(interaction, {
-        content: `Set <@${id}>'s active status to \`${isActive ? CommandIds.ACTIVE : CommandIds.INACTIVE}\``,
+        content: `Set <@${id}>${tagText}'s active status to \`${isActive ? CommandIds.ACTIVE : CommandIds.INACTIVE}\``,
         flags: MessageFlags.Ephemeral,
         components: [
           new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -4430,8 +4494,10 @@ export async function handleAdminSetActiveCommand(
     if (isAdminActiveButton) {
       await updateLobbyMessage(guildId, interaction, previousPlayersList);
     } else {
+      const primaryTag = player.usernames.accounts?.find(a => a.isPrimary)?.hotsBattleTag;
+      const displayName = matchedBattleTag ?? primaryTag ?? player.usernames.discordDisplayName ?? id;
       await safeReply(interaction, {
-        content: `${player.usernames.accounts?.find(a => a.isPrimary)?.hotsBattleTag.replace(/#.*$/, '')} is already ${isActive ? CommandIds.ACTIVE : CommandIds.INACTIVE
+        content: `${displayName.replace(/#.*$/, '')} is already ${isActive ? CommandIds.ACTIVE : CommandIds.INACTIVE
           }.`,
         flags: MessageFlags.Ephemeral,
       });
