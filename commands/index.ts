@@ -25,6 +25,7 @@ import {
   TextChannel,
   TextInputBuilder,
   TextInputStyle,
+  User,
   VoiceChannel,
 } from 'discord.js';
 import {
@@ -2783,6 +2784,25 @@ export async function handleLookupAutocomplete(interaction: AutocompleteInteract
   await interaction.respond(choices);
 }
 
+function extractDiscordIdFromInteraction(
+  interaction: ChatInputCommandInteraction<CacheType>,
+  optionName: string = CommandIds.DISCORD_ID,
+): string | undefined {
+  const member = interaction.options.getMember(optionName);
+  if (member && 'user' in member) {
+    return member.user.id;
+  }
+  const userOption = interaction.options.getUser(optionName);
+  if (userOption) {
+    return userOption.id;
+  }
+  const rawDiscordId = interaction.options.get(optionName)?.value;
+  if (typeof rawDiscordId === 'string' && rawDiscordId.trim().length > 0) {
+    return rawDiscordId.replace(/[<@!>]/g, '').trim();
+  }
+  return undefined;
+}
+
 export async function handleLookupCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
 ) {
@@ -2794,49 +2814,58 @@ export async function handleLookupCommand(
   if (!guildId) return;
 
   const member = interaction.options.getMember(CommandIds.DISCORD_ID);
-  const rawDiscordId = interaction.options.get(CommandIds.DISCORD_ID)?.value;
+  const userOption = interaction.options.getUser(CommandIds.DISCORD_ID);
+  const targetDiscordId = extractDiscordIdFromInteraction(interaction, CommandIds.DISCORD_ID);
   const hotsBattleTag = interaction.options.getString(CommandIds.BATTLE_TAG, false)?.trim();
 
-  // 1. If a Discord member was selected via option
-  if (member && 'user' in member) {
-    const discordId = member.user.id;
-    let discordData = fetchDiscordNames(interaction, discordId);
-    const player = getPlayerByDiscordId(discordId, guildId);
-    if (discordData.discordDisplayName === 'N/A' && player) {
-      discordData = {
-        discordName: player.usernames.discordName,
-        discordDisplayName: player.usernames.discordDisplayName,
-        discordGlobalName: player.usernames.discordGlobalName,
-      };
-    }
-    return await handleLookupCommandSub(interaction, discordId, discordData, guildId, true);
-  }
-
-  // 2. If a Discord ID string was typed
-  if (typeof rawDiscordId === 'string' && rawDiscordId.length > 0) {
-    const discordId = rawDiscordId.replace(/[<@>]/g, '');
-    const player = getPlayerByDiscordId(discordId, guildId);
-    if (player) {
-      let discordData = fetchDiscordNames(interaction, discordId);
-      if (discordData.discordDisplayName === 'N/A') {
-        discordData = {
-          discordName: player.usernames.discordName,
-          discordDisplayName: player.usernames.discordDisplayName,
-          discordGlobalName: player.usernames.discordGlobalName,
-        };
+  // 1. If a Discord member or ID was provided
+  if (targetDiscordId) {
+    let resolvedUser: User | null = null;
+    if (userOption && userOption.id === targetDiscordId) {
+      resolvedUser = userOption;
+    } else if (member && 'user' in member && member.user.id === targetDiscordId) {
+      resolvedUser = member.user;
+    } else {
+      const cached = interaction.client.users.cache.get(targetDiscordId);
+      if (cached) {
+        resolvedUser = cached;
+      } else if (/^\d{17,20}$/.test(targetDiscordId)) {
+        try {
+          resolvedUser = await interaction.client.users.fetch(targetDiscordId);
+        } catch {
+          resolvedUser = null;
+        }
       }
-      return await handleLookupCommandSub(interaction, discordId, discordData, guildId, true);
     }
-    if (!hotsBattleTag) {
+
+    const player = getPlayerByDiscordId(targetDiscordId, guildId);
+
+    // If neither Discord nor our database has a record of this user
+    if (!resolvedUser && !player) {
       await safeReply(interaction, {
         content: 'Please provide a valid Discord member to look up.',
         flags: MessageFlags.Ephemeral,
       });
       return;
     }
+
+    let discordData = fetchDiscordNames(interaction, targetDiscordId, resolvedUser);
+    if (player) {
+      if (discordData.discordDisplayName === 'N/A') {
+        discordData.discordDisplayName = player.usernames.discordDisplayName;
+      }
+      if (discordData.discordName === 'N/A') {
+        discordData.discordName = player.usernames.discordName;
+      }
+      if (discordData.discordGlobalName === 'N/A') {
+        discordData.discordGlobalName = player.usernames.discordGlobalName;
+      }
+    }
+
+    return await handleLookupCommandSub(interaction, targetDiscordId, discordData, guildId, true);
   }
 
-  // 3. If HotS BattleTag or account name was provided (without discord-id)
+  // 2. If HotS BattleTag or account name was provided (without discord-id)
   if (hotsBattleTag) {
     const matches = findPlayersByHotSAccount(hotsBattleTag, guildId);
 
@@ -3223,15 +3252,14 @@ export async function handleDeletePlayerCommand(
     console.error('Interaction is not a command or button interaction');
     return;
   }
-  const member = interaction.options.getMember(CommandIds.DISCORD_ID);
-  if (!member || 'user' in member === false) {
+  const discordId = extractDiscordIdFromInteraction(interaction, CommandIds.DISCORD_ID);
+  if (!discordId) {
     await safeReply(interaction, {
       content: 'Please provide a valid Discord member to delete.',
       flags: MessageFlags.Ephemeral,
     });
     return;
   }
-  const discordId = member.user.id;
   const { playersDeleted, hotsAccountsDeleted } = await deletePlayer(discordId);
   const guildId = await requireGuildId(interaction);
   if (!guildId) return;
@@ -3431,8 +3459,8 @@ export async function handleAdminAddHotsAccountByDiscordIdCommand(
 }
 
 export async function handleAdminAddHotsAccountCommand(interaction: ChatInputCommandInteraction<CacheType>) {
-  const member = interaction.options.getMember(CommandIds.DISCORD_ID);
-  if (!member || 'user' in member === false) {
+  const discordId = extractDiscordIdFromInteraction(interaction, CommandIds.DISCORD_ID);
+  if (!discordId) {
     await safeReply(interaction, {
       content: 'Please provide a valid Discord member to look up.',
       flags: MessageFlags.Ephemeral,
@@ -3443,12 +3471,12 @@ export async function handleAdminAddHotsAccountCommand(interaction: ChatInputCom
   if (!guildId) return;
   const hotsBattleTag = interaction.options.getString(CommandIds.BATTLE_TAG);
   // check if the battleTag is valid, it should be in the format of Name#1234
-  await handleAddHotsAccountCommandSub(interaction, guildId, member.user.id, hotsBattleTag);
+  await handleAddHotsAccountCommandSub(interaction, guildId, discordId, hotsBattleTag);
 }
 
 export async function handleAdminDeleteHotsAccountCommand(interaction: ChatInputCommandInteraction<CacheType>) {
-  const member = interaction.options.getMember(CommandIds.DISCORD_ID);
-  if (!member || 'user' in member === false) {
+  const discordId = extractDiscordIdFromInteraction(interaction, CommandIds.DISCORD_ID);
+  if (!discordId) {
     await safeReply(interaction, {
       content: 'Please provide a valid Discord member to look up.',
       flags: MessageFlags.Ephemeral,
@@ -3457,7 +3485,7 @@ export async function handleAdminDeleteHotsAccountCommand(interaction: ChatInput
   }
   const hotsBattleTag = interaction.options.getString(CommandIds.BATTLE_TAG, false);
   // check if the battleTag is valid, it should be in the format of Name#1234
-  await handleDeleteHotsAccountCommandSub(interaction, member.user.id, hotsBattleTag);
+  await handleDeleteHotsAccountCommandSub(interaction, discordId, hotsBattleTag);
   await handleRefreshLobbyMessage(interaction, false);
 }
 
@@ -3708,25 +3736,12 @@ function getDiscordId(
   discordIdParam?: string,
 ): string | undefined {
   if (discordIdParam) {
-    return discordIdParam.replace(/[<@>]/g, '');
+    return discordIdParam.replace(/[<@!>]/g, '');
   }
   if (!interaction.isChatInputCommand()) {
     return undefined;
   }
-  const member = interaction.options.getMember(CommandIds.DISCORD_ID);
-  if (member && 'user' in member) {
-    return member.user.id;
-  }
-  if (interaction.options.get(CommandIds.DISCORD_ID)) {
-    const discordId = interaction.options.get(CommandIds.DISCORD_ID)?.value;
-    if (typeof discordId === 'string') {
-      const player = getPlayerByDiscordId(discordId, guildId); // look up the player in the database by discord id
-      if (player) {
-        return discordId.replace(/[<@>]/g, '');
-      }
-    }
-  }
-  return undefined;
+  return extractDiscordIdFromInteraction(interaction, CommandIds.DISCORD_ID);
 }
 
 function getBattleTag(
@@ -4197,10 +4212,25 @@ async function deleteMessage(
   }
 }
 
-function fetchDiscordNames(interaction: Interaction, id?: string): DiscordUserNames {
-  const discordUser = interaction.guild?.members.cache.get(id ?? interaction.user.id)?.user;
-  const discordDisplayName = discordUser?.displayName ?? 'N/A';
-  const discordGlobalName = discordUser?.globalName ?? 'N/A';
+function fetchDiscordNames(
+  interaction: Interaction,
+  id?: string,
+  resolvedUser?: User | null,
+): DiscordUserNames {
+  const targetId = id ?? interaction.user.id;
+  const member = interaction.guild?.members.cache.get(targetId);
+  const discordUser =
+    member?.user ??
+    resolvedUser ??
+    interaction.client.users.cache.get(targetId) ??
+    (targetId === interaction.user.id ? interaction.user : undefined);
+  const discordDisplayName =
+    member?.displayName ??
+    discordUser?.displayName ??
+    discordUser?.globalName ??
+    discordUser?.username ??
+    'N/A';
+  const discordGlobalName = discordUser?.globalName ?? discordUser?.username ?? 'N/A';
 
   return {
     discordName: discordUser?.username ?? 'N/A',
@@ -4218,20 +4248,11 @@ function getMemberFromInteraction(
   pId?: string,
 ) {
   if (interaction.isChatInputCommand()) {
-    const member = interaction.options.getMember(CommandIds.DISCORD_ID);
-    const discordId = interaction.options.get(CommandIds.DISCORD_ID)?.value;
-    if (!member || 'user' in member === false) {
-      // check if the user is in the database
-      if (discordId && typeof discordId === 'string') {
-        const player = getPlayerByDiscordId(discordId, guildId);
-        if (!player) {
-          return null;
-        }
-        return discordId;
-      }
-      return null;
+    const discordId = extractDiscordIdFromInteraction(interaction, CommandIds.DISCORD_ID);
+    if (discordId) {
+      return discordId;
     }
-    return member.user.id;
+    return null;
   }
   if (pId) {
     const player = getPlayerByDiscordId(pId, guildId);
@@ -4271,11 +4292,8 @@ export async function handleAdminSetRoleCommand(
     ? pRole
     : interaction.isChatInputCommand() && interaction.options.getString(CommandIds.ROLE, false);
   if (interaction.isChatInputCommand() && !role) {
-    const member = interaction.options.getMember(CommandIds.DISCORD_ID);
-    if (member && 'user' in member) {
-      await handleAdminShowRoleButtons(interaction, member.user.id);
-      return;
-    }
+    await handleAdminShowRoleButtons(interaction, member);
+    return;
   }
   if (!role) {
     await safeReply(interaction, {
