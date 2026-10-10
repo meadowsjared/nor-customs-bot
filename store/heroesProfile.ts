@@ -134,8 +134,8 @@ export interface DetectedRolesResult {
 }
 
 /**
- * Determines favorite roles from Heroes Profile player data based on last 15-20 matches.
- * Uses top played / latest heroes as fallbacks or tiebreakers.
+ * Determines favorite roles from Heroes Profile player data based on all-time most played heroes.
+ * Uses latest played heroes and match data as fallbacks.
  * Returns a concatenated string of top qualifying roles (e.g. "AT", "A", "TAB") and a descriptive reason.
  */
 export function determineFavoriteRoles(hpData: HPPlayerStatsData): DetectedRolesResult | undefined {
@@ -146,9 +146,33 @@ export function determineFavoriteRoles(hpData: HPPlayerStatsData): DetectedRoles
     A: 0,
   };
 
-  // 1. Primary source: matchData (last 15-20 matches)
-  const hasMatchData = Array.isArray(hpData.matchData) && hpData.matchData.length > 0;
-  if (hasMatchData) {
+  let source: 'all_time' | 'latest_heroes' | 'recent_matches' = 'all_time';
+
+  // 1. Primary source: all-time most played heroes
+  if (Array.isArray(hpData.heroes_three_most_played) && hpData.heroes_three_most_played.length > 0) {
+    source = 'all_time';
+    for (const item of hpData.heroes_three_most_played) {
+      const roleStr = item.hero?.new_role || item.hero?.role;
+      const botRole = mapHotSRoleToBotRole(roleStr);
+      counts[botRole] += item.games_played || 1;
+    }
+  }
+
+  // 2. Fallback: latest played heroes
+  let total = counts.T + counts.B + counts.H + counts.A;
+  if (total === 0 && Array.isArray(hpData.heroes_three_latest_played) && hpData.heroes_three_latest_played.length > 0) {
+    source = 'latest_heroes';
+    for (const item of hpData.heroes_three_latest_played) {
+      const roleStr = item.hero?.new_role || item.hero?.role;
+      const botRole = mapHotSRoleToBotRole(roleStr);
+      counts[botRole] += item.games_played || 1;
+    }
+  }
+
+  // 3. Fallback: recent match data
+  total = counts.T + counts.B + counts.H + counts.A;
+  if (total === 0 && Array.isArray(hpData.matchData) && hpData.matchData.length > 0) {
+    source = 'recent_matches';
     for (const match of hpData.matchData) {
       const roleStr = match.hero?.new_role || match.hero?.role;
       const botRole = mapHotSRoleToBotRole(roleStr);
@@ -156,25 +180,7 @@ export function determineFavoriteRoles(hpData: HPPlayerStatsData): DetectedRoles
     }
   }
 
-  const totalMatches = counts.T + counts.B + counts.H + counts.A;
-
-  // 2. If no matchData available, fall back to latest or most played heroes
-  if (totalMatches === 0) {
-    const fallbackHeroes =
-      Array.isArray(hpData.heroes_three_latest_played) && hpData.heroes_three_latest_played.length > 0
-        ? hpData.heroes_three_latest_played
-        : Array.isArray(hpData.heroes_three_most_played) && hpData.heroes_three_most_played.length > 0
-          ? hpData.heroes_three_most_played
-          : [];
-
-    for (const item of fallbackHeroes) {
-      const roleStr = item.hero?.new_role || item.hero?.role;
-      const botRole = mapHotSRoleToBotRole(roleStr);
-      counts[botRole] += item.games_played || 1;
-    }
-  }
-
-  const total = counts.T + counts.B + counts.H + counts.A;
+  total = counts.T + counts.B + counts.H + counts.A;
   if (total === 0) {
     return undefined;
   }
@@ -190,16 +196,16 @@ export function determineFavoriteRoles(hpData: HPPlayerStatsData): DetectedRoles
     if (b[1] !== a[1]) {
       return b[1] - a[1];
     }
-    // Tiebreaker: check all-time most played heroes if available
-    if (Array.isArray(hpData.heroes_three_most_played)) {
-      const aGames = hpData.heroes_three_most_played
+    // Tiebreaker: highest individual hero games played in top 3
+    if (source === 'all_time' && Array.isArray(hpData.heroes_three_most_played)) {
+      const aTop = hpData.heroes_three_most_played
         .filter(item => mapHotSRoleToBotRole(item.hero?.new_role || item.hero?.role) === a[0])
-        .reduce((sum, item) => sum + (item.games_played || 0), 0);
-      const bGames = hpData.heroes_three_most_played
+        .reduce((max, item) => Math.max(max, item.games_played || 0), 0);
+      const bTop = hpData.heroes_three_most_played
         .filter(item => mapHotSRoleToBotRole(item.hero?.new_role || item.hero?.role) === b[0])
-        .reduce((sum, item) => sum + (item.games_played || 0), 0);
-      if (bGames !== aGames) {
-        return bGames - aGames;
+        .reduce((max, item) => Math.max(max, item.games_played || 0), 0);
+      if (bTop !== aTop) {
+        return bTop - aTop;
       }
     }
     return 0;
@@ -215,9 +221,26 @@ export function determineFavoriteRoles(hpData: HPPlayerStatsData): DetectedRoles
     .filter(([_, count]) => count > 0 && count >= 0.5 * topCount)
     .map(([role]) => role);
 
-  const reason = hasMatchData
-    ? `Recent matches: ${entries.map(([role, count]) => `${role}: ${count}`).join(', ')}`
-    : `Most played heroes: ${entries.filter(([_, count]) => count > 0).map(([role, count]) => `${role}: ${count}`).join(', ')}`;
+  let reason = '';
+  if (source === 'all_time') {
+    const heroNames = Array.isArray(hpData.heroes_three_most_played)
+      ? hpData.heroes_three_most_played.map(item => item.hero?.name).filter(Boolean).join(', ')
+      : '';
+    const countsStr = entries.filter(([_, count]) => count > 0).map(([role, count]) => `${role}: ${count}`).join(', ');
+    reason = heroNames
+      ? `All-time most played: ${countsStr} (${heroNames})`
+      : `All-time most played: ${countsStr}`;
+  } else if (source === 'latest_heroes') {
+    const heroNames = Array.isArray(hpData.heroes_three_latest_played)
+      ? hpData.heroes_three_latest_played.map(item => item.hero?.name).filter(Boolean).join(', ')
+      : '';
+    const countsStr = entries.filter(([_, count]) => count > 0).map(([role, count]) => `${role}: ${count}`).join(', ');
+    reason = heroNames
+      ? `Latest played heroes: ${countsStr} (${heroNames})`
+      : `Latest played heroes: ${countsStr}`;
+  } else {
+    reason = `Recent matches: ${entries.map(([role, count]) => `${role}: ${count}`).join(', ')}`;
+  }
 
   return {
     roles: qualifyingRoles.join(''),
