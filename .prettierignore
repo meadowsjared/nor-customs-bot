@@ -1,0 +1,8 @@
+node_modules
+dist
+dist-ssr
+release
+src/components.d.ts
+src/auto-imports.d.ts
+*.db
+*.html
