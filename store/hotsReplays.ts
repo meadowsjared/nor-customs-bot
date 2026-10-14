@@ -1,8 +1,8 @@
-import Database from 'better-sqlite3';
-import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
-const db = new Database('./store/nor_customs.db');
-import { ColumnDefinition, generateCreateTableSQL, InterfaceFromSchema, SQLiteColumnType } from '../utils/sql';
+import Database from 'better-sqlite3'
+import { createRequire } from 'module'
+const require = createRequire(import.meta.url)
+const db = new Database('./store/nor_customs.db')
+import { ColumnDefinition, generateCreateTableSQL, InterfaceFromSchema, SQLiteColumnType } from '../utils/sql'
 
 export const HOTS_REPLAYS_MATCH_COLUMNS = [
   {
@@ -29,7 +29,11 @@ export const HOTS_REPLAYS_MATCH_COLUMNS = [
   { name: 'firstPick', dbType: SQLiteColumnType.INTEGER },
   { name: 'firstPickWin', dbType: SQLiteColumnType.INTEGER, isBoolean: true },
   { name: 'firstObjective', dbType: SQLiteColumnType.INTEGER },
-  { name: 'firstObjectiveWin', dbType: SQLiteColumnType.INTEGER, isBoolean: true },
+  {
+    name: 'firstObjectiveWin',
+    dbType: SQLiteColumnType.INTEGER,
+    isBoolean: true,
+  },
   { name: 'firstFort', dbType: SQLiteColumnType.INTEGER },
   { name: 'firstKeep', dbType: SQLiteColumnType.INTEGER },
   { name: 'firstFortWin', dbType: SQLiteColumnType.INTEGER, isBoolean: true },
@@ -50,7 +54,7 @@ export const HOTS_REPLAYS_MATCH_COLUMNS = [
   { name: 'team1Pick3', dbType: SQLiteColumnType.TEXT },
   { name: 'team1Pick4', dbType: SQLiteColumnType.TEXT },
   { name: 'team1Pick5', dbType: SQLiteColumnType.TEXT },
-] as const satisfies readonly ColumnDefinition[];
+] as const satisfies readonly ColumnDefinition[]
 
 export const HOTS_REPLAY_GAME_STATS_COLUMNS = [
   {
@@ -156,7 +160,10 @@ export const HOTS_REPLAY_GAME_STATS_COLUMNS = [
   { name: 'TeamfightDamageTaken', dbType: SQLiteColumnType.INTEGER },
   { name: 'TeamfightHeroDamage', dbType: SQLiteColumnType.INTEGER },
   { name: 'OnFireTimeOnFire', dbType: SQLiteColumnType.INTEGER },
-  { name: 'LunarNewYearSuccesfulArtifactTurnIns', dbType: SQLiteColumnType.INTEGER },
+  {
+    name: 'LunarNewYearSuccesfulArtifactTurnIns',
+    dbType: SQLiteColumnType.INTEGER,
+  },
   { name: 'TimeOnPoint', dbType: SQLiteColumnType.INTEGER },
   { name: 'CageUnlocksInterrupted', dbType: SQLiteColumnType.INTEGER },
   { name: 'GardenSeedsCollectedByPlayer', dbType: SQLiteColumnType.INTEGER },
@@ -189,7 +196,10 @@ export const HOTS_REPLAY_GAME_STATS_COLUMNS = [
   { name: 'LunarNewYearEventCompleted', dbType: SQLiteColumnType.INTEGER },
   { name: 'StarcraftDailyEventCompleted', dbType: SQLiteColumnType.INTEGER },
   { name: 'StarcraftPiecesCollected', dbType: SQLiteColumnType.INTEGER },
-  { name: 'LunarNewYearRoosterEventCompleted', dbType: SQLiteColumnType.INTEGER },
+  {
+    name: 'LunarNewYearRoosterEventCompleted',
+    dbType: SQLiteColumnType.INTEGER,
+  },
   { name: 'TouchByBlightPlague', dbType: SQLiteColumnType.INTEGER },
   { name: 'PachimariMania', dbType: SQLiteColumnType.INTEGER },
   { name: 'LessThan4Deaths', dbType: SQLiteColumnType.INTEGER },
@@ -234,29 +244,29 @@ export const HOTS_REPLAY_GAME_STATS_COLUMNS = [
   { name: 'DamageDoneToZerg', dbType: SQLiteColumnType.INTEGER },
   { name: 'isMVP', dbType: SQLiteColumnType.INTEGER },
   { name: 'awardCount', dbType: SQLiteColumnType.INTEGER },
-] as const satisfies readonly ColumnDefinition[];
+] as const satisfies readonly ColumnDefinition[]
 
 interface HotSReplay {
-  match: Record<string, any>;
-  players: Record<string, Record<string, any>>;
+  match: Record<string, any>
+  players: Record<string, Record<string, any>>
 }
 
-export type HotSReplayGameStats = InterfaceFromSchema<typeof HOTS_REPLAY_GAME_STATS_COLUMNS>;
+export type HotSReplayGameStats = InterfaceFromSchema<typeof HOTS_REPLAY_GAME_STATS_COLUMNS>
 
 function ensureTableColumns(tableName: string, columns: readonly ColumnDefinition[]) {
-  const existingCols = db.prepare<[], { name: string }>(`PRAGMA table_info(${tableName})`).all();
-  const existingColNames = new Set(existingCols.map(c => c.name));
+  const existingCols = db.prepare<[], { name: string }>(`PRAGMA table_info(${tableName})`).all()
+  const existingColNames = new Set(existingCols.map(c => c.name))
 
   for (const col of columns) {
     if (!existingColNames.has(col.name)) {
       try {
-        let sql = `ALTER TABLE ${tableName} ADD COLUMN ${col.name} ${col.dbType}`;
+        let sql = `ALTER TABLE ${tableName} ADD COLUMN ${col.name} ${col.dbType}`
         if (col.defaultValue !== undefined) {
-          sql += ` DEFAULT ${typeof col.defaultValue === 'string' ? `'${col.defaultValue}'` : col.defaultValue}`;
+          sql += ` DEFAULT ${typeof col.defaultValue === 'string' ? `'${col.defaultValue}'` : col.defaultValue}`
         }
-        db.exec(sql);
+        db.exec(sql)
       } catch (err) {
-        console.error(`Error adding column ${col.name} to ${tableName}:`, err);
+        console.error(`Error adding column ${col.name} to ${tableName}:`, err)
       }
     }
   }
@@ -264,55 +274,55 @@ function ensureTableColumns(tableName: string, columns: readonly ColumnDefinitio
 
 const initSchema = db.transaction(() => {
   // hots_replays
-  const createHotsReplaysTableSQL = generateCreateTableSQL('hots_replays', HOTS_REPLAYS_MATCH_COLUMNS);
-  db.exec(createHotsReplaysTableSQL);
-  ensureTableColumns('hots_replays', HOTS_REPLAYS_MATCH_COLUMNS);
+  const createHotsReplaysTableSQL = generateCreateTableSQL('hots_replays', HOTS_REPLAYS_MATCH_COLUMNS)
+  db.exec(createHotsReplaysTableSQL)
+  ensureTableColumns('hots_replays', HOTS_REPLAYS_MATCH_COLUMNS)
 
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_hots_replays_name_date_type
     ON hots_replays(map, date, type)
-  `);
+  `)
   db.exec(`
     CREATE UNIQUE INDEX IF NOT EXISTS idx_hots_replays_unique_match
     ON hots_replays(map, date, loopLength)
-  `);
+  `)
 
   // Remove legacy hots_replay_players table if it exists
-  db.exec('DROP TABLE IF EXISTS hots_replay_players');
+  db.exec('DROP TABLE IF EXISTS hots_replay_players')
 
   // hots_replay_player_game_stats
   const createHotsReplayPlayerGameStatsTableSQL = generateCreateTableSQL(
     'hots_replay_player_game_stats',
     HOTS_REPLAY_GAME_STATS_COLUMNS
-  );
-  db.exec(createHotsReplayPlayerGameStatsTableSQL);
-  ensureTableColumns('hots_replay_player_game_stats', HOTS_REPLAY_GAME_STATS_COLUMNS);
+  )
+  db.exec(createHotsReplayPlayerGameStatsTableSQL)
+  ensureTableColumns('hots_replay_player_game_stats', HOTS_REPLAY_GAME_STATS_COLUMNS)
 
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_hots_replay_player_game_stats_replay_id
     ON hots_replay_player_game_stats(replay_id)
-  `);
+  `)
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_hots_replay_player_game_stats_account_id
     ON hots_replay_player_game_stats(hots_account_id)
-  `);
+  `)
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_hots_replay_player_game_stats_discord_id
     ON hots_replay_player_game_stats(discord_id)
-  `);
+  `)
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_hots_replay_player_game_stats_battle_tag
     ON hots_replay_player_game_stats(hots_battle_tag)
-  `);
-});
+  `)
+})
 
 try {
-  initSchema();
+  initSchema()
 } catch (error) {
-  console.error('Error initializing database schema:', error);
+  console.error('Error initializing database schema:', error)
 }
 
-type ParsedReplay = NonNullable<Awaited<ReturnType<typeof parseReplay>>>;
+type ParsedReplay = NonNullable<Awaited<ReturnType<typeof parseReplay>>>
 
 /**
  * Parses a Heroes of the Storm replay file using hots-parser and extracts relevant information.
@@ -320,31 +330,33 @@ type ParsedReplay = NonNullable<Awaited<ReturnType<typeof parseReplay>>>;
  */
 export async function parseReplay(file: string) {
   try {
-    const Parser = require('hots-parser');
-    const replay: HotSReplay = Parser.processReplay(file, { overrideVerifiedBuild: true });
+    const Parser = require('hots-parser')
+    const replay: HotSReplay = Parser.processReplay(file, {
+      overrideVerifiedBuild: true,
+    })
     if (!replay || !replay.match) {
-      console.error(`Invalid or incomplete replay data for file: ${file}`);
-      return null;
+      console.error(`Invalid or incomplete replay data for file: ${file}`)
+      return null
     }
 
-    let mapName = replay.match.map;
+    let mapName = replay.match.map
     if (mapName === 'Garden of Terror') {
-      const fileNameLower = file.toLowerCase();
+      const fileNameLower = file.toLowerCase()
       if (fileNameLower.includes('classic')) {
-        mapName = 'Garden of Terror Classic';
-        replay.match.map = mapName;
+        mapName = 'Garden of Terror Classic'
+        replay.match.map = mapName
       }
     }
 
-    const players = Object.values(replay.players).map(player => player);
+    const players = Object.values(replay.players).map(player => player)
     const team0Players = players
       .filter(p => p.team === 0)
       .map(p => `${p.name}#${p.tag}`)
-      .join(', ');
+      .join(', ')
     const team1Players = players
       .filter(p => p.team === 1)
       .map(p => `${p.name}#${p.tag}`)
-      .join(', ');
+      .join(', ')
 
     return {
       replayObj: replay,
@@ -359,10 +371,10 @@ export async function parseReplay(file: string) {
       team0Players,
       team1Players,
       file,
-    };
+    }
   } catch (error) {
-    console.error(`Error parsing replay file ${file}:`, error);
-    return null;
+    console.error(`Error parsing replay file ${file}:`, error)
+    return null
   }
 }
 
@@ -372,7 +384,9 @@ export async function parseReplay(file: string) {
 
 function updateSotsStatsForAccount(battleTag: string) {
   try {
-    const stats = db.prepare(`
+    const stats = db
+      .prepare(
+        `
       SELECT 
         COUNT(*) as totalGames,
         COUNT(DISTINCT hero) as heroPool,
@@ -467,10 +481,13 @@ function updateSotsStatsForAccount(battleTag: string) {
         SUM(danceDeaths) as totalDanceDeaths
       FROM hots_replay_player_game_stats
       WHERE hots_battle_tag = ? COLLATE NOCASE
-    `).get(battleTag) as Record<string, number> | undefined;
+    `
+      )
+      .get(battleTag) as Record<string, number> | undefined
 
     if (stats && stats.totalGames > 0) {
-      db.prepare(`
+      db.prepare(
+        `
         UPDATE hots_accounts SET
           SotS_Games = ?,
           SotS_Win_Pct = ?,
@@ -566,7 +583,8 @@ function updateSotsStatsForAccount(battleTag: string) {
           SotS_Dance_TD = ?,
           SotS_Dance_Deaths = ?
         WHERE hots_battle_tag = ? COLLATE NOCASE
-      `).run(
+      `
+      ).run(
         stats.totalGames,
         stats.winPct,
         stats.avgKills,
@@ -661,10 +679,10 @@ function updateSotsStatsForAccount(battleTag: string) {
         stats.totalDanceTD,
         stats.totalDanceDeaths,
         battleTag
-      );
+      )
     }
   } catch (err) {
-    console.error(`Error updating SotS stats for account ${battleTag}:`, err);
+    console.error(`Error updating SotS stats for account ${battleTag}:`, err)
   }
 }
 
@@ -672,203 +690,263 @@ function updateSotsStatsForAccount(battleTag: string) {
  * Saves a parsed custom match into the database and returns its assigned replay ID.
  */
 export function saveReplayToDb(parsedReplay: ParsedReplay): number {
-  const replay = parsedReplay.replayObj;
+  const replay = parsedReplay.replayObj
 
   const saveTransaction = db.transaction(() => {
     // 1. Prepare match insert data
-    const matchData: Record<string, any> = { ...replay.match };
+    const matchData: Record<string, any> = { ...replay.match }
 
     // Extract draft bans & picks
     if (matchData.bans) {
       for (let team = 0; team <= 1; team++) {
-        const teamBans = matchData.bans[String(team)] || [];
+        const teamBans = matchData.bans[String(team)] || []
         for (let i = 0; i < 3; i++) {
-          matchData[`team${team}Ban${i + 1}`] = teamBans[i]?.hero || null;
+          matchData[`team${team}Ban${i + 1}`] = teamBans[i]?.hero || null
         }
       }
     }
 
     if (matchData.picks) {
-      matchData.firstPick = matchData.picks.first ?? null;
+      matchData.firstPick = matchData.picks.first ?? null
       for (let team = 0; team <= 1; team++) {
-        const teamPicks = matchData.picks[String(team)] || [];
+        const teamPicks = matchData.picks[String(team)] || []
         for (let i = 0; i < 5; i++) {
-          matchData[`team${team}Pick${i + 1}`] = teamPicks[i] || null;
+          matchData[`team${team}Pick${i + 1}`] = teamPicks[i] || null
         }
       }
     }
 
     if (matchData.version && typeof matchData.version === 'object') {
-      matchData.build = matchData.version.m_build ?? null;
+      matchData.build = matchData.version.m_build ?? null
     }
 
-    const filteredMatchCols = HOTS_REPLAYS_MATCH_COLUMNS.filter(col => !('skipImport' in col && (col as any).skipImport));
-    const matchColNames = filteredMatchCols.map(col => col.name);
-    const matchPlaceholders = filteredMatchCols.map(() => '?').join(', ');
+    const filteredMatchCols = HOTS_REPLAYS_MATCH_COLUMNS.filter(
+      col => !('skipImport' in col && (col as any).skipImport)
+    )
+    const matchColNames = filteredMatchCols.map(col => col.name)
+    const matchPlaceholders = filteredMatchCols.map(() => '?').join(', ')
 
     const matchValues = filteredMatchCols.map(col => {
-      const rawValue = matchData[col.name];
-      if (rawValue === undefined || rawValue === null) return null;
-      if (rawValue instanceof Date) return rawValue.toISOString();
-      if (typeof rawValue === 'boolean') return rawValue ? 1 : 0;
-      if (typeof rawValue === 'number' || typeof rawValue === 'string' || typeof rawValue === 'bigint' || Buffer.isBuffer(rawValue)) return rawValue;
-      return String(rawValue);
-    });
+      const rawValue = matchData[col.name]
+      if (rawValue === undefined || rawValue === null) return null
+      if (rawValue instanceof Date) return rawValue.toISOString()
+      if (typeof rawValue === 'boolean') return rawValue ? 1 : 0
+      if (
+        typeof rawValue === 'number' ||
+        typeof rawValue === 'string' ||
+        typeof rawValue === 'bigint' ||
+        Buffer.isBuffer(rawValue)
+      )
+        return rawValue
+      return String(rawValue)
+    })
 
-    const matchSql = `INSERT INTO hots_replays (${matchColNames.join(', ')}) VALUES (${matchPlaceholders}) ON CONFLICT(map, date, loopLength) DO UPDATE SET map=excluded.map RETURNING id`;
-    const matchRow = db.prepare(matchSql).get(matchValues) as { id: number };
-    const replayId = matchRow.id;
+    const matchSql = `INSERT INTO hots_replays (${matchColNames.join(', ')}) VALUES (${matchPlaceholders}) ON CONFLICT(map, date, loopLength) DO UPDATE SET map=excluded.map RETURNING id`
+    const matchRow = db.prepare(matchSql).get(matchValues) as { id: number }
+    const replayId = matchRow.id
 
     // Delete existing player game stats for this replay if re-importing
-    db.prepare('DELETE FROM hots_replay_player_game_stats WHERE replay_id = ?').run(replayId);
+    db.prepare('DELETE FROM hots_replay_player_game_stats WHERE replay_id = ?').run(replayId)
 
     // 2. Insert player game stats for all players
-    const filteredStatsCols = HOTS_REPLAY_GAME_STATS_COLUMNS.filter(col => col.name !== 'id');
-    const statsColNames = filteredStatsCols.map(col => col.name);
-    const statsPlaceholders = filteredStatsCols.map(() => '?').join(', ');
-    const statsSql = `INSERT INTO hots_replay_player_game_stats (${statsColNames.join(', ')}) VALUES (${statsPlaceholders})`;
-    const insertStatsStmt = db.prepare(statsSql);
+    const filteredStatsCols = HOTS_REPLAY_GAME_STATS_COLUMNS.filter(col => col.name !== 'id')
+    const statsColNames = filteredStatsCols.map(col => col.name)
+    const statsPlaceholders = filteredStatsCols.map(() => '?').join(', ')
+    const statsSql = `INSERT INTO hots_replay_player_game_stats (${statsColNames.join(', ')}) VALUES (${statsPlaceholders})`
+    const insertStatsStmt = db.prepare(statsSql)
 
-    const players = Object.values(replay.players || {});
-    const updatedBattleTags = new Set<string>();
+    const players = Object.values(replay.players || {})
+    const updatedBattleTags = new Set<string>()
 
     for (const player of players) {
-      const battleTag = `${player.name}#${player.tag}`;
-      updatedBattleTags.add(battleTag);
+      const battleTag = `${player.name}#${player.tag}`
+      updatedBattleTags.add(battleTag)
 
       // Lookup hots_accounts id and discord_id if it exists
-      const accountRow = db.prepare<[string], { id: number; discord_id: string }>(
-        'SELECT id, discord_id FROM hots_accounts WHERE hots_battle_tag = ? COLLATE NOCASE',
-      ).get(battleTag);
-      const hotsAccountId = accountRow?.id ?? null;
-      const discordId = accountRow?.discord_id ?? null;
+      const accountRow = db
+        .prepare<[string], { id: number; discord_id: string }>(
+          'SELECT id, discord_id FROM hots_accounts WHERE hots_battle_tag = ? COLLATE NOCASE'
+        )
+        .get(battleTag)
+      const hotsAccountId = accountRow?.id ?? null
+      const discordId = accountRow?.discord_id ?? null
 
-      const playerTalents = player.talents || {};
-      const gameStatsData = player.gameStats || {};
+      const playerTalents = player.talents || {}
+      const gameStatsData = player.gameStats || {}
 
       const playerValues = filteredStatsCols.map(col => {
-        if (col.name === 'replay_id') return replayId;
-        if (col.name === 'hots_account_id') return hotsAccountId;
-        if (col.name === 'discord_id') return discordId;
-        if (col.name === 'hots_battle_tag') return battleTag;
-        if (col.name === 'sprays') return Array.isArray(player.sprays) ? player.sprays.length : (player.sprays || 0);
-        if (col.name === 'sprayTD') return Array.isArray(player.sprays) ? player.sprays.reduce((s: number, elem: any) => s + (elem.kills || 0), 0) : 0;
-        if (col.name === 'sprayDeaths') return Array.isArray(player.sprays) ? player.sprays.reduce((s: number, elem: any) => s + (elem.deaths || 0), 0) : 0;
-        if (col.name === 'bsteps') return Array.isArray(player.bsteps) ? player.bsteps.length : (player.bsteps || 0);
-        if (col.name === 'bstepTD') return Array.isArray(player.bsteps) ? player.bsteps.reduce((s: number, elem: any) => s + (elem.kills || 0), 0) : 0;
-        if (col.name === 'bstepDeaths') return Array.isArray(player.bsteps) ? player.bsteps.reduce((s: number, elem: any) => s + (elem.deaths || 0), 0) : 0;
-        if (col.name === 'taunts') return Array.isArray(player.taunts) ? player.taunts.length : (player.taunts || 0);
-        if (col.name === 'tauntTD') return Array.isArray(player.taunts) ? player.taunts.reduce((s: number, elem: any) => s + (elem.kills || 0), 0) : 0;
-        if (col.name === 'tauntDeaths') return Array.isArray(player.taunts) ? player.taunts.reduce((s: number, elem: any) => s + (elem.deaths || 0), 0) : 0;
-        if (col.name === 'dances') return Array.isArray(player.dances) ? player.dances.length : (player.dances || 0);
-        if (col.name === 'danceTD') return Array.isArray(player.dances) ? player.dances.reduce((s: number, elem: any) => s + (elem.kills || 0), 0) : 0;
-        if (col.name === 'danceDeaths') return Array.isArray(player.dances) ? player.dances.reduce((s: number, elem: any) => s + (elem.deaths || 0), 0) : 0;
-        if (col.name === 'voiceLines') return Array.isArray(player.voiceLines) ? player.voiceLines.length : (player.voiceLines || 0);
+        if (col.name === 'replay_id') return replayId
+        if (col.name === 'hots_account_id') return hotsAccountId
+        if (col.name === 'discord_id') return discordId
+        if (col.name === 'hots_battle_tag') return battleTag
+        if (col.name === 'sprays') return Array.isArray(player.sprays) ? player.sprays.length : player.sprays || 0
+        if (col.name === 'sprayTD')
+          return Array.isArray(player.sprays)
+            ? player.sprays.reduce((s: number, elem: any) => s + (elem.kills || 0), 0)
+            : 0
+        if (col.name === 'sprayDeaths')
+          return Array.isArray(player.sprays)
+            ? player.sprays.reduce((s: number, elem: any) => s + (elem.deaths || 0), 0)
+            : 0
+        if (col.name === 'bsteps') return Array.isArray(player.bsteps) ? player.bsteps.length : player.bsteps || 0
+        if (col.name === 'bstepTD')
+          return Array.isArray(player.bsteps)
+            ? player.bsteps.reduce((s: number, elem: any) => s + (elem.kills || 0), 0)
+            : 0
+        if (col.name === 'bstepDeaths')
+          return Array.isArray(player.bsteps)
+            ? player.bsteps.reduce((s: number, elem: any) => s + (elem.deaths || 0), 0)
+            : 0
+        if (col.name === 'taunts') return Array.isArray(player.taunts) ? player.taunts.length : player.taunts || 0
+        if (col.name === 'tauntTD')
+          return Array.isArray(player.taunts)
+            ? player.taunts.reduce((s: number, elem: any) => s + (elem.kills || 0), 0)
+            : 0
+        if (col.name === 'tauntDeaths')
+          return Array.isArray(player.taunts)
+            ? player.taunts.reduce((s: number, elem: any) => s + (elem.deaths || 0), 0)
+            : 0
+        if (col.name === 'dances') return Array.isArray(player.dances) ? player.dances.length : player.dances || 0
+        if (col.name === 'danceTD')
+          return Array.isArray(player.dances)
+            ? player.dances.reduce((s: number, elem: any) => s + (elem.kills || 0), 0)
+            : 0
+        if (col.name === 'danceDeaths')
+          return Array.isArray(player.dances)
+            ? player.dances.reduce((s: number, elem: any) => s + (elem.deaths || 0), 0)
+            : 0
+        if (col.name === 'voiceLines')
+          return Array.isArray(player.voiceLines) ? player.voiceLines.length : player.voiceLines || 0
 
-        const gameLength = replay.match.length || 1;
-        const teamPlayers = players.filter(p => p.team === player.team);
-        const teamTotalHeroDamage = teamPlayers.reduce((acc, p) => acc + (p.gameStats?.HeroDamage || 0), 0) || 1;
-        const teamTotalDamageTaken = teamPlayers.reduce((acc, p) => acc + (p.gameStats?.DamageTaken || 0), 0) || 1;
+        const gameLength = replay.match.length || 1
+        const teamPlayers = players.filter(p => p.team === player.team)
+        const teamTotalHeroDamage = teamPlayers.reduce((acc, p) => acc + (p.gameStats?.HeroDamage || 0), 0) || 1
+        const teamTotalDamageTaken = teamPlayers.reduce((acc, p) => acc + (p.gameStats?.DamageTaken || 0), 0) || 1
 
-        if (col.name === 'DDRatio') return (gameStatsData.HeroDamage || 0) / (gameStatsData.DamageTaken === 0 || !gameStatsData.DamageTaken ? 1 : gameStatsData.DamageTaken);
-        if (col.name === 'DPct') return (gameStatsData.HeroDamage || 0) / teamTotalHeroDamage;
-        if (col.name === 'DTPct') return (gameStatsData.DamageTaken || 0) / teamTotalDamageTaken;
-        if (col.name === 'HPct') return ((gameStatsData.Healing || 0) + (gameStatsData.ProtectionGivenToAllies || 0)) / teamTotalDamageTaken;
-        if (col.name === 'SoftCCPct') return (gameStatsData.TimeCCdEnemyHeroes || 0) / gameLength;
-        if (col.name === 'HardCCPct') return ((gameStatsData.TimeRootingEnemyHeroes || 0) + (gameStatsData.TimeSilencingEnemyHeroes || 0) + (gameStatsData.TimeStunningEnemyHeroes || 0)) / gameLength;
-        if (col.name === 'timeDeadPct') return (gameStatsData.TimeSpentDead || 0) / gameLength;
-        if (col.name === 'isMVP') return Array.isArray(gameStatsData.awards) && gameStatsData.awards.includes('EndOfMatchAwardMVPBoolean') ? 1 : 0;
-        if (col.name === 'awardCount') return Array.isArray(gameStatsData.awards) ? gameStatsData.awards.length : 0;
+        if (col.name === 'DDRatio')
+          return (
+            (gameStatsData.HeroDamage || 0) /
+            (gameStatsData.DamageTaken === 0 || !gameStatsData.DamageTaken ? 1 : gameStatsData.DamageTaken)
+          )
+        if (col.name === 'DPct') return (gameStatsData.HeroDamage || 0) / teamTotalHeroDamage
+        if (col.name === 'DTPct') return (gameStatsData.DamageTaken || 0) / teamTotalDamageTaken
+        if (col.name === 'HPct')
+          return ((gameStatsData.Healing || 0) + (gameStatsData.ProtectionGivenToAllies || 0)) / teamTotalDamageTaken
+        if (col.name === 'SoftCCPct') return (gameStatsData.TimeCCdEnemyHeroes || 0) / gameLength
+        if (col.name === 'HardCCPct')
+          return (
+            ((gameStatsData.TimeRootingEnemyHeroes || 0) +
+              (gameStatsData.TimeSilencingEnemyHeroes || 0) +
+              (gameStatsData.TimeStunningEnemyHeroes || 0)) /
+            gameLength
+          )
+        if (col.name === 'timeDeadPct') return (gameStatsData.TimeSpentDead || 0) / gameLength
+        if (col.name === 'isMVP')
+          return Array.isArray(gameStatsData.awards) && gameStatsData.awards.includes('EndOfMatchAwardMVPBoolean')
+            ? 1
+            : 0
+        if (col.name === 'awardCount') return Array.isArray(gameStatsData.awards) ? gameStatsData.awards.length : 0
 
-        const rawValue = col.name in player
-          ? player[col.name]
-          : (col.name in playerTalents ? playerTalents[col.name] : gameStatsData[col.name]);
+        const rawValue =
+          col.name in player
+            ? player[col.name]
+            : col.name in playerTalents
+              ? playerTalents[col.name]
+              : gameStatsData[col.name]
 
-        if (rawValue === undefined || rawValue === null) return null;
-        if (rawValue instanceof Date) return rawValue.toISOString();
-        if (typeof rawValue === 'boolean') return rawValue ? 1 : 0;
-        if (typeof rawValue === 'object') return JSON.stringify(rawValue);
-        if (typeof rawValue === 'number' || typeof rawValue === 'string' || typeof rawValue === 'bigint' || Buffer.isBuffer(rawValue)) return rawValue;
-        return String(rawValue);
-      });
+        if (rawValue === undefined || rawValue === null) return null
+        if (rawValue instanceof Date) return rawValue.toISOString()
+        if (typeof rawValue === 'boolean') return rawValue ? 1 : 0
+        if (typeof rawValue === 'object') return JSON.stringify(rawValue)
+        if (
+          typeof rawValue === 'number' ||
+          typeof rawValue === 'string' ||
+          typeof rawValue === 'bigint' ||
+          Buffer.isBuffer(rawValue)
+        )
+          return rawValue
+        return String(rawValue)
+      })
 
-      insertStatsStmt.run(playerValues);
+      insertStatsStmt.run(playerValues)
     }
 
     // 3. Update SotS_* summary columns on hots_accounts for participating players
     for (const bTag of updatedBattleTags) {
-      updateSotsStatsForAccount(bTag);
+      updateSotsStatsForAccount(bTag)
     }
 
-    return replayId;
-  });
+    return replayId
+  })
 
-  return saveTransaction();
+  return saveTransaction()
 }
 
 export interface PlayerMatchStats {
-  totalGames: number;
-  wins: number;
-  losses: number;
-  winRate: number;
+  totalGames: number
+  wins: number
+  losses: number
+  winRate: number
   recentMatches: Array<{
-    date: string;
-    map: string;
-    hero: string;
-    win: boolean;
-    kills: number;
-    assists: number;
-    deaths: number;
-  }>;
+    date: string
+    map: string
+    hero: string
+    win: boolean
+    kills: number
+    assists: number
+    deaths: number
+  }>
   topHeroes: Array<{
-    hero: string;
-    games: number;
-    wins: number;
-    winRate: number;
-  }>;
+    hero: string
+    games: number
+    wins: number
+    winRate: number
+  }>
   bestHeroes: Array<{
-    hero: string;
-    games: number;
-    wins: number;
-    winRate: number;
-  }>;
+    hero: string
+    games: number
+    wins: number
+    winRate: number
+  }>
   bmStats: {
-    bsteps: number;
-    bstepTd: number;
-    bstepDeaths: number;
-    taunts: number;
-    tauntTd: number;
-    tauntDeaths: number;
-    sprays: number;
-    sprayTd: number;
-    sprayDeaths: number;
-    dances: number;
-    danceTd: number;
-    danceDeaths: number;
-  };
+    bsteps: number
+    bstepTd: number
+    bstepDeaths: number
+    taunts: number
+    tauntTd: number
+    tauntDeaths: number
+    sprays: number
+    sprayTd: number
+    sprayDeaths: number
+    dances: number
+    danceTd: number
+    danceDeaths: number
+  }
 }
 
 export function getPlayerMatchStats(
   discordId: string,
   limit: number = 13,
   minBestHeroGames: number = 5,
-  numHeroesLimit: number = 3,
+  numHeroesLimit: number = 3
 ): PlayerMatchStats {
   type BmRow = {
-    bsteps: number;
-    bstepTd: number;
-    bstepDeaths: number;
-    taunts: number;
-    tauntTd: number;
-    tauntDeaths: number;
-    sprays: number;
-    sprayTd: number;
-    sprayDeaths: number;
-    dances: number;
-    danceTd: number;
-    danceDeaths: number;
-  };
-  const bmStats = db.prepare<[string], BmRow>(`
+    bsteps: number
+    bstepTd: number
+    bstepDeaths: number
+    taunts: number
+    tauntTd: number
+    tauntDeaths: number
+    sprays: number
+    sprayTd: number
+    sprayDeaths: number
+    dances: number
+    danceTd: number
+    danceDeaths: number
+  }
+  const bmStats = db
+    .prepare<[string], BmRow>(
+      `
     SELECT 
       COALESCE(SUM(SotS_Bsteps), 0) as bsteps,
       COALESCE(SUM(SotS_Bstep_TD), 0) as bstepTd,
@@ -884,56 +962,93 @@ export function getPlayerMatchStats(
       COALESCE(SUM(SotS_Dance_Deaths), 0) as danceDeaths
     FROM hots_accounts
     WHERE discord_id = ?
-  `).get(discordId) || {
-    bsteps: 0, bstepTd: 0, bstepDeaths: 0,
-    taunts: 0, tauntTd: 0, tauntDeaths: 0,
-    sprays: 0, sprayTd: 0, sprayDeaths: 0,
-    dances: 0, danceTd: 0, danceDeaths: 0,
-  };
+  `
+    )
+    .get(discordId) || {
+    bsteps: 0,
+    bstepTd: 0,
+    bstepDeaths: 0,
+    taunts: 0,
+    tauntTd: 0,
+    tauntDeaths: 0,
+    sprays: 0,
+    sprayTd: 0,
+    sprayDeaths: 0,
+    dances: 0,
+    danceTd: 0,
+    danceDeaths: 0,
+  }
 
-  const matchFilter = `(s.discord_id = ? OR s.hots_battle_tag IN (SELECT hots_battle_tag FROM hots_accounts WHERE discord_id = ?))`;
+  const matchFilter = `(s.discord_id = ? OR s.hots_battle_tag IN (SELECT hots_battle_tag FROM hots_accounts WHERE discord_id = ?))`
 
-  type OverallRow = { totalGames: number; wins: number; winRate: number };
-  const overall = db.prepare<[string, string], OverallRow>(`
+  type OverallRow = { totalGames: number; wins: number; winRate: number }
+  const overall = db
+    .prepare<[string, string], OverallRow>(
+      `
     SELECT 
       COUNT(*) as totalGames,
       SUM(CASE WHEN s.win = 1 THEN 1 ELSE 0 END) as wins,
       ROUND(AVG(s.win) * 100, 1) as winRate
     FROM hots_replay_player_game_stats s
     WHERE ${matchFilter}
-  `).get(discordId, discordId) || { totalGames: 0, wins: 0, winRate: 0 };
+  `
+    )
+    .get(discordId, discordId) || { totalGames: 0, wins: 0, winRate: 0 }
 
-  const totalGames = overall.totalGames || 0;
-  const wins = overall.wins || 0;
-  const losses = totalGames - wins;
-  const winRate = totalGames > 0 ? (overall.winRate || 0) : 0;
+  const totalGames = overall.totalGames || 0
+  const wins = overall.wins || 0
+  const losses = totalGames - wins
+  const winRate = totalGames > 0 ? overall.winRate || 0 : 0
 
-  type RecentMatchRow = { date: string; map: string; hero: string; win: number; kills: number; assists: number; deaths: number };
-  const recentMatchesRaw = db.prepare<[string, string, number], RecentMatchRow>(`
+  type RecentMatchRow = {
+    date: string
+    map: string
+    hero: string
+    win: number
+    kills: number
+    assists: number
+    deaths: number
+  }
+  const recentMatchesRaw = db
+    .prepare<[string, string, number], RecentMatchRow>(
+      `
     SELECT r.date, r.map, s.hero, s.win, s.SoloKill as kills, s.Assists as assists, s.Deaths as deaths
     FROM hots_replay_player_game_stats s
     JOIN hots_replays r ON s.replay_id = r.id
     WHERE ${matchFilter}
     ORDER BY r.date DESC
     LIMIT ?
-  `).all(discordId, discordId, limit);
+  `
+    )
+    .all(discordId, discordId, limit)
 
   const recentMatches = recentMatchesRaw.map(m => ({
     ...m,
     win: m.win === 1,
-  }));
+  }))
 
-  type TopHeroRow = { hero: string; games: number; wins: number; winRate: number };
-  const topHeroes = db.prepare<[string, string, number], TopHeroRow>(`
+  type TopHeroRow = {
+    hero: string
+    games: number
+    wins: number
+    winRate: number
+  }
+  const topHeroes = db
+    .prepare<[string, string, number], TopHeroRow>(
+      `
     SELECT s.hero, COUNT(*) as games, SUM(CASE WHEN s.win = 1 THEN 1 ELSE 0 END) as wins, ROUND(AVG(s.win) * 100, 1) as winRate
     FROM hots_replay_player_game_stats s
     WHERE ${matchFilter}
     GROUP BY s.hero
     ORDER BY games DESC
     LIMIT ?
-  `).all(discordId, discordId, numHeroesLimit);
+  `
+    )
+    .all(discordId, discordId, numHeroesLimit)
 
-  const bestHeroes = db.prepare<[string, string, number, number], TopHeroRow>(`
+  const bestHeroes = db
+    .prepare<[string, string, number, number], TopHeroRow>(
+      `
     SELECT s.hero, COUNT(*) as games, SUM(CASE WHEN s.win = 1 THEN 1 ELSE 0 END) as wins, ROUND(AVG(s.win) * 100, 1) as winRate
     FROM hots_replay_player_game_stats s
     WHERE ${matchFilter}
@@ -941,7 +1056,9 @@ export function getPlayerMatchStats(
     HAVING COUNT(*) >= ?
     ORDER BY AVG(s.win) DESC, COUNT(*) DESC
     LIMIT ?
-  `).all(discordId, discordId, minBestHeroGames, numHeroesLimit);
+  `
+    )
+    .all(discordId, discordId, minBestHeroGames, numHeroesLimit)
 
   return {
     totalGames,
@@ -952,19 +1069,16 @@ export function getPlayerMatchStats(
     topHeroes,
     bestHeroes,
     bmStats,
-  };
+  }
 }
 
 export function optimizeDb(): void {
   try {
-    console.log('Optimizing SQLite database (WAL checkpoint & VACUUM)...');
-    db.exec('PRAGMA wal_checkpoint(TRUNCATE);');
-    db.exec('VACUUM;');
-    console.log('Database optimization complete!');
+    console.log('Optimizing SQLite database (WAL checkpoint & VACUUM)...')
+    db.exec('PRAGMA wal_checkpoint(TRUNCATE);')
+    db.exec('VACUUM;')
+    console.log('Database optimization complete!')
   } catch (error) {
-    console.error('Error optimizing database:', error);
+    console.error('Error optimizing database:', error)
   }
 }
-
-
-

@@ -10,18 +10,18 @@ import {
   MessageFlags,
   MessagePayload,
   ModalSubmitInteraction,
-} from 'discord.js';
-import { botChannelName, chatOrButtonOrModal } from '../constants';
-import { client } from '../index';
-import { getBotChannel } from './channel';
+} from 'discord.js'
+import { botChannelName, chatOrButtonOrModal } from '../constants'
+import { client } from '../index'
+import { getBotChannel } from './channel'
 
 function getMessageContent(options: string | MessagePayload | InteractionReplyOptions): string {
   if (typeof options === 'string') {
-    return options;
+    return options
   } else if ('content' in options && typeof options.content === 'string') {
-    return options.content;
+    return options.content
   } else {
-    return 'No content';
+    return 'No content'
   }
 }
 
@@ -32,44 +32,44 @@ function getMessageContent(options: string | MessagePayload | InteractionReplyOp
  */
 export async function safeReply(
   interaction: Interaction<CacheType> | chatOrButtonOrModal | undefined,
-  options: string | MessagePayload | InteractionReplyOptions,
+  options: string | MessagePayload | InteractionReplyOptions
 ) {
   if (!interaction) {
     if (!process.env.NOR_DISCORD_ID) {
-      console.error('No NOR_DISCORD_ID environment variable set.');
-      return;
+      console.error('No NOR_DISCORD_ID environment variable set.')
+      return
     }
-    const guild = client.guilds.cache.get(process.env.NOR_DISCORD_ID);
+    const guild = client.guilds.cache.get(process.env.NOR_DISCORD_ID)
     if (!guild) {
-      console.error(`Guild with ID ${process.env.NOR_DISCORD_ID} not found.`);
-      return;
+      console.error(`Guild with ID ${process.env.NOR_DISCORD_ID} not found.`)
+      return
     }
-    const channel = await getBotChannel(guild);
+    const channel = await getBotChannel(guild)
     if (!channel || !('send' in channel)) {
-      console.error(`Channel with name ${botChannelName} not found or is not text-based.`);
-      return;
+      console.error(`Channel with name ${botChannelName} not found or is not text-based.`)
+      return
     }
-    const message = getMessageContent(options);
+    const message = getMessageContent(options)
     return channel.send({
       content: message,
-    });
+    })
   }
   if (interaction.isRepliable() && (interaction.replied || interaction.deferred)) {
-    return await interaction.followUp(options);
+    return await interaction.followUp(options)
   } else {
     try {
       if (interaction.isRepliable()) {
-        return await interaction.reply(options);
+        return await interaction.reply(options)
       } else {
-        console.error('Interaction is not repliable');
+        console.error('Interaction is not repliable')
       }
     } catch (error) {
       try {
         if (interaction.isRepliable()) {
-          return await interaction.followUp(options);
+          return await interaction.followUp(options)
         }
       } catch (followUpError) {
-        console.error('Failed to follow up on interaction:', followUpError);
+        console.error('Failed to follow up on interaction:', followUpError)
       }
     }
   }
@@ -86,19 +86,19 @@ export async function requireGuildId(
     | ButtonInteraction<CacheType>
     | ModalSubmitInteraction<CacheType>
     | AutocompleteInteraction<CacheType>
-    | undefined,
+    | undefined
 ): Promise<string | null> {
   if (!interaction) {
-    return null;
+    return null
   }
   if (!interaction.guildId) {
     await safeReply(interaction, {
       content: 'This command can only be used in a server.',
       flags: MessageFlags.Ephemeral,
-    });
-    return null;
+    })
+    return null
   }
-  return interaction.guildId;
+  return interaction.guildId
 }
 
 /**
@@ -108,21 +108,21 @@ export async function requireGuildId(
  */
 export async function safeUpdate(
   interaction: ButtonInteraction<CacheType> | MessageComponentInteraction<CacheType> | chatOrButtonOrModal | undefined,
-  options: string | MessagePayload | (InteractionUpdateOptions & InteractionReplyOptions),
+  options: string | MessagePayload | (InteractionUpdateOptions & InteractionReplyOptions)
 ) {
-  if (!interaction) return;
+  if (!interaction) return
   try {
     if ('update' in interaction && typeof interaction.update === 'function') {
       if (!interaction.replied && !interaction.deferred) {
-        return await interaction.update(options);
+        return await interaction.update(options)
       } else if (interaction.isRepliable()) {
-        return await interaction.followUp(options);
+        return await interaction.followUp(options)
       }
     } else if (interaction.isRepliable()) {
-      return await safeReply(interaction, options);
+      return await safeReply(interaction, options)
     }
   } catch (error) {
-    console.error('Failed to update interaction safely:', error);
+    console.error('Failed to update interaction safely:', error)
   }
 }
 
@@ -130,15 +130,14 @@ export async function safeUpdate(
  * Safely defers updating an interaction, catching any errors (e.g. Unknown interaction 10062).
  */
 export async function safeDeferUpdate(
-  interaction: ButtonInteraction<CacheType> | MessageComponentInteraction<CacheType> | undefined,
+  interaction: ButtonInteraction<CacheType> | MessageComponentInteraction<CacheType> | undefined
 ) {
-  if (!interaction) return;
+  if (!interaction) return
   try {
     if (!interaction.replied && !interaction.deferred) {
-      return await interaction.deferUpdate();
+      return await interaction.deferUpdate()
     }
   } catch (error) {
-    console.error('Failed to defer update on interaction:', error);
+    console.error('Failed to defer update on interaction:', error)
   }
 }
-

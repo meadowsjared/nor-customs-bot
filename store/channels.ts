@@ -1,8 +1,8 @@
-import { VoiceChannel } from 'discord.js';
-import { ChannelExtended, ChannelLocal } from '../types/channel';
-import Database from 'better-sqlite3';
+import { VoiceChannel } from 'discord.js'
+import { ChannelExtended, ChannelLocal } from '../types/channel'
+import Database from 'better-sqlite3'
 
-const db = new Database('./store/nor_customs.db');
+const db = new Database('./store/nor_customs.db')
 
 // Ensure channels table exists
 db.exec(`
@@ -13,12 +13,12 @@ db.exec(`
     channelName TEXT NOT NULL,
     PRIMARY KEY (guild_id, channelType)
   )
-`);
+`)
 
 // Check if existing channels table needs migration to include guild_id column
-const channelCols = db.prepare<[], { name: string }>('PRAGMA table_info(channels)').all();
+const channelCols = db.prepare<[], { name: string }>('PRAGMA table_info(channels)').all()
 if (channelCols.length > 0 && !channelCols.some(c => c.name === 'guild_id')) {
-  db.exec('ALTER TABLE channels RENAME TO channels_old');
+  db.exec('ALTER TABLE channels RENAME TO channels_old')
   db.exec(`
     CREATE TABLE channels (
       guild_id TEXT NOT NULL DEFAULT 'global',
@@ -27,9 +27,11 @@ if (channelCols.length > 0 && !channelCols.some(c => c.name === 'guild_id')) {
       channelName TEXT NOT NULL,
       PRIMARY KEY (guild_id, channelType)
     )
-  `);
-  db.exec("INSERT INTO channels (guild_id, channelType, channelId, channelName) SELECT 'global', channelType, channelId, channelName FROM channels_old");
-  db.exec('DROP TABLE channels_old');
+  `)
+  db.exec(
+    "INSERT INTO channels (guild_id, channelType, channelId, channelName) SELECT 'global', channelType, channelId, channelName FROM channels_old"
+  )
+  db.exec('DROP TABLE channels_old')
 }
 
 // Ensure lobby_messages table exists
@@ -42,12 +44,12 @@ db.exec(`
     previousPlayersList TEXT DEFAULT '',
     PRIMARY KEY (guild_id, messageType)
   )
-`);
+`)
 
 // Check if existing lobby_messages table needs migration to include guild_id column
-const lobbyMsgCols = db.prepare<[], { name: string }>('PRAGMA table_info(lobby_messages)').all();
+const lobbyMsgCols = db.prepare<[], { name: string }>('PRAGMA table_info(lobby_messages)').all()
 if (lobbyMsgCols.length > 0 && !lobbyMsgCols.some(c => c.name === 'guild_id')) {
-  db.exec('ALTER TABLE lobby_messages RENAME TO lobby_messages_old');
+  db.exec('ALTER TABLE lobby_messages RENAME TO lobby_messages_old')
   db.exec(`
     CREATE TABLE lobby_messages (
       guild_id TEXT NOT NULL DEFAULT 'global',
@@ -57,9 +59,11 @@ if (lobbyMsgCols.length > 0 && !lobbyMsgCols.some(c => c.name === 'guild_id')) {
       previousPlayersList TEXT DEFAULT '',
       PRIMARY KEY (guild_id, messageType)
     )
-  `);
-  db.exec("INSERT INTO lobby_messages (guild_id, messageType, messageId, channelId, previousPlayersList) SELECT 'global', messageType, messageId, channelId, previousPlayersList FROM lobby_messages_old");
-  db.exec('DROP TABLE lobby_messages_old');
+  `)
+  db.exec(
+    "INSERT INTO lobby_messages (guild_id, messageType, messageId, channelId, previousPlayersList) SELECT 'global', messageType, messageId, channelId, previousPlayersList FROM lobby_messages_old"
+  )
+  db.exec('DROP TABLE lobby_messages_old')
 }
 
 /**
@@ -75,11 +79,11 @@ export function saveChannel(guildId: string, channelType: string, channel: Voice
     ON CONFLICT(guild_id, channelType) DO UPDATE SET
       channelId=excluded.channelId,
       channelName=excluded.channelName
-  `);
-  stmt.run(guildId, channelType, channel.id, channel.name);
+  `)
+  stmt.run(guildId, channelType, channel.id, channel.name)
 }
 
-type channelTypes = 'lobby' | 'team1' | 'team2';
+type channelTypes = 'lobby' | 'team1' | 'team2'
 
 /**
  * Retrieves a lobby channel
@@ -89,21 +93,21 @@ type channelTypes = 'lobby' | 'team1' | 'team2';
  */
 export function getChannels(guildId: string, channelTypes: channelTypes[]): ChannelExtended[] | undefined {
   if (channelTypes.length === 0) {
-    return undefined;
+    return undefined
   }
-  const placeholders = channelTypes.map(() => '?').join(', ');
+  const placeholders = channelTypes.map(() => '?').join(', ')
   const stmt = db.prepare<[string, ...string[]], ChannelExtended>(
-    `SELECT * FROM channels WHERE guild_id = ? AND channelType IN (${placeholders})`,
-  );
-  const rows: ChannelExtended[] = stmt.all(guildId, ...channelTypes);
+    `SELECT * FROM channels WHERE guild_id = ? AND channelType IN (${placeholders})`
+  )
+  const rows: ChannelExtended[] = stmt.all(guildId, ...channelTypes)
   if (!rows || rows.length === 0) {
-    return undefined;
+    return undefined
   }
   return rows.map((row: ChannelExtended) => ({
     channelId: row.channelId,
     channelName: row.channelName,
     channelType: row.channelType,
-  }));
+  }))
 }
 
 /**
@@ -119,7 +123,7 @@ export function saveLobbyMessage(
   messageType: string,
   messageId: string,
   channelId: string,
-  previousPlayersList: string,
+  previousPlayersList: string
 ): void {
   const stmt = db.prepare(`
     INSERT INTO lobby_messages (guild_id, messageType, messageId, channelId, previousPlayersList)
@@ -129,8 +133,8 @@ export function saveLobbyMessage(
       channelId=excluded.channelId,
       previousPlayersList=excluded.previousPlayersList
     WHERE messageType = ?
-  `);
-  stmt.run(guildId, messageType, messageId, channelId, previousPlayersList, messageType);
+  `)
+  stmt.run(guildId, messageType, messageId, channelId, previousPlayersList, messageType)
 }
 
 /**
@@ -141,18 +145,30 @@ export function saveLobbyMessage(
  */
 export function getLobbyMessages(
   guildId: string,
-  messageTypes: string[],
-): { messageType: string; messageId: string; channelId: string; previousPlayersList: string }[] | undefined {
+  messageTypes: string[]
+):
+  | {
+      messageType: string
+      messageId: string
+      channelId: string
+      previousPlayersList: string
+    }[]
+  | undefined {
   const stmt = db.prepare<
     [string, ...string[]],
-    { messageType: string; messageId: string; channelId: string; previousPlayersList: string }
+    {
+      messageType: string
+      messageId: string
+      channelId: string
+      previousPlayersList: string
+    }
   >(`
     SELECT messageType, messageId, channelId, previousPlayersList FROM lobby_messages WHERE guild_id = ? AND messageType IN (${messageTypes
       .map(() => '?')
       .join(', ')})
-  `);
-  const row = stmt.all(guildId, ...messageTypes);
-  return row.length > 0 ? row : undefined;
+  `)
+  const row = stmt.all(guildId, ...messageTypes)
+  return row.length > 0 ? row : undefined
 }
 
 /**
@@ -162,11 +178,11 @@ export function getLobbyMessages(
  */
 export function deleteLobbyMessages(guildId: string, messageTypes: string[]): void {
   if (messageTypes.length === 0) {
-    return;
+    return
   }
-  const placeholders = messageTypes.map(() => '?').join(', ');
-  const stmt = db.prepare(`DELETE FROM lobby_messages WHERE guild_id = ? AND messageType IN (${placeholders})`);
-  stmt.run(guildId, ...messageTypes);
+  const placeholders = messageTypes.map(() => '?').join(', ')
+  const stmt = db.prepare(`DELETE FROM lobby_messages WHERE guild_id = ? AND messageType IN (${placeholders})`)
+  stmt.run(guildId, ...messageTypes)
 }
 
 /**
@@ -175,11 +191,11 @@ export function deleteLobbyMessages(guildId: string, messageTypes: string[]): vo
  */
 export function deleteLobbyMessagesById(messageIds: string[]): void {
   if (messageIds.length === 0) {
-    return;
+    return
   }
-  const placeholders = messageIds.map(() => '?').join(', ');
-  const stmt = db.prepare(`DELETE FROM lobby_messages WHERE messageId IN (${placeholders})`);
-  stmt.run(...messageIds);
+  const placeholders = messageIds.map(() => '?').join(', ')
+  const stmt = db.prepare(`DELETE FROM lobby_messages WHERE messageId IN (${placeholders})`)
+  stmt.run(...messageIds)
 }
 
 /**
@@ -188,8 +204,8 @@ export function deleteLobbyMessagesById(messageIds: string[]): void {
  * @returns A Map of channel IDs to ChannelLocal objects.
  */
 export function getAllChannels(guildId: string): Map<string, ChannelLocal> {
-  const stmt = db.prepare<[string, ...string[]], ChannelExtended>('SELECT * FROM channels WHERE guild_id = ?');
-  const rows: ChannelExtended[] = stmt.all(guildId);
+  const stmt = db.prepare<[string, ...string[]], ChannelExtended>('SELECT * FROM channels WHERE guild_id = ?')
+  const rows: ChannelExtended[] = stmt.all(guildId)
   return new Map<string, ChannelLocal>(
     rows.map((row: ChannelExtended) => [
       row.channelType,
@@ -197,6 +213,6 @@ export function getAllChannels(guildId: string): Map<string, ChannelLocal> {
         channelId: row.channelId,
         channelName: row.channelName,
       },
-    ]),
-  );
+    ])
+  )
 }

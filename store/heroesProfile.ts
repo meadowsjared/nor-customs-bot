@@ -1,59 +1,59 @@
-import { HPData, HPPlayerData, HPPlayerStatsData } from '../types/heroesProfile'; // Assuming you have a types.ts file for type definitions
-import Database from 'better-sqlite3';
-import { puppeteerRefreshXsrfTokenAndCookies } from './heroesProfilePuppeteer';
-import { PageWithCursor } from 'puppeteer-real-browser';
-import type { Browser } from "rebrowser-puppeteer-core";
+import { HPData, HPPlayerData, HPPlayerStatsData } from '../types/heroesProfile' // Assuming you have a types.ts file for type definitions
+import Database from 'better-sqlite3'
+import { puppeteerRefreshXsrfTokenAndCookies } from './heroesProfilePuppeteer'
+import { PageWithCursor } from 'puppeteer-real-browser'
+import type { Browser } from 'rebrowser-puppeteer-core'
 
-const db = new Database('./store/nor_customs.db');
+const db = new Database('./store/nor_customs.db')
 export const userAgent =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36';
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36'
 
-let isInitialized = false;
+let isInitialized = false
 
 // Initialize tokens on module load
 async function initialize() {
   if (!isInitialized) {
-    isInitialized = true;
+    isInitialized = true
   }
 }
 
 initialize().catch(err => {
-  console.error('Failed to initialize HP tokens:', err);
-  console.error('Bot may not be able to fetch Heroes Profile data!');
-});
+  console.error('Failed to initialize HP tokens:', err)
+  console.error('Bot may not be able to fetch Heroes Profile data!')
+})
 
 export async function getHeroesProfileData(battleTag: string): Promise<HPData | undefined> {
-  let browser: Browser | undefined;
+  let browser: Browser | undefined
   try {
-    const startTime = Date.now();
+    const startTime = Date.now()
     // first check if we have their region and blizz_id stored already
-    const hpRegionStmt = db.prepare<string, { HP_Blizz_ID: string; HP_Region: number; }>(
-      'SELECT HP_Blizz_ID, HP_Region FROM hots_accounts WHERE hots_battle_tag = ? COLLATE NOCASE',
-    );
-    const row = hpRegionStmt.get(battleTag);
-    console.log(`Getting HP Data for ${battleTag}`);
+    const hpRegionStmt = db.prepare<string, { HP_Blizz_ID: string; HP_Region: number }>(
+      'SELECT HP_Blizz_ID, HP_Region FROM hots_accounts WHERE hots_battle_tag = ? COLLATE NOCASE'
+    )
+    const row = hpRegionStmt.get(battleTag)
+    console.log(`Getting HP Data for ${battleTag}`)
 
-    let blizz_id = row?.HP_Blizz_ID;
-    let region = row?.HP_Region;
-    const initialized = await initializeHPPage();
-    browser = initialized.browser;
-    const { xsrfToken, page } = initialized;
+    let blizz_id = row?.HP_Blizz_ID
+    let region = row?.HP_Region
+    const initialized = await initializeHPPage()
+    browser = initialized.browser
+    const { xsrfToken, page } = initialized
     if (!xsrfToken || !page) {
-      throw new Error('XSRF token or page instance is missing.');
+      throw new Error('XSRF token or page instance is missing.')
     }
     if (!blizz_id || !region) {
       // we don't know their blizz_id or region, so we need to look it up
-      const bestMatch = await getBestHpAccount(battleTag, xsrfToken, page);
+      const bestMatch = await getBestHpAccount(battleTag, xsrfToken, page)
       if (!bestMatch) {
-        return undefined;
+        return undefined
       }
-      blizz_id = bestMatch.blizz_id;
-      region = bestMatch.region;
+      blizz_id = bestMatch.blizz_id
+      region = bestMatch.region
       // store blizz_id, region for the first item in the array
       const hpUpdateStmt = db.prepare(
-        'UPDATE hots_accounts SET HP_Blizz_ID = ?, HP_Region = ? WHERE hots_battle_tag = ? COLLATE NOCASE',
-      );
-      hpUpdateStmt.run(blizz_id, region, battleTag);
+        'UPDATE hots_accounts SET HP_Blizz_ID = ?, HP_Region = ? WHERE hots_battle_tag = ? COLLATE NOCASE'
+      )
+      hpUpdateStmt.run(blizz_id, region, battleTag)
     }
 
     const hpDataReturned: HPPlayerStatsData = await page.evaluate(
@@ -64,27 +64,27 @@ export async function getHeroesProfileData(battleTag: string): Promise<HPData | 
             'Content-Type': 'application/json',
             'X-XSRF-TOKEN': token,
             'X-Requested-With': 'XMLHttpRequest',
-            'Accept': 'application/json, text/plain, */*',
+            Accept: 'application/json, text/plain, */*',
           },
           body: JSON.stringify({ battletag: battleTag, region, blizz_id }),
-        });
+        })
 
         if (!response.ok) {
-          const errText = await response.text().catch(() => '');
-          throw new Error(`${response.status}: ${errText}`);
+          const errText = await response.text().catch(() => '')
+          throw new Error(`${response.status}: ${errText}`)
         }
 
-        return response.json();
+        return response.json()
       },
       xsrfToken,
       battleTag,
       region,
-      blizz_id,
-    );
+      blizz_id
+    )
 
-    const detectionResult = determineFavoriteRoles(hpDataReturned);
-    const detectedRoles = detectionResult?.roles;
-    const detectedRolesReason = detectionResult?.reason;
+    const detectionResult = determineFavoriteRoles(hpDataReturned)
+    const detectedRoles = detectionResult?.roles
+    const detectedRolesReason = detectionResult?.reason
 
     const hpData: HPData = {
       region,
@@ -97,20 +97,20 @@ export async function getHeroesProfileData(battleTag: string): Promise<HPData | 
       arGames: (hpDataReturned.ar_mmr_data?.win ?? 0) + (hpDataReturned.ar_mmr_data?.loss ?? 0),
       detectedRoles,
       detectedRolesReason,
-    };
+    }
 
-    const endTime = Date.now();
-    const elapsedTime = (endTime - startTime) / 1000;
+    const endTime = Date.now()
+    const elapsedTime = (endTime - startTime) / 1000
     console.log(
-      `qm: ${hpData.qmMmr}/${hpData.qmGames}, sl: ${hpData.slMmr}/${hpData.slGames}, ar: ${hpData.arMmr}/${hpData.arGames}, detectedRoles: ${detectedRoles} (${detectedRolesReason})`,
-    );
-    console.log(`Elapsed time: ${elapsedTime.toFixed(2)} seconds`);
-    return hpData;
+      `qm: ${hpData.qmMmr}/${hpData.qmGames}, sl: ${hpData.slMmr}/${hpData.slGames}, ar: ${hpData.arMmr}/${hpData.arGames}, detectedRoles: ${detectedRoles} (${detectedRolesReason})`
+    )
+    console.log(`Elapsed time: ${elapsedTime.toFixed(2)} seconds`)
+    return hpData
   } catch (error) {
-    console.error('An error occurred:', error);
+    console.error('An error occurred:', error)
   } finally {
     if (browser) {
-      await browser.close().catch(() => { });
+      await browser.close().catch(() => {})
     }
   }
 }
@@ -120,17 +120,17 @@ export async function getHeroesProfileData(battleTag: string): Promise<HPData | 
  * HotS roles: Tank -> T, Bruiser -> B, Healer -> H, everything else (Melee/Ranged Assassin, Support, etc.) -> A
  */
 export function mapHotSRoleToBotRole(roleOrNewRole?: string | null): 'T' | 'B' | 'H' | 'A' {
-  if (!roleOrNewRole) return 'A';
-  const normalized = roleOrNewRole.toLowerCase().trim();
-  if (normalized === 'tank') return 'T';
-  if (normalized === 'bruiser') return 'B';
-  if (normalized === 'healer') return 'H';
-  return 'A';
+  if (!roleOrNewRole) return 'A'
+  const normalized = roleOrNewRole.toLowerCase().trim()
+  if (normalized === 'tank') return 'T'
+  if (normalized === 'bruiser') return 'B'
+  if (normalized === 'healer') return 'H'
+  return 'A'
 }
 
 export interface DetectedRolesResult {
-  roles: string;
-  reason: string;
+  roles: string
+  reason: string
 }
 
 /**
@@ -144,45 +144,45 @@ export function determineFavoriteRoles(hpData: HPPlayerStatsData): DetectedRoles
     B: 0,
     H: 0,
     A: 0,
-  };
+  }
 
-  let source: 'all_time' | 'latest_heroes' | 'recent_matches' = 'all_time';
+  let source: 'all_time' | 'latest_heroes' | 'recent_matches' = 'all_time'
 
   // 1. Primary source: all-time most played heroes
   if (Array.isArray(hpData.heroes_three_most_played) && hpData.heroes_three_most_played.length > 0) {
-    source = 'all_time';
+    source = 'all_time'
     for (const item of hpData.heroes_three_most_played) {
-      const roleStr = item.hero?.new_role || item.hero?.role;
-      const botRole = mapHotSRoleToBotRole(roleStr);
-      counts[botRole] += item.games_played || 1;
+      const roleStr = item.hero?.new_role || item.hero?.role
+      const botRole = mapHotSRoleToBotRole(roleStr)
+      counts[botRole] += item.games_played || 1
     }
   }
 
   // 2. Fallback: latest played heroes
-  let total = counts.T + counts.B + counts.H + counts.A;
+  let total = counts.T + counts.B + counts.H + counts.A
   if (total === 0 && Array.isArray(hpData.heroes_three_latest_played) && hpData.heroes_three_latest_played.length > 0) {
-    source = 'latest_heroes';
+    source = 'latest_heroes'
     for (const item of hpData.heroes_three_latest_played) {
-      const roleStr = item.hero?.new_role || item.hero?.role;
-      const botRole = mapHotSRoleToBotRole(roleStr);
-      counts[botRole] += item.games_played || 1;
+      const roleStr = item.hero?.new_role || item.hero?.role
+      const botRole = mapHotSRoleToBotRole(roleStr)
+      counts[botRole] += item.games_played || 1
     }
   }
 
   // 3. Fallback: recent match data
-  total = counts.T + counts.B + counts.H + counts.A;
+  total = counts.T + counts.B + counts.H + counts.A
   if (total === 0 && Array.isArray(hpData.matchData) && hpData.matchData.length > 0) {
-    source = 'recent_matches';
+    source = 'recent_matches'
     for (const match of hpData.matchData) {
-      const roleStr = match.hero?.new_role || match.hero?.role;
-      const botRole = mapHotSRoleToBotRole(roleStr);
-      counts[botRole]++;
+      const roleStr = match.hero?.new_role || match.hero?.role
+      const botRole = mapHotSRoleToBotRole(roleStr)
+      counts[botRole]++
     }
   }
 
-  total = counts.T + counts.B + counts.H + counts.A;
+  total = counts.T + counts.B + counts.H + counts.A
   if (total === 0) {
-    return undefined;
+    return undefined
   }
 
   const entries: [string, number][] = [
@@ -190,62 +190,68 @@ export function determineFavoriteRoles(hpData: HPPlayerStatsData): DetectedRoles
     ['B', counts.B],
     ['H', counts.H],
     ['A', counts.A],
-  ];
+  ]
 
   entries.sort((a, b) => {
     if (b[1] !== a[1]) {
-      return b[1] - a[1];
+      return b[1] - a[1]
     }
     // Tiebreaker: highest individual hero games played in top 3
     if (source === 'all_time' && Array.isArray(hpData.heroes_three_most_played)) {
       const aTop = hpData.heroes_three_most_played
         .filter(item => mapHotSRoleToBotRole(item.hero?.new_role || item.hero?.role) === a[0])
-        .reduce((max, item) => Math.max(max, item.games_played || 0), 0);
+        .reduce((max, item) => Math.max(max, item.games_played || 0), 0)
       const bTop = hpData.heroes_three_most_played
         .filter(item => mapHotSRoleToBotRole(item.hero?.new_role || item.hero?.role) === b[0])
-        .reduce((max, item) => Math.max(max, item.games_played || 0), 0);
+        .reduce((max, item) => Math.max(max, item.games_played || 0), 0)
       if (bTop !== aTop) {
-        return bTop - aTop;
+        return bTop - aTop
       }
     }
-    return 0;
-  });
+    return 0
+  })
 
-  const topCount = entries[0][1];
+  const topCount = entries[0][1]
   if (topCount === 0) {
-    return undefined;
+    return undefined
   }
 
   // Include top role and any subsequent roles that have >= 50% of the top role's play count
-  const qualifyingRoles = entries
-    .filter(([_, count]) => count > 0 && count >= 0.5 * topCount)
-    .map(([role]) => role);
+  const qualifyingRoles = entries.filter(([_, count]) => count > 0 && count >= 0.5 * topCount).map(([role]) => role)
 
-  let reason = '';
+  let reason = ''
   if (source === 'all_time') {
     const heroNames = Array.isArray(hpData.heroes_three_most_played)
-      ? hpData.heroes_three_most_played.map(item => item.hero?.name).filter(Boolean).join(', ')
-      : '';
-    const countsStr = entries.filter(([_, count]) => count > 0).map(([role, count]) => `${role}: ${count}`).join(', ');
-    reason = heroNames
-      ? `All-time most played: ${countsStr} (${heroNames})`
-      : `All-time most played: ${countsStr}`;
+      ? hpData.heroes_three_most_played
+          .map(item => item.hero?.name)
+          .filter(Boolean)
+          .join(', ')
+      : ''
+    const countsStr = entries
+      .filter(([_, count]) => count > 0)
+      .map(([role, count]) => `${role}: ${count}`)
+      .join(', ')
+    reason = heroNames ? `All-time most played: ${countsStr} (${heroNames})` : `All-time most played: ${countsStr}`
   } else if (source === 'latest_heroes') {
     const heroNames = Array.isArray(hpData.heroes_three_latest_played)
-      ? hpData.heroes_three_latest_played.map(item => item.hero?.name).filter(Boolean).join(', ')
-      : '';
-    const countsStr = entries.filter(([_, count]) => count > 0).map(([role, count]) => `${role}: ${count}`).join(', ');
-    reason = heroNames
-      ? `Latest played heroes: ${countsStr} (${heroNames})`
-      : `Latest played heroes: ${countsStr}`;
+      ? hpData.heroes_three_latest_played
+          .map(item => item.hero?.name)
+          .filter(Boolean)
+          .join(', ')
+      : ''
+    const countsStr = entries
+      .filter(([_, count]) => count > 0)
+      .map(([role, count]) => `${role}: ${count}`)
+      .join(', ')
+    reason = heroNames ? `Latest played heroes: ${countsStr} (${heroNames})` : `Latest played heroes: ${countsStr}`
   } else {
-    reason = `Recent matches: ${entries.map(([role, count]) => `${role}: ${count}`).join(', ')}`;
+    reason = `Recent matches: ${entries.map(([role, count]) => `${role}: ${count}`).join(', ')}`
   }
 
   return {
     roles: qualifyingRoles.join(''),
     reason,
-  };
+  }
 }
 
 /**
@@ -256,11 +262,11 @@ export function determineFavoriteRoles(hpData: HPPlayerStatsData): DetectedRoles
 async function getBestHpAccount(
   battleTag: string,
   decodedToken: string,
-  page: PageWithCursor,
+  page: PageWithCursor
 ): Promise<HPPlayerData | undefined> {
   if (!page) {
-    console.error('Page instance not available');
-    return undefined;
+    console.error('Page instance not available')
+    return undefined
   }
 
   try {
@@ -272,52 +278,52 @@ async function getBestHpAccount(
             'X-XSRF-TOKEN': token,
             'Content-Type': 'application/json',
             'X-Requested-With': 'XMLHttpRequest',
-            'Accept': 'application/json, text/plain, */*',
+            Accept: 'application/json, text/plain, */*',
           },
           body: JSON.stringify({ userinput: tag }),
-        });
+        })
 
         if (!response.ok) {
-          const errText = await response.text().catch(() => '');
-          throw new Error(`WHOA! ${response.status}: ${errText}`);
+          const errText = await response.text().catch(() => '')
+          throw new Error(`WHOA! ${response.status}: ${errText}`)
         }
-        console.log('response.json:', await response.clone().json());
-        return response.json();
+        console.log('response.json:', await response.clone().json())
+        return response.json()
       },
       decodedToken,
-      battleTag,
-    );
+      battleTag
+    )
 
     if (!Array.isArray(data) || data.length === 0) {
-      console.log(`No data found for BattleTag: ${battleTag}`);
-      return undefined;
+      console.log(`No data found for BattleTag: ${battleTag}`)
+      return undefined
     }
 
-    data.sort((a, b) => b.totalGamesPlayed - a.totalGamesPlayed);
-    return data[0];
+    data.sort((a, b) => b.totalGamesPlayed - a.totalGamesPlayed)
+    return data[0]
   } catch (error) {
-    console.error(`Error fetching getBestHpAccount data:`, error);
-    return undefined;
+    console.error(`Error fetching getBestHpAccount data:`, error)
+    return undefined
   }
 }
 
 async function initializeHPPage(): Promise<{
-  xsrfToken: string;
-  page: PageWithCursor;
-  browser: Browser;
+  xsrfToken: string
+  page: PageWithCursor
+  browser: Browser
 }> {
-  const { xsrfToken, page, browser } = await puppeteerRefreshXsrfTokenAndCookies('https://www.heroesprofile.com/');
+  const { xsrfToken, page, browser } = await puppeteerRefreshXsrfTokenAndCookies('https://www.heroesprofile.com/')
   if (!page) {
-    throw new Error('No page instance received from server!');
+    throw new Error('No page instance received from server!')
   }
   // We need to find the specific "XSRF-TOKEN" cookie string
   if (!xsrfToken) {
-    throw new Error('XSRF-TOKEN cookie not found!');
+    throw new Error('XSRF-TOKEN cookie not found!')
   }
 
-  const decodedToken = decodeURIComponent(xsrfToken);
+  const decodedToken = decodeURIComponent(xsrfToken)
 
-  const tokenFetchedAt = new Date();
-  console.log(`XSRF token and cookies refreshed successfully at ${tokenFetchedAt.toISOString()}`);
-  return { xsrfToken: decodedToken, page, browser };
+  const tokenFetchedAt = new Date()
+  console.log(`XSRF token and cookies refreshed successfully at ${tokenFetchedAt.toISOString()}`)
+  return { xsrfToken: decodedToken, page, browser }
 }

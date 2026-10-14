@@ -2,172 +2,172 @@ interface Usernames extends DiscordUserNames {
   /**
    * The Heroes of the Storm accounts of the player
    */
-  accounts?: HotsAccount[];
+  accounts?: HotsAccount[]
 }
 
 interface UsernamesWithAccounts extends DiscordUserNames {
   /**
    * The Heroes of the Storm accounts of the player
    */
-  accounts: HotsAccount[];
+  accounts: HotsAccount[]
 }
 
 export interface HotsAccount {
   /**
    * The Heroes of the Storm battle tag of the player
    */
-  hotsBattleTag: string;
+  hotsBattleTag: string
   /**
    * Whether this is the player's primary account
    */
-  isPrimary: boolean;
+  isPrimary: boolean
   /**
    * The Battle.net Real ID name of the player on this account (if any)
    */
-  realIdName?: string | null;
+  realIdName?: string | null
   /**
    * The database ID of the account
    * Used for updating/deleting the account
    */
-  id: number;
-  hpQmMMR: number | null; // HP_QM_MMR
-  hpSlMMR: number | null; // HP_SL_MMR
-  hpArMMR: number | null; // HP_AR_MMR
-  hpQmGames: number | null; // HP_QM_Games
-  hpSlGames: number | null; // HP_SL_Games
-  hpArGames: number | null; // HP_AR_Games
+  id: number
+  hpQmMMR: number | null // HP_QM_MMR
+  hpSlMMR: number | null // HP_SL_MMR
+  hpArMMR: number | null // HP_AR_MMR
+  hpQmGames: number | null // HP_QM_Games
+  hpSlGames: number | null // HP_SL_Games
+  hpArGames: number | null // HP_AR_Games
 }
 
 export interface HotsAccountRow {
   /**
    * The Heroes of the Storm battle tag of the player
    */
-  hots_battle_tag: string;
+  hots_battle_tag: string
   /**
    * The Discord ID of the player
    */
-  discord_id: string;
+  discord_id: string
   /**
    * Whether this is the player's primary account
    */
-  is_primary: boolean;
+  is_primary: boolean
   /**
    * The Battle.net Real ID name of the player on this account (if any)
    */
-  real_id_name: string | null;
+  real_id_name: string | null
   /**
    * The database ID of the account
    * Used for updating/deleting the account
    */
-  id: number;
-  HP_QM_MMR: number | null; // HP_QM_MMR
-  HP_SL_MMR: number | null; // HP_SL_MMR
-  HP_AR_MMR: number | null; // HP_AR_MMR
-  HP_QM_Games: number | null; // HP_QM_Games
-  HP_SL_Games: number | null; // HP_SL_Games
-  HP_AR_Games: number | null; // HP_AR_Games
+  id: number
+  HP_QM_MMR: number | null // HP_QM_MMR
+  HP_SL_MMR: number | null // HP_SL_MMR
+  HP_AR_MMR: number | null // HP_AR_MMR
+  HP_QM_Games: number | null // HP_QM_Games
+  HP_SL_Games: number | null // HP_SL_Games
+  HP_AR_Games: number | null // HP_AR_Games
 }
 
 export interface DiscordUserNames {
   /**
    * The discord ID of the player
    */
-  discordName: string;
+  discordName: string
   /**
    * The discord username of the player
    */
-  discordDisplayName: string;
+  discordDisplayName: string
   /**
    * The discord global name of the player
    */
-  discordGlobalName: string;
+  discordGlobalName: string
 }
 
 export interface Player {
   /**
    * The discord ID of the player
    */
-  discordId: string;
+  discordId: string
   /**
    * The usernames of the player in Heroes of the Storm and Discord
    */
-  usernames: Usernames;
+  usernames: Usernames
   /**
    * The role of the player in the game
    * T = Tank, A = Assassin, B = Bruiser, H = Healer, F = Flex
    */
-  role?: string;
+  role?: string
   /**
    * Whether the player is currently active in the lobby
    */
-  active: boolean;
+  active: boolean
   /**
    * The team number of the player
    * null = not assigned, 1 = team 1, 2 = team 2
    * This is used to determine which team the player is on
    */
-  team: number | null;
-  lobbyRank: number;
-  draftOrder: number;
-  adjustment: number | null;
-  mmr: number | null;
-  lastActive: Date;
+  team: number | null
+  lobbyRank: number
+  draftOrder: number
+  adjustment: number | null
+  mmr: number | null
+  lastActive: Date
 }
 
 export interface PlayerWithAccounts extends Player {
   /**
    * The Heroes of the Storm accounts of the player
    */
-  usernames: UsernamesWithAccounts;
+  usernames: UsernamesWithAccounts
 }
 
 export interface FlatPlayer {
   /**
    * The discord ID of the player
    */
-  discord_id: string;
+  discord_id: string
   /**
    * The Heroes of the Storm battle tag of the player
    */
-  hots_battle_tag: string;
+  hots_battle_tag: string
   /**
    * The discord username of the player
    */
-  discord_name: string;
+  discord_name: string
   /**
    * The discord global name of the player
    */
-  discord_global_name: string;
+  discord_global_name: string
   /**
    * The discord display name of the player
    */
-  discord_display_name: string;
+  discord_display_name: string
   /**
    * The role of the player in the game
    * T = Tank, A = Assassin, B = Bruiser, H = Healer, F = Flex
    */
-  role: string;
+  role: string
   /**
    * Whether the player is currently active in the lobby
    */
-  active: number;
+  active: number
   /**
    * The team number of the player
    * undefined = not assigned, 1 = team 1, 2 = team 2
    * This is used to determine which team the player is on
    */
-  team: number;
-  adjustment: number | null;
-  lobby_rank: number | null;
-  draft_order: number | null;
-  last_active: string; // ISO date string
+  team: number
+  adjustment: number | null
+  lobby_rank: number | null
+  draft_order: number | null
+  last_active: string // ISO date string
 }
 
 export interface DraftCoinState {
-  status: 'awaiting_call' | 'awaiting_choice' | 'completed';
-  callerTeam: 1 | 2;
-  call?: 'heads' | 'tails';
-  flipResult?: 'heads' | 'tails';
-  isFirstPick?: boolean;
-  firstPickTeam?: 1 | 2;
+  status: 'awaiting_call' | 'awaiting_choice' | 'completed'
+  callerTeam: 1 | 2
+  call?: 'heads' | 'tails'
+  flipResult?: 'heads' | 'tails'
+  isFirstPick?: boolean
+  firstPickTeam?: 1 | 2
 }

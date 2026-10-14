@@ -6,17 +6,17 @@ import {
   CacheType,
   ChatInputCommandInteraction,
   ModalSubmitInteraction,
-} from 'discord.js';
+} from 'discord.js'
 
-export const botChannelName = '🫠-nor-customs';
+export const botChannelName = '🫠-nor-customs'
 
-export const norDiscordId = '192116769870184448'; // Nor's Discord ID
-export const norsServerId = '706998529582956654'; // Nor's Server ID
+export const norDiscordId = '192116769870184448' // Nor's Discord ID
+export const norsServerId = '706998529582956654' // Nor's Server ID
 
 export const adminUserIds = [
   '243668219712372736', // Bandayd
   norDiscordId, // Nor
-];
+]
 
 // create an enum for the commands
 export const enum CommandIds {
@@ -115,40 +115,38 @@ export const roleMap: Record<string, string> = {
   B: '💪 Bruiser',
   H: '💉 Healer',
   F: '🔄 Flex',
-};
+}
 
 export const playersBtn = new ButtonBuilder()
   .setCustomId(CommandIds.PLAYERS)
   .setLabel('Show Players')
-  .setStyle(ButtonStyle.Primary);
+  .setStyle(ButtonStyle.Primary)
 export const leaveBtn = new ButtonBuilder()
   .setCustomId(CommandIds.LEAVE)
   .setLabel('Leave')
-  .setStyle(ButtonStyle.Primary);
+  .setStyle(ButtonStyle.Primary)
 export const rejoinBtn = new ButtonBuilder()
   .setCustomId(CommandIds.REJOIN)
   .setLabel('Rejoin')
-  .setStyle(ButtonStyle.Primary);
-export const joinBtn = new ButtonBuilder().setCustomId(CommandIds.JOIN).setLabel('Join').setStyle(ButtonStyle.Primary);
+  .setStyle(ButtonStyle.Primary)
+export const joinBtn = new ButtonBuilder().setCustomId(CommandIds.JOIN).setLabel('Join').setStyle(ButtonStyle.Primary)
 export const addAccountBtn = new ButtonBuilder()
   .setCustomId(CommandIds.ADD_ACCOUNT)
   .setLabel('Add Hots Account')
-  .setStyle(ButtonStyle.Primary);
+  .setStyle(ButtonStyle.Primary)
 export const roleBtn = new ButtonBuilder()
   .setCustomId(CommandIds.ROLE)
   .setLabel('Change Role')
-  .setStyle(ButtonStyle.Primary);
+  .setStyle(ButtonStyle.Primary)
 export const rolesRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
   ...Object.entries(roleMap).map(([key, label]) => {
-    return new ButtonBuilder().setCustomId(key).setLabel(label).setStyle(ButtonStyle.Primary);
-  }),
-);
+    return new ButtonBuilder().setCustomId(key).setLabel(label).setStyle(ButtonStyle.Primary)
+  })
+)
 export const imPlayingBtn = new ButtonBuilder()
   .setCustomId(CommandIds.REJOIN)
   .setLabel("I'm playing this game")
-  .setStyle(ButtonStyle.Primary);
+  .setStyle(ButtonStyle.Primary)
 
 export type chatOrButtonOrModal =
-  | ChatInputCommandInteraction<CacheType>
-  | ButtonInteraction<CacheType>
-  | ModalSubmitInteraction<CacheType>;
+  ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType> | ModalSubmitInteraction<CacheType>

@@ -1,7 +1,7 @@
-import Database from 'better-sqlite3';
-import { DraftCoinState } from '../types/player';
+import Database from 'better-sqlite3'
+import { DraftCoinState } from '../types/player'
 
-const db = new Database('./store/nor_customs.db');
+const db = new Database('./store/nor_customs.db')
 
 // Ensure the settings table exists with guild_id support
 db.exec(`
@@ -11,12 +11,12 @@ db.exec(`
     value TEXT NOT NULL,
     PRIMARY KEY (guild_id, key)
   )
-`);
+`)
 
 // Check if existing table needs migration to include guild_id column
-const cols = db.prepare<[], { name: string }>('PRAGMA table_info(settings)').all();
+const cols = db.prepare<[], { name: string }>('PRAGMA table_info(settings)').all()
 if (cols.length > 0 && !cols.some(c => c.name === 'guild_id')) {
-  db.exec('ALTER TABLE settings RENAME TO settings_old');
+  db.exec('ALTER TABLE settings RENAME TO settings_old')
   db.exec(`
     CREATE TABLE settings (
       guild_id TEXT NOT NULL DEFAULT 'global',
@@ -24,15 +24,15 @@ if (cols.length > 0 && !cols.some(c => c.name === 'guild_id')) {
       value TEXT NOT NULL,
       PRIMARY KEY (guild_id, key)
     )
-  `);
-  db.exec("INSERT INTO settings (guild_id, key, value) SELECT 'global', key, value FROM settings_old");
-  db.exec('DROP TABLE settings_old');
+  `)
+  db.exec("INSERT INTO settings (guild_id, key, value) SELECT 'global', key, value FROM settings_old")
+  db.exec('DROP TABLE settings_old')
 }
 
 db.exec(`
   CREATE INDEX IF NOT EXISTS idx_settings_guild_key
   ON settings(guild_id, key)
-`);
+`)
 
 /**
  * Retrieves a setting value by key and optional guild ID from the database settings table.
@@ -43,15 +43,15 @@ db.exec(`
  */
 export function getSetting(key: string, guildId: string): string | undefined {
   if (guildId === null) {
-    console.log({ key, guildId }, 'guildId is required');
-    return undefined;
+    console.log({ key, guildId }, 'guildId is required')
+    return undefined
   }
 
   const stmt = db.prepare<[string, string], { value: string }>(
-    'SELECT value FROM settings WHERE guild_id = ? AND key = ?',
-  );
-  const row = stmt.get(guildId, key);
-  return row?.value;
+    'SELECT value FROM settings WHERE guild_id = ? AND key = ?'
+  )
+  const row = stmt.get(guildId, key)
+  return row?.value
 }
 
 /**
@@ -63,17 +63,17 @@ export function getSetting(key: string, guildId: string): string | undefined {
  */
 export function setSetting(key: string, value: string, guildId: string): boolean {
   if (guildId === null) {
-    console.log({ key, guildId }, 'guildId is required');
-    return false;
+    console.log({ key, guildId }, 'guildId is required')
+    return false
   }
 
   const stmt = db.prepare(`
     INSERT INTO settings (guild_id, key, value)
     VALUES (?, ?, ?)
     ON CONFLICT(guild_id, key) DO UPDATE SET value = excluded.value
-  `);
-  stmt.run(guildId, key, value);
-  return true;
+  `)
+  stmt.run(guildId, key, value)
+  return true
 }
 
 /**
@@ -83,48 +83,48 @@ export function setSetting(key: string, value: string, guildId: string): boolean
  */
 export function deleteSetting(key: string, guildId: string | null): boolean {
   if (guildId === null) {
-    console.log({ key, guildId }, 'guildId is required');
-    return false;
+    console.log({ key, guildId }, 'guildId is required')
+    return false
   }
 
   const stmt = db.prepare(`
     DELETE FROM settings WHERE guild_id = ? AND key = ?
-  `);
-  stmt.run(guildId, key);
-  return true;
+  `)
+  stmt.run(guildId, key)
+  return true
 }
 
 function isDraftCoinState(obj: unknown): obj is DraftCoinState {
-  return typeof obj === 'object' && obj !== null && 'status' in obj && 'callerTeam' in obj;
+  return typeof obj === 'object' && obj !== null && 'status' in obj && 'callerTeam' in obj
 }
 
 /**
  * Retrieves the draft coin toss state for a guild.
  */
 export function getDraftCoinState(guildId: string): DraftCoinState | null {
-  const raw = getSetting('draft_coin_state', guildId);
-  if (!raw) return null;
+  const raw = getSetting('draft_coin_state', guildId)
+  if (!raw) return null
   try {
-    const parsed: unknown = JSON.parse(raw);
+    const parsed: unknown = JSON.parse(raw)
     if (isDraftCoinState(parsed)) {
-      return parsed;
+      return parsed
     }
   } catch (error) {
-    console.error('Failed to parse draft_coin_state:', error);
+    console.error('Failed to parse draft_coin_state:', error)
   }
-  return null;
+  return null
 }
 
 /**
  * Saves the draft coin toss state for a guild.
  */
 export function setDraftCoinState(guildId: string, state: DraftCoinState): boolean {
-  return setSetting('draft_coin_state', JSON.stringify(state), guildId);
+  return setSetting('draft_coin_state', JSON.stringify(state), guildId)
 }
 
 /**
  * Resets/deletes the draft coin toss state for a guild.
  */
 export function resetDraftCoinState(guildId: string): boolean {
-  return deleteSetting('draft_coin_state', guildId);
+  return deleteSetting('draft_coin_state', guildId)
 }

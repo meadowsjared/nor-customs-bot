@@ -9,10 +9,10 @@ import {
   MessageFlags,
   MessagePayload,
   ModalSubmitInteraction,
-} from 'discord.js';
-import { getBotChannel } from './channel';
+} from 'discord.js'
+import { getBotChannel } from './channel'
 
-type InteractionReplyOptionsFlags = MessageCreateOptions['flags'];
+type InteractionReplyOptionsFlags = MessageCreateOptions['flags']
 
 /**
  * Announces a message in the bot channel.
@@ -24,14 +24,12 @@ type InteractionReplyOptionsFlags = MessageCreateOptions['flags'];
  */
 export async function announce(
   interaction:
-    | ChatInputCommandInteraction<CacheType>
-    | ButtonInteraction<CacheType>
-    | ModalSubmitInteraction<CacheType>,
+    ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType> | ModalSubmitInteraction<CacheType>,
   options: string | MessagePayload | MessageCreateOptions
 ) {
-  const channel = await getBotChannel(interaction.guild);
+  const channel = await getBotChannel(interaction.guild)
   if (channel && 'send' in channel) {
-    return await channel.send(options);
+    return await channel.send(options)
   }
 
   if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
@@ -39,10 +37,10 @@ export async function announce(
       content:
         '⚠️ No bot channel is configured for this server. Please ask an admin to run `/set_bot_channel #channel` or create a channel named `🫠-nor-customs`.',
       flags: MessageFlags.Ephemeral,
-    });
+    })
   }
 
-  return undefined;
+  return undefined
 }
 
 /**
@@ -52,10 +50,10 @@ export async function announce(
  * @returns The modified flags for testing or the original flags for production.
  */
 export function safePing(flags?: MessageFlags) {
-  const testing = process.env.DEBUG === 'true';
+  const testing = process.env.DEBUG === 'true'
   if (testing) {
-    return (flags ?? 0) + MessageFlags.SuppressNotifications;
+    return (flags ?? 0) + MessageFlags.SuppressNotifications
   } else {
-    return flags;
+    return flags
   }
 }

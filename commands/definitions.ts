@@ -3,11 +3,11 @@ import {
   ApplicationCommandOptionType,
   ChannelType,
   PermissionsBitField,
-} from 'discord.js';
-import { CommandIds, roleMap } from '../constants';
-import { makeTeamsModeChoices } from '../utils/teamMaker';
+} from 'discord.js'
+import { CommandIds, roleMap } from '../constants'
+import { makeTeamsModeChoices } from '../utils/teamMaker'
 
-const minimumAdminPermissions: bigint = PermissionsBitField.Flags.MoveMembers;
+const minimumAdminPermissions: bigint = PermissionsBitField.Flags.MoveMembers
 /**
  * define the commands for the bot
  * these will be registered as slash commands
@@ -870,4 +870,4 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
       },
     ],
   },
-];
+]
