@@ -80,6 +80,13 @@ import {
   getHotsAccountByBattleTag,
   findPlayersByHotSAccount,
   getAllRegisteredHotSAccounts,
+  setAccountSubstitution,
+  clearAccountSubstitutions,
+  getSubstitutedAccountOwnerTag,
+  getAssignAccountChoices,
+  getAssignAccountClearChoices,
+  getPlayerIdentifier,
+  getPlayerByIdentifier,
 } from '../store/player'
 import {
   saveChannel,
@@ -91,7 +98,7 @@ import {
 } from '../store/channels'
 import { DiscordUserNames, Player, DraftCoinState } from '../types/player'
 import { client } from '../index'
-import { parseReplay, saveReplayToDb, getPlayerMatchStats, optimizeDb } from '../store/hotsReplays'
+import { parseReplay, saveReplayToDb, getPlayerMatchStats, optimizeDb, isReplayImported } from '../store/hotsReplays'
 import { getSetting, setSetting, getDraftCoinState, setDraftCoinState, resetDraftCoinState } from '../store/settings'
 import path from 'path'
 import { validateBattleTag } from '../utils/heroesOfTheStorm'
@@ -108,26 +115,30 @@ function generateLobbyStatusMessage(guildId: string, pPreviousPlayersList?: stri
   const previousPlayersList = pPreviousPlayersList ?? previousPlayersMessage ?? ''
   const activePlayers = getActivePlayers(guildId)
   activePlayers.sort((a, b) => a.lastActive.getTime() - b.lastActive.getTime()) // sort by last_active ascending
-  const lobbyPlayers = activePlayers.map(
-    (p, index) =>
-      `${index + 1}: @${p.usernames.discordDisplayName}: (${(
-        p.usernames.accounts?.find(a => a.isPrimary)?.hotsBattleTag ?? 'hots account missing! :scream:'
-      ).replace(/#.*$/, '')}) \`${getPlayerRolesFormatted(p.role)}\`${
-        p.usernames.accounts?.length === 1 &&
-        p.usernames.accounts[0].hpSlGames === null &&
-        p.usernames.accounts[0].hpQmGames === null &&
-        p.usernames.accounts[0].hpArGames === null
-          ? ' loading MMR...'
-          : ''
-      }${
-        p.usernames.accounts?.length === 1 &&
+  const lobbyPlayers = activePlayers.map((p, index) => {
+    const subAccount = p.usernames.accounts?.find(a => a.ownerDiscordId)
+    const primaryAccount = subAccount ?? p.usernames.accounts?.find(a => a.isPrimary)
+    let accountDisplay = primaryAccount
+      ? primaryAccount.hotsBattleTag.replace(/#.*$/, '')
+      : 'hots account missing! :scream:'
+    if (primaryAccount?.ownerDiscordId) {
+      accountDisplay += getSubstitutedAccountOwnerTag(primaryAccount.ownerDiscordId, guildId)
+    }
+
+    return `${index + 1}: @${p.usernames.discordDisplayName}: (${accountDisplay}) \`${getPlayerRolesFormatted(p.role)}\`${p.usernames.accounts?.length === 1 &&
+      p.usernames.accounts[0].hpSlGames === null &&
+      p.usernames.accounts[0].hpQmGames === null &&
+      p.usernames.accounts[0].hpArGames === null
+      ? ' loading MMR...'
+      : ''
+      }${p.usernames.accounts?.length === 1 &&
         p.usernames.accounts[0].hpSlGames === -1 &&
         p.usernames.accounts[0].hpQmGames === -1 &&
         p.usernames.accounts[0].hpArGames === -1
-          ? ' MMR error!... :scream:'
-          : ''
+        ? ' MMR error!... :scream:'
+        : ''
       }`
-  )
+  })
 
   // combine the lobbyPlayers and previousPlayersList, into one string, labeling each section, but skip a section if there are no players in that section
   const playerListWithLabels = []
@@ -145,7 +156,9 @@ function generateLobbyStatusMessage(guildId: string, pPreviousPlayersList?: stri
 
 /** generates the list of previous players */
 function generatePreviousPlayersList(guildId: string): string[] {
-  return getActivePlayers(guildId).map(p => p.discordId)
+  return getActivePlayers(guildId)
+    .map(p => p.discordId)
+    .filter((id): id is string => typeof id === 'string')
 }
 
 function generatePreviousPlayersMessage(previousPlayersList: string[]): string {
@@ -206,6 +219,12 @@ export async function handleNewGameCommand(
     } else {
       await interaction.deferReply({ flags: MessageFlags.Ephemeral })
     }
+  }
+
+  try {
+    await syncRecentReplays(guildId)
+  } catch (err) {
+    console.error('Error auto-syncing replays during /new_game:', err)
   }
 
   /**
@@ -334,6 +353,26 @@ export function formatScanSummaryMessage(summary: ScanLobbySummary): string {
   return lines.join('\n')
 }
 
+function matchesScanList(player: Player, scanIds: string[]): boolean {
+  if (player.discordId && scanIds.includes(player.discordId)) {
+    return true
+  }
+  const id = getPlayerIdentifier(player)
+  if (id && scanIds.includes(id)) {
+    return true
+  }
+  return (
+    player.usernames.accounts?.some(a => {
+      const tag = a.hotsBattleTag.toLowerCase()
+      const prefix = tag.split('#')[0]
+      return scanIds.some(s => {
+        const sLower = s.toLowerCase()
+        return sLower === tag || sLower === prefix
+      })
+    }) ?? false
+  )
+}
+
 async function applyTeamsFromScan(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
   guildId: string,
@@ -348,23 +387,29 @@ async function applyTeamsFromScan(
   })
 
   const team1 = sortedPlayers
-    .filter(p => scanSummary.team1DiscordIds.includes(p.discordId))
+    .filter(p => matchesScanList(p, scanSummary.team1DiscordIds))
     .sort((a, b) => (b.mmr ?? getPlayerMMR(b)) - (a.mmr ?? getPlayerMMR(a)))
   const team2 = sortedPlayers
-    .filter(p => scanSummary.team2DiscordIds.includes(p.discordId))
+    .filter(p => matchesScanList(p, scanSummary.team2DiscordIds))
     .sort((a, b) => (b.mmr ?? getPlayerMMR(b)) - (a.mmr ?? getPlayerMMR(a)))
   const spectators = sortedPlayers.filter(
-    p => !scanSummary.team1DiscordIds.includes(p.discordId) && !scanSummary.team2DiscordIds.includes(p.discordId)
+    p =>
+      !matchesScanList(p, scanSummary.team1DiscordIds) &&
+      !matchesScanList(p, scanSummary.team2DiscordIds)
   )
 
   team1.forEach((p, i) => {
     p.team = 1
-    const isCaptain = scanSummary.team1CaptainDiscordId ? p.discordId === scanSummary.team1CaptainDiscordId : i === 0
+    const isCaptain = scanSummary.team1CaptainDiscordId
+      ? matchesScanList(p, [scanSummary.team1CaptainDiscordId])
+      : i === 0
     p.draftOrder = isCaptain ? 1 : NaN
   })
   team2.forEach((p, i) => {
     p.team = 2
-    const isCaptain = scanSummary.team2CaptainDiscordId ? p.discordId === scanSummary.team2CaptainDiscordId : i === 0
+    const isCaptain = scanSummary.team2CaptainDiscordId
+      ? matchesScanList(p, [scanSummary.team2CaptainDiscordId])
+      : i === 0
     p.draftOrder = isCaptain ? 2 : NaN
   })
   spectators.forEach(p => {
@@ -602,7 +647,7 @@ export async function handleDraftAutocomplete(interaction: AutocompleteInteracti
 
   const choices = filtered.slice(0, 25).map(p => ({
     name: `${p.usernames?.discordDisplayName ?? 'Player'} (${p.mmr})`,
-    value: p.discordId,
+    value: getPlayerIdentifier(p),
   }))
 
   await interaction.respond(choices)
@@ -670,14 +715,15 @@ export async function handleDraftCommand(
     ? (interaction.options.getString('team2_captain') ?? undefined)
     : undefined
 
-  if (!t1CaptainId) {
-    t1CaptainId = activeSortedPlayers[0].discordId
+  if (!t1CaptainId && activeSortedPlayers[0]) {
+    t1CaptainId = getPlayerIdentifier(activeSortedPlayers[0])
   }
-  if (!t2CaptainId) {
+  if (!t2CaptainId && activeSortedPlayers[1]) {
+    const p0Id = getPlayerIdentifier(activeSortedPlayers[0])
     t2CaptainId =
-      t1CaptainId === activeSortedPlayers[0].discordId
-        ? activeSortedPlayers[1]?.discordId
-        : activeSortedPlayers[0].discordId
+      t1CaptainId === p0Id
+        ? getPlayerIdentifier(activeSortedPlayers[1])
+        : p0Id
   }
 
   const modeOpt = interaction.isChatInputCommand() ? (interaction.options.getString('mode') ?? 'captains') : 'captains'
@@ -685,8 +731,8 @@ export async function handleDraftCommand(
   setSetting('draft_mode', modeOpt, guildId)
 
   // Automatically assign Captain 1 to Team 1 (rank #1) and Captain 2 to Team 2 (rank #2)
-  assignPlayerToTeam(guildId, t1CaptainId, 1, 1)
-  assignPlayerToTeam(guildId, t2CaptainId, 2, 2)
+  if (t1CaptainId) assignPlayerToTeam(guildId, t1CaptainId, 1, 1)
+  if (t2CaptainId) assignPlayerToTeam(guildId, t2CaptainId, 2, 2)
 
   if (modeOpt === 'captains') {
     setDraftCoinState(guildId, {
@@ -757,8 +803,8 @@ export function generateDraftUI(guildId: string): {
     firstPickTeam
   )
 
-  const sortedTeam1 = sortTeamByDraftOrder(team1, t1Captain?.discordId)
-  const sortedTeam2 = sortTeamByDraftOrder(team2, t2Captain?.discordId)
+  const sortedTeam1 = sortTeamByDraftOrder(team1, t1Captain?.discordId ?? undefined)
+  const sortedTeam2 = sortTeamByDraftOrder(team2, t2Captain?.discordId ?? undefined)
 
   const team1List =
     (sortedTeam1.map(p => formatDraftPlayerEntry(p, t1Captain, true)).join('\n') || '*No players picked yet*') +
@@ -1385,7 +1431,7 @@ export async function handleDraftUndoCommand(
   const picksToUndo = nonCaptainPicks.slice(0, all ? nonCaptainPicks.length : count)
 
   for (const player of picksToUndo) {
-    assignPlayerToTeam(guildId, player.discordId, null, null)
+    assignPlayerToTeam(guildId, getPlayerIdentifier(player), null, null)
   }
 
   if (all || picksToUndo.length === nonCaptainPicks.length) {
@@ -1459,7 +1505,7 @@ export async function handleDraftTeamAssignCommand(
       return
     }
 
-    assignPlayerToTeam(guildId, player.discordId, null, null)
+    assignPlayerToTeam(guildId, getPlayerIdentifier(player), null, null)
 
     await updateDraftUIMessage(guildId, interaction)
 
@@ -1479,7 +1525,7 @@ export async function handleDraftTeamAssignCommand(
     }
 
     const draftOrder = player.draftOrder || getNextDraftOrder(guildId)
-    assignPlayerToTeam(guildId, player.discordId, targetTeam, draftOrder)
+    assignPlayerToTeam(guildId, getPlayerIdentifier(player), targetTeam, draftOrder)
 
     await updateDraftUIMessage(guildId, interaction)
 
@@ -1598,12 +1644,12 @@ async function generateTeamsMessage(
   })
   team1.sort((a, b) => (b.mmr ?? getPlayerMMR(b)) - (a.mmr ?? getPlayerMMR(a)))
   team2.sort((a, b) => (b.mmr ?? getPlayerMMR(b)) - (a.mmr ?? getPlayerMMR(a)))
-  const team1List = team1.map(p => formatPlayerDisplay(p, { includeBattleTag: true, includeRole: true })).join('\n')
-  const team2List = team2.map(p => formatPlayerDisplay(p, { includeBattleTag: true, includeRole: true })).join('\n')
+  const team1List = team1.map(p => formatPlayerDisplay(p, guildId, { includeBattleTag: true, includeRole: true })).join('\n')
+  const team2List = team2.map(p => formatPlayerDisplay(p, guildId, { includeBattleTag: true, includeRole: true })).join('\n')
   const spectators = activePlayers.filter(
     p => team1.every(t => t.discordId !== p.discordId) && team2.every(t => t.discordId !== p.discordId)
   )
-  const spectatorList = spectators.map(p => formatPlayerDisplay(p, { includeBattleTag: true })).join('\n')
+  const spectatorList = spectators.map(p => formatPlayerDisplay(p, guildId, { includeBattleTag: true })).join('\n')
 
   const team1lengthMessage = team1.length === 5 ? '' : ` (${team1.length} players)`
   const team2lengthMessage = team2.length === 5 ? '' : ` (${team2.length} players)`
@@ -1777,11 +1823,9 @@ export async function handleSwapTeamsCommand(
     !playerB
   ) {
     await safeReply(interaction, {
-      content: `Invalid player numbers (playerANumber: ${playerANumber + 1}, playerBNumber: ${
-        playerBNumber + 1
-      }, playerA: ${playerA?.discordId}, playerB: ${playerB?.discordId}) There are only ${
-        activePlayers.length
-      } players.`,
+      content: `Invalid player numbers (playerANumber: ${playerANumber + 1}, playerBNumber: ${playerBNumber + 1
+        }, playerA: ${playerA?.discordId}, playerB: ${playerB?.discordId}) There are only ${activePlayers.length
+        } players.`,
       flags: MessageFlags.Ephemeral,
     })
     return
@@ -1799,8 +1843,8 @@ Player B: \`team: ${playerB.team}\` \`${playerBNumber + 1}: ${playerB.mmr}\` <@$
   // swap the teams
   // note we set playerA to playerB's team, and playerB to playerA's team
   changeTeams(guildId, [
-    { discordId: playerA.discordId, newTeam: playerB.team ?? null },
-    { discordId: playerB.discordId, newTeam: playerA.team ?? null },
+    { discordId: getPlayerIdentifier(playerA), newTeam: playerB.team ?? null },
+    { discordId: getPlayerIdentifier(playerB), newTeam: playerA.team ?? null },
   ])
   const { team1, team2 } = getTeams(guildId, getSortedActivePlayers(guildId, true))
   await generateTeamsMessage(interaction, team1, team2)
@@ -1929,34 +1973,35 @@ export async function handleCheckTeamsCommand(
     const lobbyTeam2Ids = scanSummary.team2DiscordIds ?? []
 
     // Determine mismatches
-    const mismatchedInTeam1 = team1.filter(p => !lobbyTeam1Ids.includes(p.discordId))
-    const mismatchedInTeam2 = team2.filter(p => !lobbyTeam2Ids.includes(p.discordId))
+    const mismatchedInTeam1 = team1.filter(p => !matchesScanList(p, lobbyTeam1Ids))
+    const mismatchedInTeam2 = team2.filter(p => !matchesScanList(p, lobbyTeam2Ids))
 
     // Players that are on the opposite side in the screenshot
-    const team1InLobbyTeam2 = team1.filter(p => lobbyTeam2Ids.includes(p.discordId))
-    const team2InLobbyTeam1 = team2.filter(p => lobbyTeam1Ids.includes(p.discordId))
+    const team1InLobbyTeam2 = team1.filter(p => matchesScanList(p, lobbyTeam2Ids))
+    const team2InLobbyTeam1 = team2.filter(p => matchesScanList(p, lobbyTeam1Ids))
 
     // Build swap suggestions
     const swaps: string[] = []
     const minSwaps = Math.min(team1InLobbyTeam2.length, team2InLobbyTeam1.length)
     for (let i = 0; i < minSwaps; i++) {
-      swaps.push(`Swap ${formatPlayerDisplay(team1InLobbyTeam2[i])} ↔ ${formatPlayerDisplay(team2InLobbyTeam1[i])}`)
+      swaps.push(`Swap ${formatPlayerDisplay(team1InLobbyTeam2[i], guildId)} ↔ ${formatPlayerDisplay(team2InLobbyTeam1[i], guildId)}`)
     }
 
     const moves: string[] = []
     for (let i = minSwaps; i < team2InLobbyTeam1.length; i++) {
-      moves.push(`Move ${formatPlayerDisplay(team2InLobbyTeam1[i])} to Team 2`)
+      moves.push(`Move ${formatPlayerDisplay(team2InLobbyTeam1[i], guildId)} to Team 2`)
     }
     for (let i = minSwaps; i < team1InLobbyTeam2.length; i++) {
-      moves.push(`Move ${formatPlayerDisplay(team1InLobbyTeam2[i])} to Team 1`)
+      moves.push(`Move ${formatPlayerDisplay(team1InLobbyTeam2[i], guildId)} to Team 1`)
     }
 
     // Missing or extra players
     const missingFromLobby = [...team1, ...team2].filter(
-      p => !lobbyTeam1Ids.includes(p.discordId) && !lobbyTeam2Ids.includes(p.discordId)
+      p => !matchesScanList(p, lobbyTeam1Ids) && !matchesScanList(p, lobbyTeam2Ids)
     )
-    const botPlayerIds = new Set([...team1, ...team2].map(p => p.discordId))
-    const extraInLobby = [...lobbyTeam1Ids, ...lobbyTeam2Ids].filter(id => !botPlayerIds.has(id))
+    const extraInLobby = [...lobbyTeam1Ids, ...lobbyTeam2Ids].filter(
+      id => !team1.some(p => matchesScanList(p, [id])) && !team2.some(p => matchesScanList(p, [id]))
+    )
     const unregisteredInLobby = scanSummary.unregistered ?? []
 
     let reply = ''
@@ -1976,13 +2021,13 @@ export async function handleCheckTeamsCommand(
         reply += '**Suggested moves:**\n' + moves.map(m => `- ${m}`).join('\n') + '\n\n'
       }
       if (missingFromLobby.length > 0) {
-        reply += `**Missing from lobby:** ${missingFromLobby.map(p => formatPlayerDisplay(p)).join(', ')}\n`
+        reply += `**Missing from lobby:** ${missingFromLobby.map(p => formatPlayerDisplay(p, guildId)).join(', ')}\n`
       }
       if (extraInLobby.length > 0) {
         reply += `**Extra in lobby:** ${extraInLobby
           .map(id => {
             const p = getPlayerByDiscordId(id, guildId)
-            return p ? formatPlayerDisplay(p) : `<@${id}>`
+            return p ? formatPlayerDisplay(p, guildId) : `<@${id}>`
           })
           .join(', ')}\n`
       }
@@ -2047,6 +2092,9 @@ export async function handleMoveToLobbyCommand(
   /** Array to store players that failed to move */
   const failedToMove: Player[] = []
   const movePromises = players.map(async player => {
+    if (!player.discordId) {
+      return
+    }
     const member = interaction.guild?.members.cache.get(player.discordId)
     if (member?.voice) {
       try {
@@ -2132,9 +2180,8 @@ export async function handleMoveToTeamsCommand(
     await interaction.editReply({
       content: `Moved ${numberMoved} players to their respective team channels: ${result
         .map(c => `<#${c.channelId}>`)
-        .join(', ')}\nWARNING: **${
-        teams.team1.length + teams.team2.length - numberMoved
-      } players could not be moved.**`,
+        .join(', ')}\nWARNING: **${teams.team1.length + teams.team2.length - numberMoved
+        } players could not be moved.**`,
     })
   } else {
     await interaction.editReply({
@@ -2166,6 +2213,9 @@ async function moveTeamMembersToChannel(
 ) {
   let numberMoved = 0
   const movePromises = team.map(async player => {
+    if (!player.discordId) {
+      return
+    }
     const member = interaction.guild?.members.cache.get(player.discordId)
     if (member?.voice) {
       await member.voice
@@ -2335,9 +2385,8 @@ export async function handleGetChannelsCommand(
   const team1Channel = channels.find(c => c.channelType === 'team1')
   const team2Channel = channels.find(c => c.channelType === 'team2')
   await safeReply(interaction, {
-    content: `Current channels:\nLobby: ${lobbyChannel ? `<#${lobbyChannel.channelId}>` : 'Not set'}\nTeam 1: ${
-      team1Channel ? `<#${team1Channel.channelId}>` : 'Not set'
-    }\nTeam 2: ${team2Channel ? `<#${team2Channel.channelId}>` : 'Not set'}`,
+    content: `Current channels:\nLobby: ${lobbyChannel ? `<#${lobbyChannel.channelId}>` : 'Not set'}\nTeam 1: ${team1Channel ? `<#${team1Channel.channelId}>` : 'Not set'
+      }\nTeam 2: ${team2Channel ? `<#${team2Channel.channelId}>` : 'Not set'}`,
     flags: MessageFlags.Ephemeral,
   })
 }
@@ -2418,19 +2467,20 @@ export async function handlePlayersCommand(
   const playerList =
     players
       .map(({ discordId, usernames, role }) => {
+        const battleTag = usernames.accounts?.find(a => a.isPrimary)?.hotsBattleTag.replace(/#.*$/, '')
+        const tagSuffix = battleTag ? `: (${battleTag})` : ''
+        if (!discordId) {
+          return `**${usernames.discordDisplayName}**${tagSuffix} \`${getPlayerRolesFormatted(role)}\``
+        }
         if (pingLobby) {
           // if pingLobby is true, mention the user
-          return `${`<@${discordId}>`}: (${usernames.accounts
-            ?.find(a => a.isPrimary)
-            ?.hotsBattleTag.replace(/#.*$/, '')}) \`${getPlayerRolesFormatted(role)}\``
+          return `${`<@${discordId}>`}${tagSuffix} \`${getPlayerRolesFormatted(role)}\``
         }
         const user = interaction.guild?.members.cache.get(discordId)
         return onlyRaw
           ? `<@${discordId}>`
-          : `@${user?.displayName}` +
-              `: (${usernames.accounts
-                ?.find(a => a.isPrimary)
-                ?.hotsBattleTag.replace(/#.*$/, '')}) \`${getPlayerRolesFormatted(role)}\``
+          : `@${user?.displayName ?? usernames.discordDisplayName}` +
+          `${tagSuffix} \`${getPlayerRolesFormatted(role)}\``
       })
       .join('\n') || 'No players in the lobby'
   const rawPlayerList = Object.values(players)
@@ -2520,8 +2570,7 @@ export async function handlePlayersAllCommand(
     const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(...buttons)
     const sortAlphbetically = new ButtonBuilder()
       .setCustomId(
-        `${CommandIds.PLAYERS_ALL_PAGE_SORT}_alphabetical_${
-          sort === 'alphabetical' ? !ascending : ascending
+        `${CommandIds.PLAYERS_ALL_PAGE_SORT}_alphabetical_${sort === 'alphabetical' ? !ascending : ascending
         }_${pageNumber}`
       )
       .setEmoji('🔤')
@@ -2618,8 +2667,8 @@ export async function handleRejoinCommand(
       ` the lobby as: \`${player.usernames.accounts
         ?.find(a => a.isPrimary)
         ?.hotsBattleTag.replace(/#.*$/, '')}\`, \`${getPlayerRolesFormatted(
-        player.role
-      )}\`\nUse /leave to leave the lobby, or use the buttons below.`
+          player.role
+        )}\`\nUse /leave to leave the lobby, or use the buttons below.`
     await safeReply(interaction, {
       content,
       flags: MessageFlags.Ephemeral,
@@ -2694,7 +2743,7 @@ ${validationResult.rules}
     roleSelectMenuDisplayed = true
   }
   if (!roleSelectMenuDisplayed) {
-    setPlayerActive(modalInteraction.user.id, true, hotsBattleTag)
+    setPlayerActive(modalInteraction.user.id, true, guildId, hotsBattleTag)
     await updateLobbyMessage(guildId, modalInteraction)
     const reply = await safeReply(modalInteraction, {
       content: `Looking up \`${hotsBattleTag}\` please wait...`,
@@ -2737,9 +2786,14 @@ export async function handleLookupAutocomplete(interaction: AutocompleteInteract
     await interaction.respond([])
     return
   }
+  const guildId = await requireGuildId(interaction)
+  if (!guildId) {
+    await interaction.respond([])
+    return
+  }
 
   const query = focusedOption.value.trim().toLowerCase()
-  const registeredAccounts = getAllRegisteredHotSAccounts()
+  const registeredAccounts = getAllRegisteredHotSAccounts(guildId)
 
   let filtered = registeredAccounts
   if (query.length > 0) {
@@ -2883,6 +2937,35 @@ export async function handleLookupCommand(
     if (matches.length === 1) {
       const { player, matchedAccounts } = matches[0]
       const discordId = player.discordId
+      if (!discordId) {
+        const matchedTag = matchedAccounts[0]?.hotsBattleTag ?? player.usernames.discordDisplayName
+        const publish = interaction.options.getString(CommandIds.PUBLISH) === 'true'
+        const embed = new EmbedBuilder()
+          .setColor(0x3498db)
+          .setTitle(`Guest Account: ${matchedTag}`)
+          .setDescription(`**${matchedTag}** is a guest HotS account and is not currently linked to a Discord user.`)
+          .addFields(
+            { name: 'BattleTag', value: matchedTag, inline: true },
+            { name: 'MMR', value: String(player.mmr ?? 0), inline: true },
+            {
+              name: 'Games Played',
+              value: String(
+                (matchedAccounts[0]?.hpQmGames ?? 0) +
+                (matchedAccounts[0]?.hpSlGames ?? 0) +
+                (matchedAccounts[0]?.hpArGames ?? 0)
+              ),
+              inline: true,
+            }
+          )
+          .setFooter({ text: 'To link this account to a Discord user, run /lookup user:@User and add this BattleTag.' })
+
+        if (publish) {
+          await announce(interaction, { embeds: [embed] })
+        } else {
+          await safeReply(interaction, { embeds: [embed], flags: MessageFlags.Ephemeral })
+        }
+        return
+      }
       let discordData = fetchDiscordNames(interaction, discordId)
       if (discordData.discordDisplayName === 'N/A') {
         discordData = {
@@ -2910,8 +2993,11 @@ export async function handleLookupCommand(
             ?.map(a => `\`${a.hotsBattleTag}\`` + (a.isPrimary ? ' (Primary)' : ''))
             .join(', ') || 'No HotS accounts'
         const matchedTags = matchedAccounts.map(a => `\`${a.hotsBattleTag}\``).join(', ')
+        const userHeader = player.discordId
+          ? `<@${player.discordId}> (**${player.usernames.discordDisplayName}** | \`${player.usernames.discordName}\`)`
+          : `**${player.usernames.discordDisplayName}** (Guest Account)`
         return (
-          `• <@${player.discordId}> (**${player.usernames.discordDisplayName}** | \`${player.usernames.discordName}\`)\n` +
+          `• ${userHeader}\n` +
           `  Matched: ${matchedTags}\n` +
           `  Accounts: ${accountsStr}\n` +
           `  Highest MMR: **${player.mmr}** | Role: \`${getPlayerRolesFormatted(player.role)}\``
@@ -3264,9 +3350,8 @@ export async function handleDeletePlayerCommand(
   await updateLobbyMessage(guildId, interaction)
   // reply with the number of players and accounts deleted
   await safeReply(interaction, {
-    content: `Deleted ${playersDeleted} player${
-      playersDeleted === 1 ? '' : 's'
-    } and ${hotsAccountsDeleted} HotS account${hotsAccountsDeleted === 1 ? '' : 's'} for Discord ID: <@${discordId}>.`,
+    content: `Deleted ${playersDeleted} player${playersDeleted === 1 ? '' : 's'
+      } and ${hotsAccountsDeleted} HotS account${hotsAccountsDeleted === 1 ? '' : 's'} for Discord ID: <@${discordId}>.`,
     flags: MessageFlags.Ephemeral,
   })
 }
@@ -3636,9 +3721,8 @@ export async function handleAdminRealIdNameCommand(interaction: ChatInputCommand
 
     // View mode for single battleTag
     await safeReply(interaction, {
-      content: `• \`${account.hots_battle_tag}\` (${ownerInfo}): ${
-        account.real_id_name ? `**${account.real_id_name}**` : '*None*'
-      }`,
+      content: `• \`${account.hots_battle_tag}\` (${ownerInfo}): ${account.real_id_name ? `**${account.real_id_name}**` : '*None*'
+        }`,
       flags: MessageFlags.Ephemeral,
     })
     return
@@ -3717,8 +3801,7 @@ export async function handleAdminRealIdNameCommand(interaction: ChatInputCommand
   const accountList = accounts
     .map(
       a =>
-        `• \`${a.hotsBattleTag}\`${a.isPrimary ? ' *(Primary)*' : ''}: ${
-          a.realIdName ? `**${a.realIdName}**` : '*None*'
+        `• \`${a.hotsBattleTag}\`${a.isPrimary ? ' *(Primary)*' : ''}: ${a.realIdName ? `**${a.realIdName}**` : '*None*'
         }`
     )
     .join('\n')
@@ -3776,9 +3859,8 @@ async function handleAddHotsAccountCommandSub(
       .map(account => `* \`${account.hotsBattleTag}\` ${account.isPrimary ? '(Primary)' : ''}`)
       .join('\n')
     await safeReply(interaction, {
-      content: `${
-        interaction.user.id === discordId ? 'Your' : `<@${discordId}>'s`
-      } associated Heroes of the Storm accounts:\n${accountsList}`,
+      content: `${interaction.user.id === discordId ? 'Your' : `<@${discordId}>'s`
+        } associated Heroes of the Storm accounts:\n${accountsList}`,
       flags: MessageFlags.Ephemeral,
     })
     return
@@ -4363,7 +4445,7 @@ export async function handleAdminSetActiveCommand(
     pDiscordId = pDiscordIdOrDiscordIdArray
   }
 
-  let discordId: string | null = null
+  let playerIdentifier: string | null = null
   let matchedBattleTag: string | undefined = undefined
 
   if (interaction.isChatInputCommand()) {
@@ -4373,74 +4455,69 @@ export async function handleAdminSetActiveCommand(
     if (battleTag) {
       const matches = findPlayersByHotSAccount(battleTag, guildId)
       if (matches.length === 0) {
-        await safeReply(interaction, {
-          content: `❌ No registered player found with HotS BattleTag or account name matching \`${battleTag}\`.`,
-          flags: MessageFlags.Ephemeral,
-        })
-        return
-      }
-
-      let matchedPlayer: Player | undefined = undefined
-      if (targetDiscordId) {
-        const matchWithDiscordId = matches.find(m => m.player.discordId === targetDiscordId)
-        if (matchWithDiscordId) {
-          matchedPlayer = matchWithDiscordId.player
-          matchedBattleTag = matchWithDiscordId.matchedAccounts[0]?.hotsBattleTag
-        }
-      }
-
-      if (!matchedPlayer) {
-        if (matches.length === 1) {
-          matchedPlayer = matches[0].player
-          matchedBattleTag = matches[0].matchedAccounts[0]?.hotsBattleTag
-        } else {
-          const exactMatch = matches.find(m =>
-            m.matchedAccounts.some(a => a.hotsBattleTag.toLowerCase() === battleTag.toLowerCase())
-          )
-          if (exactMatch) {
-            matchedPlayer = exactMatch.player
-            matchedBattleTag = exactMatch.matchedAccounts.find(
-              a => a.hotsBattleTag.toLowerCase() === battleTag.toLowerCase()
-            )?.hotsBattleTag
-          } else {
-            const matchesSummary = matches
-              .slice(0, 10)
-              .map(
-                m => `• <@${m.player.discordId}> (${m.matchedAccounts.map(a => `\`${a.hotsBattleTag}\``).join(', ')})`
-              )
-              .join('\n')
-            await safeReply(interaction, {
-              content: `Multiple players matched \`${battleTag}\`. Please choose a specific BattleTag from autocomplete or specify the Discord user:\n${matchesSummary}`,
-              flags: MessageFlags.Ephemeral,
-            })
-            return
+        playerIdentifier = battleTag
+        matchedBattleTag = battleTag
+      } else {
+        let matchedPlayer: Player | undefined = undefined
+        if (targetDiscordId) {
+          const matchWithDiscordId = matches.find(m => m.player.discordId === targetDiscordId)
+          if (matchWithDiscordId) {
+            matchedPlayer = matchWithDiscordId.player
+            matchedBattleTag = matchWithDiscordId.matchedAccounts[0]?.hotsBattleTag
           }
         }
-      }
 
-      discordId = matchedPlayer.discordId
+        if (!matchedPlayer) {
+          if (matches.length === 1) {
+            matchedPlayer = matches[0].player
+            matchedBattleTag = matches[0].matchedAccounts[0]?.hotsBattleTag
+          } else {
+            const exactMatch = matches.find(m =>
+              m.matchedAccounts.some(a => a.hotsBattleTag.toLowerCase() === battleTag.toLowerCase())
+            )
+            if (exactMatch) {
+              matchedPlayer = exactMatch.player
+              matchedBattleTag = exactMatch.matchedAccounts.find(
+                a => a.hotsBattleTag.toLowerCase() === battleTag.toLowerCase()
+              )?.hotsBattleTag
+            } else {
+              const matchesSummary = matches
+                .slice(0, 10)
+                .map(
+                  m =>
+                    `• ${m.player.discordId ? `<@${m.player.discordId}>` : `**${m.player.usernames.discordDisplayName}**`} (${m.matchedAccounts.map(a => `\`${a.hotsBattleTag}\``).join(', ')})`
+                )
+                .join('\n')
+              await safeReply(interaction, {
+                content: `Multiple players matched \`${battleTag}\`. Please choose a specific BattleTag from autocomplete or specify the Discord user:\n${matchesSummary}`,
+                flags: MessageFlags.Ephemeral,
+              })
+              return
+            }
+          }
+        }
+
+        playerIdentifier = getPlayerIdentifier(matchedPlayer)
+      }
     } else if (targetDiscordId) {
-      discordId = targetDiscordId
+      playerIdentifier = targetDiscordId
     }
   } else if (pDiscordId) {
-    const player = getPlayerByDiscordId(pDiscordId, guildId)
-    if (player) {
-      discordId = pDiscordId
-    }
+    playerIdentifier = pDiscordId
   }
 
-  if (discordId === null) {
+  if (playerIdentifier === null) {
     await handleAdminShowPlayerActiveButtons(interaction, previousPlayersList)
     return
   }
-  const storedPlayer = getPlayerByDiscordId(discordId, guildId)
+  const storedPlayer = getPlayerByIdentifier(playerIdentifier, guildId)
   if (storedPlayer && pActive === undefined) {
     pActive = !storedPlayer.active // Toggle the active status if not provided
   } else {
     pActive = pActive ?? true // Default to true if not provided
   }
   const isActive = getActiveFromInteraction(interaction, pActive) // Get the active status from the interaction or use the provided value
-  const id = discordId
+  const id = playerIdentifier
   const { player, updated } = setPlayerActive(id, isActive, guildId, matchedBattleTag) // Set player as active in the database
   if (!player) {
     await safeReply(interaction, {
@@ -4450,26 +4527,28 @@ export async function handleAdminSetActiveCommand(
     return
   }
   if (updated) {
+    const targetId = getPlayerIdentifier(player)
     const adminJoinBtn = new ButtonBuilder()
-      .setCustomId(`${CommandIds.JOIN}_${id}`)
+      .setCustomId(`${CommandIds.JOIN}_${targetId}`)
       .setLabel('Admin Join')
       .setStyle(ButtonStyle.Primary)
     const adminLeaveBtn = new ButtonBuilder()
-      .setCustomId(`${CommandIds.LEAVE}_${id}`)
+      .setCustomId(`${CommandIds.LEAVE}_${targetId}`)
       .setLabel('Admin Leave')
       .setStyle(ButtonStyle.Danger)
     const adminAddAccountBtn = new ButtonBuilder()
-      .setCustomId(`${CommandIds.ADD_ACCOUNT}_${id}`)
+      .setCustomId(`${CommandIds.ADD_ACCOUNT}_${targetId}`)
       .setLabel('Admin Add Account')
       .setStyle(ButtonStyle.Secondary)
     const adminRoleBtn = new ButtonBuilder()
-      .setCustomId(`${CommandIds.ROLE}_${id}`)
+      .setCustomId(`${CommandIds.ROLE}_${targetId}`)
       .setLabel('Admin Role')
       .setStyle(ButtonStyle.Secondary)
     if (!isAdminActiveButton) {
       const tagText = matchedBattleTag ? ` (\`${matchedBattleTag}\`)` : ''
+      const mentionOrName = player.discordId ? `<@${player.discordId}>` : `**${player.usernames.discordDisplayName}**`
       await safeReply(interaction, {
-        content: `Set <@${id}>${tagText}'s active status to \`${isActive ? CommandIds.ACTIVE : CommandIds.INACTIVE}\``,
+        content: `Set ${mentionOrName}${tagText}'s active status to \`${isActive ? CommandIds.ACTIVE : CommandIds.INACTIVE}\``,
         flags: MessageFlags.Ephemeral,
         components: [
           new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -4870,13 +4949,13 @@ function isReplayInFilterRange(
       if (!isNaN(d.getTime())) {
         fileTime = d.getTime()
       }
-    } catch {}
+    } catch { }
   }
 
   if (fileTime === null) {
     try {
       fileTime = fs.statSync(file).mtime.getTime()
-    } catch {}
+    } catch { }
   }
 
   if (fileTime === null) {
@@ -4898,9 +4977,102 @@ function isReplayInFilterRange(
   return true
 }
 
+/**
+ * Formats a single imported custom match entry string for display in import command replies.
+ */
+function formatReplayEntry(
+  index: number,
+  fileName: string,
+  replayId: number,
+  replayData: NonNullable<Awaited<ReturnType<typeof parseReplay>>>
+): string {
+  const durationMin = Math.floor(replayData.length / 60)
+  const durationSec = Math.floor(replayData.length % 60)
+  const replayDate = formatDateToMMDDYYYY(new Date(replayData.date))
+  const blueWin = replayData.winner === 0 ? ' 🎉' : ''
+  const redWin = replayData.winner === 1 ? ' 🎉' : ''
+
+  let entryStr = `${index.toLocaleString('en-US')}. ${fileName}\n`
+  entryStr += `  - Replay ID: ${replayId} Map: ${replayData.map}, Date: ${replayDate}, Duration: ${durationMin}m ${durationSec}s\n`
+  entryStr += `  - Winner: ${replayData.winner} Takedowns: ${replayData.team0Takedowns.toLocaleString('en-US')} - ${replayData.team1Takedowns.toLocaleString('en-US')}, Players:\n`
+  entryStr += `    Blue Team: ${blueWin} ${replayData.team0Players}\n`
+  entryStr += `    Red Team: ${redWin} ${replayData.team1Players}\n`
+  return entryStr
+}
+
+/**
+ * Synchronizes recent replays without requiring parameters by checking newest files backwards
+ * and importing unimported custom games chronologically.
+ */
+export async function syncRecentReplays(
+  guildId: string
+): Promise<{ importedCount: number; details: string[] }> {
+  const folderPath = '/mnt/HotsBandayd'
+  let files: string[] = []
+  try {
+    files = findStormReplays(folderPath)
+  } catch (error) {
+    console.error('Error reading replay folder for sync:', error)
+    return { importedCount: 0, details: [] }
+  }
+
+  if (files.length === 0) {
+    return { importedCount: 0, details: [] }
+  }
+
+  // Sort files by date (newest first)
+  files.sort((a, b) => {
+    const aStat = fs.statSync(a)
+    const bStat = fs.statSync(b)
+    return bStat.mtime.getTime() - aStat.mtime.getTime()
+  })
+
+  // Find the first file that is already imported in the database
+  let firstImportedIndex = -1
+  for (let i = 0; i < files.length; i++) {
+    if (isReplayImported(files[i])) {
+      firstImportedIndex = i
+      break
+    }
+  }
+
+  if (firstImportedIndex === 0) {
+    // Newest file is already in DB, nothing to import
+    return { importedCount: 0, details: [] }
+  }
+
+  const unimportedFiles =
+    firstImportedIndex === -1
+      ? files.slice().reverse()
+      : files.slice(0, firstImportedIndex).reverse()
+
+  const details: string[] = []
+  let importedCount = 0
+
+  for (const file of unimportedFiles) {
+    const fileName = path.basename(file)
+    const replayData = await parseReplay(file)
+    if (replayData && replayData.mode === -1) {
+      importedCount++
+      const replayId = saveReplayToDb(replayData, guildId)
+      const destPath = path.join('/mnt/NorCustoms', fileName)
+      try {
+        fs.copyFileSync(file, destPath)
+      } catch (error) {
+        console.error('Error copying replay:', fileName, error)
+      }
+      details.push(formatReplayEntry(importedCount, fileName, replayId, replayData))
+    }
+  }
+
+  return { importedCount, details }
+}
+
 export async function handleImportReplaysCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
 ) {
+  const guildId = await requireGuildId(interaction)
+  if (!guildId) return
   if (!(await userIsAdmin(interaction))) {
     return
   }
@@ -4915,6 +5087,47 @@ export async function handleImportReplaysCommand(
   const rawStartInput = interaction.options.getString(CommandIds.START_DATE_OR_COUNT)
   const rawEndInput = interaction.options.getString(CommandIds.END_DATE)
   const filterParams = parseReplayFilterParams(rawStartInput, rawEndInput)
+
+  const maxContentLength = 1700 // Buffer for 2000 character limit
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral })
+
+  // If no date or count provided, run smart sync of unimported replays
+  if (!rawStartInput && !rawEndInput) {
+    const result = await syncRecentReplays(guildId)
+    if (result.importedCount === 0) {
+      await interaction.editReply({
+        content: 'No new custom replays found to import (all recent replays are already in the database).',
+      })
+      return
+    }
+
+    const header = `Synced **${result.importedCount}** new custom replay${result.importedCount > 1 ? 's' : ''} in chronological order:\n\n`
+    let currentChunk = header
+    let isFirstMessage = true
+
+    for (const entry of result.details) {
+      if (currentChunk.length + entry.length > maxContentLength) {
+        if (isFirstMessage) {
+          await interaction.editReply({ content: currentChunk })
+          isFirstMessage = false
+        } else {
+          await interaction.followUp({ flags: MessageFlags.Ephemeral, content: currentChunk })
+        }
+        currentChunk = entry
+      } else {
+        currentChunk += entry
+      }
+    }
+
+    if (currentChunk.length > 0) {
+      if (isFirstMessage) {
+        await interaction.editReply({ content: currentChunk })
+      } else {
+        await interaction.followUp({ flags: MessageFlags.Ephemeral, content: currentChunk })
+      }
+    }
+    return
+  }
 
   let files: string[] = []
   try {
@@ -4943,9 +5156,6 @@ export async function handleImportReplaysCommand(
     return bStat.mtime.getTime() - aStat.mtime.getTime()
   })
   const numTotalFiles = files.length
-
-  const maxContentLength = 1700 // Buffer for 2000 character limit
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral })
 
   // Filter files by mtime cutoff for fast pre-filtering
   files = files.filter(file => {
@@ -4993,7 +5203,7 @@ export async function handleImportReplaysCommand(
       isReplayInFilterRange(file, replayData.date, filterParams.startDate, filterParams.endDate)
     ) {
       count++
-      const replayId = saveReplayToDb(replayData)
+      const replayId = saveReplayToDb(replayData, guildId)
       // copy the replay from its nested path 'file' to /mnt/NorCustoms/
       const destPath = path.join('/mnt/NorCustoms', fileName)
       try {
@@ -5001,17 +5211,7 @@ export async function handleImportReplaysCommand(
       } catch (error) {
         console.error('Error copying replay:', fileName, error)
       }
-      const durationMin = Math.floor(replayData.length / 60)
-      const durationSec = Math.floor(replayData.length % 60)
-      const replayDate = formatDateToMMDDYYYY(new Date(replayData.date))
-      const blueWin = replayData.winner === 0 ? ' 🎉' : ''
-      const redWin = replayData.winner === 1 ? ' 🎉' : ''
-
-      let entryStr = `${count.toLocaleString('en-US')}. ${fileName}\n`
-      entryStr += `  - Replay ID: ${replayId} Map: ${replayData.map}, Date: ${replayDate}, Duration: ${durationMin}m ${durationSec}s\n`
-      entryStr += `  - Winner: ${replayData.winner} Takedowns: ${replayData.team0Takedowns.toLocaleString('en-US')} - ${replayData.team1Takedowns.toLocaleString('en-US')}, Players:\n`
-      entryStr += `    Blue Team: ${blueWin} ${replayData.team0Players}\n`
-      entryStr += `    Red Team: ${redWin} ${replayData.team1Players}\n`
+      const entryStr = formatReplayEntry(count, fileName, replayId, replayData)
 
       // // write the replayData to a file
       // const replayDataPath = path.join('/mnt/NorCustoms', `${fileName}.json`);
@@ -5105,7 +5305,7 @@ export async function handleImportReplaysCommand(
       await interaction.editReply({
         content: `No custom .StormReplay games matched the criteria in:\n\`${folderPath}\``,
       })
-    } catch {}
+    } catch { }
   }
 }
 
@@ -5302,4 +5502,89 @@ export async function handlePlayerAdjustCommand(interaction: ChatInputCommandInt
     content: `Updated MMR adjustment for **${displayName}** from **${prevAdjStr}** to **${newAdjStr}** (Net MMR: **${newNetMMR}**).`,
     flags: MessageFlags.Ephemeral,
   })
+}
+
+export async function handleAssignAccountCommand(
+  interaction: ChatInputCommandInteraction<CacheType>
+): Promise<void> {
+  if (!(await userIsAdmin(interaction))) {
+    return
+  }
+
+  const guildId = await requireGuildId(interaction)
+  if (!guildId) return
+
+  const accountInput = interaction.options.getString(CommandIds.ACCOUNT, true).trim()
+  const targetUser = interaction.options.getUser(CommandIds.TO, true)
+
+  const result = setAccountSubstitution(guildId, accountInput, targetUser.id)
+  if (!result.success) {
+    await safeReply(interaction, {
+      content: `Could not find an account matching "${accountInput}". Please verify the account exists.`,
+      flags: MessageFlags.Ephemeral,
+    })
+    return
+  }
+
+  await safeReply(interaction, {
+    content: `✅ Successfully assigned HotS account **${result.hotsBattleTag}** (owned by <@${result.originalDiscordId}>) to <@${targetUser.id}> for this evening.`,
+  })
+
+  // Update lobby if it exists
+  try {
+    await updateLobbyMessage(guildId, interaction)
+  } catch (err) {
+    console.error('Error updating lobby message after account substitution:', err)
+  }
+}
+
+export async function handleAssignAccountClearCommand(
+  interaction: ChatInputCommandInteraction<CacheType>
+): Promise<void> {
+  if (!(await userIsAdmin(interaction))) {
+    return
+  }
+
+  const guildId = await requireGuildId(interaction)
+  if (!guildId) return
+
+  const accountInput = interaction.options.getString(CommandIds.ACCOUNT)?.trim()
+
+  const clearedCount = clearAccountSubstitutions(guildId, accountInput ?? undefined)
+
+  if (accountInput) {
+    await safeReply(interaction, {
+      content: `✅ Cleared active substitution for **${accountInput}** (${clearedCount} active substitution cleared).`,
+    })
+  } else {
+    await safeReply(interaction, {
+      content: `✅ Cleared all active account substitutions (${clearedCount} active substitutions removed).`,
+    })
+  }
+
+  // Update lobby if it exists
+  try {
+    await updateLobbyMessage(guildId, interaction)
+  } catch (err) {
+    console.error('Error updating lobby message after clearing account substitution:', err)
+  }
+}
+
+export async function handleAssignAccountAutocomplete(
+  interaction: AutocompleteInteraction
+): Promise<void> {
+  const focusedOption = interaction.options.getFocused(true)
+  const guildId = interaction.guildId
+  if (focusedOption.name !== CommandIds.ACCOUNT || !guildId) {
+    await interaction.respond([])
+    return
+  }
+
+  const query = focusedOption.value
+  const choices =
+    interaction.commandName === CommandIds.ASSIGN_ACCOUNT_CLEAR
+      ? getAssignAccountClearChoices(guildId, query)
+      : getAssignAccountChoices(guildId, query)
+
+  await interaction.respond(choices)
 }

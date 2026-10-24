@@ -870,4 +870,38 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
       },
     ],
   },
+  {
+    name: CommandIds.ASSIGN_ACCOUNT,
+    description: 'Temporarily assign a HotS account to a player for this evening',
+    defaultMemberPermissions: minimumAdminPermissions,
+    options: [
+      {
+        name: CommandIds.ACCOUNT,
+        type: ApplicationCommandOptionType.String,
+        description: 'HotS account to assign (e.g. HealsOnly)',
+        required: true,
+        autocomplete: true,
+      },
+      {
+        name: CommandIds.TO,
+        type: ApplicationCommandOptionType.User,
+        description: 'Player who will be temporarily playing on this account',
+        required: true,
+      },
+    ],
+  },
+  {
+    name: CommandIds.ASSIGN_ACCOUNT_CLEAR,
+    description: 'Clear active account substitutions (optionally for a specific account)',
+    defaultMemberPermissions: minimumAdminPermissions,
+    options: [
+      {
+        name: CommandIds.ACCOUNT,
+        type: ApplicationCommandOptionType.String,
+        description: 'HotS account to clear assignment for (leave blank to clear all active substitutions)',
+        required: false,
+        autocomplete: true,
+      },
+    ],
+  },
 ]

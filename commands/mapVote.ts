@@ -31,6 +31,7 @@ import {
 } from '../store/mapVote'
 import { MapDefinition, MapVoteSession, MapVoteTally } from '../types/mapVote'
 import { safeReply, safeDeferUpdate, requireGuildId } from '../utils/interaction'
+import { syncRecentReplays } from './index'
 
 const MAPS_ASSETS_DIR = path.resolve(process.cwd(), 'assets', 'maps')
 
@@ -209,6 +210,12 @@ export async function handleMapVoteCommand(interaction: ChatInputCommandInteract
 
   // Publicly defer reply so the command response itself becomes the map buttons message
   await interaction.deferReply()
+
+  try {
+    await syncRecentReplays(guildId)
+  } catch (err) {
+    console.error('Error auto-syncing replays during /map-vote:', err)
+  }
 
   const channel = interaction.channel
   if (!channel || !('send' in channel)) {

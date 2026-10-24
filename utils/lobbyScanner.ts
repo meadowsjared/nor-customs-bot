@@ -3,16 +3,19 @@ import { createWorker, Worker } from 'tesseract.js'
 import {
   getActivePlayers,
   getAllRegisteredHotSAccounts,
+  getPlayerIdentifier,
+  getSubstitutedAccountOwnerTag,
+  PlayerIdPrefix,
   RegisteredPlayerAccount,
   setPlayerActive,
 } from '../store/player'
 
 export interface ScanLobbySummary {
-  newlyAdded: { discordId: string; name: string; hotsBattleTag: string }[]
-  alreadyActive: { discordId: string; name: string; hotsBattleTag: string }[]
+  newlyAdded: { discordId: string | null; name: string; hotsBattleTag: string }[]
+  alreadyActive: { discordId: string | null; name: string; hotsBattleTag: string }[]
   unregistered: string[]
-  missingFromScreenshot: { discordId: string; name: string }[]
-  removed: { discordId: string; name: string }[]
+  missingFromScreenshot: { discordId: string | null; name: string }[]
+  removed: { discordId: string | null; name: string }[]
   totalLobbyCount: number
   team1DiscordIds: string[]
   team2DiscordIds: string[]
@@ -266,7 +269,7 @@ export async function scanLobbyScreenshot(
   const slotCoords = calculateSlotCoordinates(width, height)
   const worker = await getWorker()
 
-  const registeredAccounts = getAllRegisteredHotSAccounts()
+  const registeredAccounts = getAllRegisteredHotSAccounts(guildId)
   const detectedSlots: {
     slotIndex: number
     text: string
@@ -312,17 +315,17 @@ export async function scanLobbyScreenshot(
   }
 
   const newlyAdded: {
-    discordId: string
+    discordId: string | null
     name: string
     hotsBattleTag: string
   }[] = []
   const alreadyActive: {
-    discordId: string
+    discordId: string | null
     name: string
     hotsBattleTag: string
   }[] = []
   const unregistered: string[] = []
-  const processedDiscordIds = new Set<string>()
+  const processedPlayerIds = new Set<string>()
   const team1DiscordIds: string[] = []
   const team2DiscordIds: string[] = []
   let team1CaptainDiscordId: string | undefined
@@ -331,16 +334,22 @@ export async function scanLobbyScreenshot(
   for (const detected of detectedSlots) {
     const matched = findBestAccountMatch(detected.text, registeredAccounts)
     if (matched) {
-      if (processedDiscordIds.has(matched.discordId)) {
+      const playerId = matched.discordId ?? `${PlayerIdPrefix.HOTS_ROW_ID}${matched.id}`
+      if (processedPlayerIds.has(playerId)) {
         continue
       }
-      processedDiscordIds.add(matched.discordId)
+      processedPlayerIds.add(playerId)
 
-      const { updated } = setPlayerActive(matched.discordId, true, guildId)
+      const { updated } = setPlayerActive(playerId, true, guildId, matched.hotsBattleTag)
+      let displayTag = matched.hotsBattleTag
+      if (matched.ownerDiscordId) {
+        displayTag += getSubstitutedAccountOwnerTag(matched.ownerDiscordId, guildId)
+      }
+
       const info = {
         discordId: matched.discordId,
         name: matched.discordDisplayName,
-        hotsBattleTag: matched.hotsBattleTag,
+        hotsBattleTag: displayTag,
       }
 
       if (updated) {
@@ -350,14 +359,14 @@ export async function scanLobbyScreenshot(
       }
 
       if (detected.slotIndex < 5) {
-        team1DiscordIds.push(matched.discordId)
+        team1DiscordIds.push(playerId)
         if (detected.isCaptain && !team1CaptainDiscordId) {
-          team1CaptainDiscordId = matched.discordId
+          team1CaptainDiscordId = playerId
         }
       } else {
-        team2DiscordIds.push(matched.discordId)
+        team2DiscordIds.push(playerId)
         if (detected.isCaptain && !team2CaptainDiscordId) {
-          team2CaptainDiscordId = matched.discordId
+          team2CaptainDiscordId = playerId
         }
       }
     } else {
@@ -366,18 +375,24 @@ export async function scanLobbyScreenshot(
   }
 
   const currentActive = getActivePlayers(guildId)
-  const missingFromScreenshot: { discordId: string; name: string }[] = []
-  const removed: { discordId: string; name: string }[] = []
+  const missingFromScreenshot: { discordId: string | null; name: string }[] = []
+  const removed: { discordId: string | null; name: string }[] = []
 
   for (const p of currentActive) {
-    if (!processedDiscordIds.has(p.discordId)) {
+    const pId = getPlayerIdentifier(p)
+    const matchesScreenshot =
+      (p.discordId && processedPlayerIds.has(p.discordId)) ||
+      (pId && processedPlayerIds.has(pId)) ||
+      (p.usernames.accounts?.some(a => processedPlayerIds.has(a.hotsBattleTag)) ?? false)
+
+    if (!matchesScreenshot) {
       const missingInfo = {
         discordId: p.discordId,
         name: p.usernames.discordDisplayName,
       }
       missingFromScreenshot.push(missingInfo)
       if (sync) {
-        setPlayerActive(p.discordId, false, guildId)
+        setPlayerActive(pId, false, guildId)
         removed.push(missingInfo)
       }
     }

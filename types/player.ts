@@ -36,6 +36,10 @@ export interface HotsAccount {
   hpQmGames: number | null // HP_QM_Games
   hpSlGames: number | null // HP_SL_Games
   hpArGames: number | null // HP_AR_Games
+  /**
+   * Discord ID of the original owner if this account is currently loaned/substituted
+   */
+  ownerDiscordId?: string | null
 }
 
 export interface HotsAccountRow {
@@ -44,9 +48,9 @@ export interface HotsAccountRow {
    */
   hots_battle_tag: string
   /**
-   * The Discord ID of the player
+   * The Discord ID of the player (null if not linked to Discord)
    */
-  discord_id: string
+  discord_id: string | null
   /**
    * Whether this is the player's primary account
    */
@@ -56,16 +60,44 @@ export interface HotsAccountRow {
    */
   real_id_name: string | null
   /**
+   * Discord ID of the original owner if this account is currently loaned/substituted
+   */
+  owner_discord_id?: string | null
+  /**
    * The database ID of the account
    * Used for updating/deleting the account
    */
   id: number
+  HP_Region?: number | null
+  HP_Blizz_ID?: number | string | null
   HP_QM_MMR: number | null // HP_QM_MMR
   HP_SL_MMR: number | null // HP_SL_MMR
   HP_AR_MMR: number | null // HP_AR_MMR
   HP_QM_Games: number | null // HP_QM_Games
   HP_SL_Games: number | null // HP_SL_Games
   HP_AR_Games: number | null // HP_AR_Games
+}
+
+export interface AccountSubstitution {
+  id: number
+  guildId: string
+  hotsBattleTag: string
+  originalDiscordId: string
+  substituteDiscordId: string
+  replayId: number | null
+  date: string
+  isActive: boolean
+}
+
+export interface AccountSubstitutionRow {
+  id: number
+  guild_id: string
+  hots_battle_tag: string
+  original_discord_id: string
+  substitute_discord_id: string
+  replay_id: number | null
+  date: string
+  is_active: number
 }
 
 export interface DiscordUserNames {
@@ -85,9 +117,9 @@ export interface DiscordUserNames {
 
 export interface Player {
   /**
-   * The discord ID of the player
+   * The discord ID of the player (null if not linked to Discord)
    */
-  discordId: string
+  discordId: string | null
   /**
    * The usernames of the player in Heroes of the Storm and Discord
    */
@@ -125,7 +157,7 @@ export interface FlatPlayer {
   /**
    * The discord ID of the player
    */
-  discord_id: string
+  discord_id: string | null
   /**
    * The Heroes of the Storm battle tag of the player
    */

@@ -79,6 +79,9 @@ import {
   handleAdminDeleteHotsAccountCommand,
   handlePlayerAdjustCommand,
   handleCheckTeamsCommand,
+  handleAssignAccountCommand,
+  handleAssignAccountClearCommand,
+  handleAssignAccountAutocomplete,
 } from './commands'
 import { safeReply } from './utils/interaction'
 import { getBotChannel } from './utils/channel'
@@ -226,6 +229,13 @@ client.on('interactionCreate', async interaction => {
             interaction.options.getSubcommand(false) === CommandIds.ACTIVE))
       ) {
         await handleLookupAutocomplete(interaction)
+        return
+      }
+      if (
+        interaction.commandName === CommandIds.ASSIGN_ACCOUNT ||
+        interaction.commandName === CommandIds.ASSIGN_ACCOUNT_CLEAR
+      ) {
+        await handleAssignAccountAutocomplete(interaction)
         return
       }
     }
@@ -461,6 +471,26 @@ client.on('interactionCreate', async interaction => {
         break
       case CommandIds.CHECK_TEAMS:
         await handleCheckTeamsCommand(interaction)
+        break
+      case CommandIds.ASSIGN_ACCOUNT:
+        if (!interaction.isChatInputCommand()) {
+          await safeReply(interaction, {
+            content: 'This command can only be used as a slash command.',
+            flags: MessageFlags.Ephemeral,
+          })
+          return
+        }
+        await handleAssignAccountCommand(interaction)
+        break
+      case CommandIds.ASSIGN_ACCOUNT_CLEAR:
+        if (!interaction.isChatInputCommand()) {
+          await safeReply(interaction, {
+            content: 'This command can only be used as a slash command.',
+            flags: MessageFlags.Ephemeral,
+          })
+          return
+        }
+        await handleAssignAccountClearCommand(interaction)
         break
       default:
         await handleDefaultCommand(interaction, commandName)

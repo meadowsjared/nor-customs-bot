@@ -1,8 +1,10 @@
 import Database from 'better-sqlite3'
+import path from 'path'
 import { createRequire } from 'module'
 const require = createRequire(import.meta.url)
 const db = new Database('./store/nor_customs.db')
 import { ColumnDefinition, generateCreateTableSQL, InterfaceFromSchema, SQLiteColumnType } from '../utils/sql'
+import { getAccountWithSubstitution, ResolvedHotsAccount } from './player'
 
 export const HOTS_REPLAYS_MATCH_COLUMNS = [
   {
@@ -67,6 +69,7 @@ export const HOTS_REPLAY_GAME_STATS_COLUMNS = [
   { name: 'replay_id', dbType: SQLiteColumnType.INTEGER },
   { name: 'hots_account_id', dbType: SQLiteColumnType.INTEGER },
   { name: 'discord_id', dbType: SQLiteColumnType.TEXT },
+  { name: 'owner_discord_id', dbType: SQLiteColumnType.TEXT },
   { name: 'hots_battle_tag', dbType: SQLiteColumnType.TEXT },
   { name: 'ToonHandle', dbType: SQLiteColumnType.TEXT },
   { name: 'name', dbType: SQLiteColumnType.TEXT },
@@ -314,6 +317,22 @@ const initSchema = db.transaction(() => {
     CREATE INDEX IF NOT EXISTS idx_hots_replay_player_game_stats_battle_tag
     ON hots_replay_player_game_stats(hots_battle_tag)
   `)
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_hots_replay_player_game_stats_owner_discord_id
+    ON hots_replay_player_game_stats(owner_discord_id)
+  `)
+
+  // Backfill any historical rows where hots_account_id is null
+  db.exec(`
+    UPDATE hots_replay_player_game_stats
+    SET hots_account_id = (
+      SELECT id FROM hots_accounts ha
+      WHERE ha.hots_battle_tag = hots_replay_player_game_stats.hots_battle_tag COLLATE NOCASE
+      AND ha.owner_discord_id IS NULL
+      LIMIT 1
+    )
+    WHERE hots_account_id IS NULL;
+  `)
 })
 
 try {
@@ -379,13 +398,15 @@ export async function parseReplay(file: string) {
 }
 
 /**
- * Recalculates and updates the SotS_* summary columns in hots_accounts for a given BattleTag
+/**
+ * Recalculates and updates the SotS_* summary columns in hots_accounts for a specific account.
  */
+function updateSotsStatsForAccount(acc: ResolvedHotsAccount) {
+  if (!acc.hotsAccountId) return
 
-function updateSotsStatsForAccount(battleTag: string) {
   try {
     const stats = db
-      .prepare(
+      .prepare<[number], Record<string, number>>(
         `
       SELECT 
         COUNT(*) as totalGames,
@@ -480,10 +501,10 @@ function updateSotsStatsForAccount(battleTag: string) {
         SUM(danceTD) as totalDanceTD,
         SUM(danceDeaths) as totalDanceDeaths
       FROM hots_replay_player_game_stats
-      WHERE hots_battle_tag = ? COLLATE NOCASE
+      WHERE hots_account_id = ?
     `
       )
-      .get(battleTag) as Record<string, number> | undefined
+      .get(acc.hotsAccountId)
 
     if (stats && stats.totalGames > 0) {
       db.prepare(
@@ -582,7 +603,7 @@ function updateSotsStatsForAccount(battleTag: string) {
           SotS_Dances = ?,
           SotS_Dance_TD = ?,
           SotS_Dance_Deaths = ?
-        WHERE hots_battle_tag = ? COLLATE NOCASE
+        WHERE id = ?
       `
       ).run(
         stats.totalGames,
@@ -678,23 +699,26 @@ function updateSotsStatsForAccount(battleTag: string) {
         stats.totalDances,
         stats.totalDanceTD,
         stats.totalDanceDeaths,
-        battleTag
+        acc.hotsAccountId
       )
     }
   } catch (err) {
-    console.error(`Error updating SotS stats for account ${battleTag}:`, err)
+    console.error(`Error updating SotS stats for account ${acc.battleTag}:`, err)
   }
 }
 
 /**
  * Saves a parsed custom match into the database and returns its assigned replay ID.
  */
-export function saveReplayToDb(parsedReplay: ParsedReplay): number {
+export function saveReplayToDb(parsedReplay: ParsedReplay, guildId: string): number {
   const replay = parsedReplay.replayObj
 
   const saveTransaction = db.transaction(() => {
     // 1. Prepare match insert data
     const matchData: Record<string, any> = { ...replay.match }
+    if (!matchData.filename && parsedReplay.file) {
+      matchData.filename = parsedReplay.file
+    }
 
     // Extract draft bans & picks
     if (matchData.bans) {
@@ -721,7 +745,7 @@ export function saveReplayToDb(parsedReplay: ParsedReplay): number {
     }
 
     const filteredMatchCols = HOTS_REPLAYS_MATCH_COLUMNS.filter(
-      col => !('skipImport' in col && (col as any).skipImport)
+      col => !('skipImport' in col && Boolean(col.skipImport))
     )
     const matchColNames = filteredMatchCols.map(col => col.name)
     const matchPlaceholders = filteredMatchCols.map(() => '?').join(', ')
@@ -742,7 +766,10 @@ export function saveReplayToDb(parsedReplay: ParsedReplay): number {
     })
 
     const matchSql = `INSERT INTO hots_replays (${matchColNames.join(', ')}) VALUES (${matchPlaceholders}) ON CONFLICT(map, date, loopLength) DO UPDATE SET map=excluded.map RETURNING id`
-    const matchRow = db.prepare(matchSql).get(matchValues) as { id: number }
+    const matchRow = db.prepare<unknown[], { id: number }>(matchSql).get(matchValues)
+    if (!matchRow) {
+      throw new Error('Failed to insert or retrieve replay match record')
+    }
     const replayId = matchRow.id
 
     // Delete existing player game stats for this replay if re-importing
@@ -756,28 +783,23 @@ export function saveReplayToDb(parsedReplay: ParsedReplay): number {
     const insertStatsStmt = db.prepare(statsSql)
 
     const players = Object.values(replay.players || {})
-    const updatedBattleTags = new Set<string>()
+    const updatedAccounts: ResolvedHotsAccount[] = []
 
     for (const player of players) {
       const battleTag = `${player.name}#${player.tag}`
-      updatedBattleTags.add(battleTag)
 
-      // Lookup hots_accounts id and discord_id if it exists
-      const accountRow = db
-        .prepare<[string], { id: number; discord_id: string }>(
-          'SELECT id, discord_id FROM hots_accounts WHERE hots_battle_tag = ? COLLATE NOCASE'
-        )
-        .get(battleTag)
-      const hotsAccountId = accountRow?.id ?? null
-      const discordId = accountRow?.discord_id ?? null
+      const resolvedAccount = getAccountWithSubstitution(battleTag, guildId, replayId)
+
+      updatedAccounts.push(resolvedAccount)
 
       const playerTalents = player.talents || {}
       const gameStatsData = player.gameStats || {}
 
       const playerValues = filteredStatsCols.map(col => {
         if (col.name === 'replay_id') return replayId
-        if (col.name === 'hots_account_id') return hotsAccountId
-        if (col.name === 'discord_id') return discordId
+        if (col.name === 'hots_account_id') return resolvedAccount.hotsAccountId
+        if (col.name === 'discord_id') return resolvedAccount.discordId ?? null
+        if (col.name === 'owner_discord_id') return resolvedAccount.ownerDiscordId ?? null
         if (col.name === 'hots_battle_tag') return battleTag
         if (col.name === 'sprays') return Array.isArray(player.sprays) ? player.sprays.length : player.sprays || 0
         if (col.name === 'sprayTD')
@@ -872,14 +894,27 @@ export function saveReplayToDb(parsedReplay: ParsedReplay): number {
     }
 
     // 3. Update SotS_* summary columns on hots_accounts for participating players
-    for (const bTag of updatedBattleTags) {
-      updateSotsStatsForAccount(bTag)
+    for (const acc of updatedAccounts) {
+      updateSotsStatsForAccount(acc)
     }
 
     return replayId
   })
 
   return saveTransaction()
+}
+
+/**
+ * Checks if a replay file (full path or filename) has already been imported into the database.
+ */
+export function isReplayImported(file: string): boolean {
+  const baseName = path.basename(file)
+  const existing = db
+    .prepare<[string, string], { id: number }>(
+      'SELECT id FROM hots_replays WHERE filename = ? OR filename LIKE ? LIMIT 1'
+    )
+    .get(file, `%${baseName}`)
+  return Boolean(existing)
 }
 
 export interface PlayerMatchStats {
@@ -979,7 +1014,7 @@ export function getPlayerMatchStats(
     danceDeaths: 0,
   }
 
-  const matchFilter = `(s.discord_id = ? OR s.hots_battle_tag IN (SELECT hots_battle_tag FROM hots_accounts WHERE discord_id = ?))`
+  const matchFilter = `(s.discord_id = ? OR (s.discord_id IS NULL AND s.hots_battle_tag IN (SELECT hots_battle_tag FROM hots_accounts WHERE discord_id = ? AND owner_discord_id IS NULL)))`
 
   type OverallRow = { totalGames: number; wins: number; winRate: number }
   const overall = db
