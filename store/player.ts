@@ -97,7 +97,7 @@ const initSchema = db.transaction(() => {
       sql: string
     }
     const oldSqlRow = db
-      .prepare<[string], SqlRow>("SELECT sql FROM sqlite_master WHERE type='table' AND name='hots_accounts_old'")
+      .prepare<[string], SqlRow>("SELECT sql FROM sqlite_master WHERE type='table' AND name = ?")
       .get('hots_accounts_old')
     if (oldSqlRow) {
       let newSql = oldSqlRow.sql.replace('hots_accounts_old', 'hots_accounts')
@@ -111,11 +111,12 @@ const initSchema = db.transaction(() => {
     db.exec('PRAGMA foreign_keys = ON')
   }
 
-  // Check if lobby_players needs migration to support non-Discord players
+  // Check if lobby_players needs migration to support non-Discord players and roles
   const lobbyPlayerCols = db.prepare<[], TableInfoCol>('PRAGMA table_info(lobby_players)').all()
   const lobbyNeedsMigration =
     lobbyPlayerCols.length > 0 &&
     (!lobbyPlayerCols.some(c => c.name === 'hots_account_id') ||
+      !lobbyPlayerCols.some(c => c.name === 'role') ||
       lobbyPlayerCols.find(c => c.name === 'discord_id')?.notnull === 1)
 
   if (lobbyNeedsMigration) {
@@ -134,18 +135,23 @@ const initSchema = db.transaction(() => {
         role TEXT
       )
     `)
+    const oldCols = lobbyPlayerCols.map(c => c.name)
+    const colsToCopy = ['guild_id', 'discord_id', 'active', 'team', 'lobby_rank', 'draft_order']
+    if (oldCols.includes('hots_account_id')) colsToCopy.push('hots_account_id')
+    if (oldCols.includes('role')) colsToCopy.push('role')
+    const colList = colsToCopy.join(', ')
     db.exec(`
-      INSERT INTO lobby_players (guild_id, discord_id, active, team, lobby_rank, draft_order)
-      SELECT guild_id, discord_id, active, team, lobby_rank, draft_order FROM lobby_players_old
+      INSERT INTO lobby_players (${colList})
+      SELECT ${colList} FROM lobby_players_old
     `)
     db.exec('DROP TABLE lobby_players_old')
     db.exec(`
       CREATE UNIQUE INDEX IF NOT EXISTS idx_lobby_players_guild_discord 
-      ON lobby_players(guild_id, discord_id) WHERE discord_id IS NOT NULL;
+      ON lobby_players(guild_id, discord_id);
     `)
     db.exec(`
       CREATE UNIQUE INDEX IF NOT EXISTS idx_lobby_players_guild_account 
-      ON lobby_players(guild_id, hots_account_id) WHERE hots_account_id IS NOT NULL;
+      ON lobby_players(guild_id, hots_account_id);
     `)
     // Backfill hots_account_id for existing rows
     db.exec(`
@@ -170,6 +176,30 @@ const initSchema = db.transaction(() => {
     `)
     db.exec('PRAGMA foreign_keys = ON')
   }
+
+  // Ensure lobby_players has clean unique indexes for upserts
+  db.exec('DROP INDEX IF EXISTS idx_lobby_players_guild_discord;')
+  db.exec('DROP INDEX IF EXISTS idx_lobby_players_guild_account;')
+  db.exec(`
+    DELETE FROM lobby_players 
+    WHERE id NOT IN (
+      SELECT MAX(id) FROM lobby_players WHERE discord_id IS NOT NULL GROUP BY guild_id, discord_id
+    ) AND discord_id IS NOT NULL;
+  `)
+  db.exec(`
+    DELETE FROM lobby_players 
+    WHERE id NOT IN (
+      SELECT MAX(id) FROM lobby_players WHERE hots_account_id IS NOT NULL GROUP BY guild_id, hots_account_id
+    ) AND hots_account_id IS NOT NULL;
+  `)
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_lobby_players_guild_discord 
+    ON lobby_players(guild_id, discord_id);
+  `)
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_lobby_players_guild_account 
+    ON lobby_players(guild_id, hots_account_id);
+  `)
 
   // Create an index for better performance
   db.exec(`
@@ -392,7 +422,10 @@ export function getActivePlayers(guildId: string): Player[] {
       COALESCE(p.last_active, CURRENT_TIMESTAMP) AS last_active
     FROM lobby_players lp
     LEFT JOIN players p ON lp.discord_id = p.discord_id
-    LEFT JOIN hots_accounts ha ON lp.hots_account_id = ha.id OR (lp.discord_id IS NOT NULL AND ha.discord_id = lp.discord_id AND ha.is_primary = 1)
+    LEFT JOIN hots_accounts ha ON ha.id = COALESCE(
+      lp.hots_account_id,
+      (SELECT id FROM hots_accounts WHERE discord_id = lp.discord_id ORDER BY is_primary DESC, id ASC LIMIT 1)
+    )
     WHERE lp.guild_id = ? AND lp.active = 1
     ORDER BY lp.lobby_rank, lp.active, lp.team;
   `)
@@ -402,7 +435,17 @@ export function getActivePlayers(guildId: string): Player[] {
   )
   const allAccounts = accountsStmt.all()
   const validAccounts = filterActiveSubstitutedAccounts(allAccounts, guildId)
-  return rows.map<Player>(row => getPlayerFromRow(row, validAccounts))
+  const seenPlayerKeys = new Set<string>()
+  const uniquePlayers: Player[] = []
+  for (const row of rows) {
+    const key = row.discord_id ?? (row.hots_battle_tag ? `tag:${row.hots_battle_tag.toLowerCase()}` : `guest:${uniquePlayers.length}`)
+    if (seenPlayerKeys.has(key)) {
+      continue
+    }
+    seenPlayerKeys.add(key)
+    uniquePlayers.push(getPlayerFromRow(row, validAccounts))
+  }
+  return uniquePlayers
 }
 
 /**
@@ -1573,7 +1616,14 @@ export function setPlayerActive(
     return { updated: false, player } // No change needed
   }
 
-  const accId = player.usernames.accounts?.[0]?.id ?? null
+  const matchedAcc = hotsBattleTag
+    ? player.usernames.accounts?.find(a => a.hotsBattleTag.toLowerCase() === hotsBattleTag.toLowerCase())
+    : undefined
+  const accId =
+    matchedAcc?.id ??
+    player.usernames.accounts?.find(a => a.isPrimary)?.id ??
+    player.usernames.accounts?.[0]?.id ??
+    null
 
   const transaction = db.transaction(() => {
     if (active) {
@@ -1659,7 +1709,7 @@ export function setTeamsFromPlayers(guildId: string, team1: Player[], team2: Pla
     const insertOrUpdatePlayer = (p: Player, teamVal: number | null) => {
       const lRank = Number.isNaN(p.lobbyRank) || p.lobbyRank === undefined ? null : p.lobbyRank
       const dOrder = Number.isNaN(p.draftOrder) || p.draftOrder === undefined ? null : p.draftOrder
-      const accId = p.usernames.accounts?.[0]?.id ?? null
+      const accId = p.usernames.accounts?.find(a => a.isPrimary)?.id ?? p.usernames.accounts?.[0]?.id ?? null
       if (p.discordId) {
         db.prepare(`
           INSERT INTO lobby_players (guild_id, discord_id, hots_account_id, active, team, lobby_rank, draft_order, role)

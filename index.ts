@@ -678,7 +678,7 @@ function isAdminSetActiveCommand(
     interaction.isButton() &&
     part0 === CommandIds.ADMIN &&
     part1 === CommandIds.ACTIVE &&
-    /^\d{17,19}$/.test(part2) &&
+    (/^\d{17,19}$/.test(part2) || part2.startsWith('hotsRowId:')) &&
     ['true', 'false'].includes(part3.toLowerCase())
   )
 }

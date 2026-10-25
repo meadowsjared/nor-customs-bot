@@ -394,17 +394,29 @@ async function applyTeamsFromScan(
     p.lobbyRank = index
   })
 
-  const team1 = sortedPlayers
-    .filter(p => matchesScanList(p, scanSummary.team1DiscordIds))
-    .sort((a, b) => (b.mmr ?? getPlayerMMR(b)) - (a.mmr ?? getPlayerMMR(a)))
-  const team2 = sortedPlayers
-    .filter(p => matchesScanList(p, scanSummary.team2DiscordIds))
-    .sort((a, b) => (b.mmr ?? getPlayerMMR(b)) - (a.mmr ?? getPlayerMMR(a)))
-  const spectators = sortedPlayers.filter(
-    p =>
-      !matchesScanList(p, scanSummary.team1DiscordIds) &&
-      !matchesScanList(p, scanSummary.team2DiscordIds)
-  )
+  const team1: Player[] = []
+  const team2: Player[] = []
+  const spectators: Player[] = []
+  const seenPlayerIds = new Set<string>()
+
+  for (const p of sortedPlayers) {
+    const id = getPlayerIdentifier(p)
+    if (id && seenPlayerIds.has(id)) {
+      continue
+    }
+    if (id) seenPlayerIds.add(id)
+
+    if (matchesScanList(p, scanSummary.team1DiscordIds)) {
+      team1.push(p)
+    } else if (matchesScanList(p, scanSummary.team2DiscordIds)) {
+      team2.push(p)
+    } else {
+      spectators.push(p)
+    }
+  }
+
+  team1.sort((a, b) => (b.mmr ?? getPlayerMMR(b)) - (a.mmr ?? getPlayerMMR(a)))
+  team2.sort((a, b) => (b.mmr ?? getPlayerMMR(b)) - (a.mmr ?? getPlayerMMR(a)))
 
   team1.forEach((p, i) => {
     p.team = 1
@@ -1640,13 +1652,15 @@ async function generateTeamsMessage(
   activePlayers.forEach((p, index) => (p.lobbyRank = index))
   team1.forEach(p => {
     if (p.lobbyRank === undefined || Number.isNaN(p.lobbyRank)) {
-      const idx = activePlayers.findIndex(ap => ap.discordId === p.discordId)
+      const pId = getPlayerIdentifier(p)
+      const idx = activePlayers.findIndex(ap => getPlayerIdentifier(ap) === pId)
       if (idx !== -1) p.lobbyRank = idx
     }
   })
   team2.forEach(p => {
     if (p.lobbyRank === undefined || Number.isNaN(p.lobbyRank)) {
-      const idx = activePlayers.findIndex(ap => ap.discordId === p.discordId)
+      const pId = getPlayerIdentifier(p)
+      const idx = activePlayers.findIndex(ap => getPlayerIdentifier(ap) === pId)
       if (idx !== -1) p.lobbyRank = idx
     }
   })
@@ -1654,9 +1668,14 @@ async function generateTeamsMessage(
   team2.sort((a, b) => (b.mmr ?? getPlayerMMR(b)) - (a.mmr ?? getPlayerMMR(a)))
   const team1List = team1.map(p => formatPlayerDisplay(p, guildId, { includeBattleTag: true, includeRole: true })).join('\n')
   const team2List = team2.map(p => formatPlayerDisplay(p, guildId, { includeBattleTag: true, includeRole: true })).join('\n')
-  const spectators = activePlayers.filter(
-    p => team1.every(t => t.discordId !== p.discordId) && team2.every(t => t.discordId !== p.discordId)
-  )
+  const assignedIds = new Set([
+    ...team1.map(t => getPlayerIdentifier(t)).filter(Boolean),
+    ...team2.map(t => getPlayerIdentifier(t)).filter(Boolean),
+  ])
+  const spectators = activePlayers.filter(p => {
+    const id = getPlayerIdentifier(p)
+    return id ? !assignedIds.has(id) : true
+  })
   const spectatorList = spectators.map(p => formatPlayerDisplay(p, guildId, { includeBattleTag: true })).join('\n')
 
   const team1lengthMessage = team1.length === 5 ? '' : ` (${team1.length} players)`
@@ -4668,12 +4687,22 @@ async function getPlayersByGuild(
   const players = await getPreviousSetActivePlayers(storedInteraction, guildId)
   const previousPlayers = getLobbyPreviousPlayers(guildId, previousPlayersList)
   const activePlayers = getActivePlayers(guildId)
-  players.push(...previousPlayers.filter(lp => !players.some(p => p.discordId === lp.discordId))) // add the lobby players that are not already in the players array
-  players.push(...activePlayers.filter(ap => !players.some(p => p.discordId === ap.discordId))) // add the active players that are not already in the players array
+  const hasPlayer = (list: Player[], target: Player) => {
+    const targetId = getPlayerIdentifier(target)
+    return list.some(p => {
+      const pId = getPlayerIdentifier(p)
+      if (pId && targetId) return pId === targetId
+      if (p.discordId && target.discordId) return p.discordId === target.discordId
+      return false
+    })
+  }
+
+  players.push(...previousPlayers.filter(lp => !hasPlayer(players, lp)))
+  players.push(...activePlayers.filter(ap => !hasPlayer(players, ap)))
 
   // Always include the command runner if they are registered
   const selfPlayer = getPlayerByDiscordId(interaction.user.id, guildId)
-  if (selfPlayer && !players.some(p => p.discordId === selfPlayer.discordId)) {
+  if (selfPlayer && !hasPlayer(players, selfPlayer)) {
     players.push(selfPlayer)
   }
 
@@ -4681,7 +4710,7 @@ async function getPlayersByGuild(
     for (const [, voiceState] of interaction.guild.voiceStates.cache) {
       if (voiceState.channelId) {
         const player = getPlayerByDiscordId(voiceState.id, guildId)
-        if (player && !players.some(p => p.discordId === player.discordId)) {
+        if (player && !hasPlayer(players, player)) {
           players.push(player)
         }
       }
@@ -4715,9 +4744,9 @@ async function getPreviousSetActivePlayers(
           if (button instanceof ButtonComponent) {
             if (button.customId?.startsWith(`${CommandIds.ADMIN}_${CommandIds.ACTIVE}_`)) {
               const parts = button.customId.split('_')
-              const discordId = parts[2]
-              if (discordId) {
-                const player = getPlayerByDiscordId(discordId, guildId)
+              const playerId = parts[2]
+              if (playerId && playerId !== 'null') {
+                const player = getPlayerByIdentifier(playerId, guildId)
                 if (player) {
                   acc.push(player)
                 }
@@ -4805,17 +4834,33 @@ export async function updateAdminActiveButtons(
     .setEmoji('🔄')
     .setStyle(ButtonStyle.Success)
 
-  const buttons = players
-    .map(player => {
-      const isActive = player.active
-      return new ButtonBuilder()
-        .setCustomId(`${CommandIds.ADMIN}_${CommandIds.ACTIVE}_${player.discordId}_${!isActive}`)
-        .setLabel(
-          `${player.usernames.accounts?.find(account => account.isPrimary)?.hotsBattleTag.replace(/#.*$/, '') ?? player.usernames.discordGlobalName}`
-        )
+  const seenButtonIds = new Set<string>()
+  const buttons: ButtonBuilder[] = []
+
+  for (const player of players) {
+    const playerId = getPlayerIdentifier(player)
+    if (!playerId) continue
+    const isActive = player.active
+    const customId = `${CommandIds.ADMIN}_${CommandIds.ACTIVE}_${playerId}_${!isActive}`
+    if (seenButtonIds.has(customId)) continue
+    seenButtonIds.add(customId)
+
+    const label =
+      player.usernames.accounts?.find(account => account.isPrimary)?.hotsBattleTag.replace(/#.*$/, '') ??
+      player.usernames.discordDisplayName ??
+      player.usernames.discordGlobalName ??
+      player.usernames.discordName ??
+      'Unknown'
+
+    buttons.push(
+      new ButtonBuilder()
+        .setCustomId(customId)
+        .setLabel(label.slice(0, 80))
         .setStyle(isActive ? ButtonStyle.Primary : ButtonStyle.Danger)
-    })
-    .concat(refreshButton)
+    )
+  }
+
+  buttons.push(refreshButton)
 
   if (newMessage) {
     if (interaction.isChatInputCommand() || interaction.isButton()) {
