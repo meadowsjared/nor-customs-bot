@@ -82,6 +82,8 @@ import {
   handleAssignAccountCommand,
   handleAssignAccountClearCommand,
   handleAssignAccountAutocomplete,
+  handleAdminUnlinkedCommand,
+  handleAdminUnlinkedButton,
 } from './commands'
 import { safeReply } from './utils/interaction'
 import { getBotChannel } from './utils/channel'
@@ -224,9 +226,12 @@ client.on('interactionCreate', async interaction => {
       }
       if (
         interaction.commandName === CommandIds.LOOKUP ||
+        interaction.commandName === CommandIds.ADD_ACCOUNT ||
         (interaction.commandName === CommandIds.ADMIN &&
           (interaction.options.getSubcommand(false) === CommandIds.REAL_ID_NAME ||
-            interaction.options.getSubcommand(false) === CommandIds.ACTIVE))
+            interaction.options.getSubcommand(false) === CommandIds.ACTIVE ||
+            interaction.options.getSubcommand(false) === CommandIds.ADD_ACCOUNT ||
+            interaction.options.getSubcommand(false) === `${CommandIds.ADD_ACCOUNT}_${CommandIds.DISCORD_ID}`))
       ) {
         await handleLookupAutocomplete(interaction)
         return
@@ -241,6 +246,11 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (!interaction.isChatInputCommand() && !interaction.isButton()) return
+
+    if (interaction.isButton() && interaction.customId.startsWith('admin_unlinked_')) {
+      await handleAdminUnlinkedButton(interaction)
+      return
+    }
 
     if (interaction.isButton() && interaction.customId.startsWith('mapvote:')) {
       const parts = interaction.customId.split(':')
@@ -524,6 +534,9 @@ async function handleAdminSubCommand(interaction: ChatInputCommandInteraction<Ca
       break
     case CommandIds.REAL_ID_NAME:
       await handleAdminRealIdNameCommand(interaction)
+      break
+    case CommandIds.UNLINKED:
+      await handleAdminUnlinkedCommand(interaction)
       break
   }
 }

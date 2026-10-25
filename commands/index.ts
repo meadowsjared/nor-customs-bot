@@ -98,7 +98,15 @@ import {
 } from '../store/channels'
 import { DiscordUserNames, Player, DraftCoinState } from '../types/player'
 import { client } from '../index'
-import { parseReplay, saveReplayToDb, getPlayerMatchStats, optimizeDb, isReplayImported } from '../store/hotsReplays'
+import {
+  parseReplay,
+  saveReplayToDb,
+  getPlayerMatchStats,
+  optimizeDb,
+  isReplayImported,
+  getUnlinkedReplayAccounts,
+  getUnlinkedReplayAccountsForAutocomplete,
+} from '../store/hotsReplays'
 import { getSetting, setSetting, getDraftCoinState, setDraftCoinState, resetDraftCoinState } from '../store/settings'
 import path from 'path'
 import { validateBattleTag } from '../utils/heroesOfTheStorm'
@@ -2838,6 +2846,25 @@ export async function handleLookupAutocomplete(interaction: AutocompleteInteract
     }
   })
 
+  // Fallback to unlinked replay accounts if choices under limit
+  if (choices.length < 25) {
+    const remainingSlots = 25 - choices.length
+    const unlinked = getUnlinkedReplayAccountsForAutocomplete(query, remainingSlots)
+    const existingTags = new Set(choices.map(c => c.value.toLowerCase()))
+    for (const u of unlinked) {
+      if (existingTags.has(u.hotsBattleTag.toLowerCase())) {
+        continue
+      }
+      existingTags.add(u.hotsBattleTag.toLowerCase())
+      const gameText = u.gameCount === 1 ? '1 replay game' : `${u.gameCount} replay games`
+      choices.push({
+        name: `${u.hotsBattleTag} (🎮 ${gameText}, unlinked)`.slice(0, 100),
+        value: u.hotsBattleTag,
+      })
+      if (choices.length >= 25) break
+    }
+  }
+
   await interaction.respond(choices)
 }
 
@@ -2927,8 +2954,41 @@ export async function handleLookupCommand(
     const matches = findPlayersByHotSAccount(hotsBattleTag, guildId)
 
     if (matches.length === 0) {
+      const unlinkedMatches = getUnlinkedReplayAccounts({ search: hotsBattleTag, limit: 1 })
+      const exactUnlinked = unlinkedMatches.accounts.find(
+        u => u.hotsBattleTag.toLowerCase() === hotsBattleTag.toLowerCase() || u.name.toLowerCase() === hotsBattleTag.toLowerCase()
+      ) ?? unlinkedMatches.accounts[0]
+
+      if (exactUnlinked) {
+        const publish = interaction.options.getString(CommandIds.PUBLISH) === 'true'
+        const embed = new EmbedBuilder()
+          .setColor(0xf39c12)
+          .setTitle(`Unlinked Account: ${exactUnlinked.hotsBattleTag}`)
+          .setDescription(`**${exactUnlinked.hotsBattleTag}** has played in custom game replays but is not currently linked to any Discord user.`)
+          .addFields(
+            { name: 'BattleTag', value: exactUnlinked.hotsBattleTag, inline: true },
+            { name: 'Replay Games', value: String(exactUnlinked.gameCount), inline: true },
+            {
+              name: 'Last Seen',
+              value: exactUnlinked.lastSeenDate ? formatDateToMMDDYYYY(new Date(exactUnlinked.lastSeenDate)) : 'Unknown',
+              inline: true,
+            }
+          )
+        if (exactUnlinked.heroesPlayed) {
+          embed.addFields({ name: 'Heroes Played', value: exactUnlinked.heroesPlayed.split(',').slice(0, 5).join(', ') })
+        }
+        embed.setFooter({ text: `To link this account, run: /admin add-account battle-tag:${exactUnlinked.hotsBattleTag} discord-id:` })
+
+        if (publish) {
+          await announce(interaction, { embeds: [embed] })
+        } else {
+          await safeReply(interaction, { embeds: [embed], flags: MessageFlags.Ephemeral })
+        }
+        return
+      }
+
       await safeReply(interaction, {
-        content: `❌ No registered player found with HotS BattleTag or account name matching \`${hotsBattleTag}\`.`,
+        content: `❌ No registered player or replay record found with HotS BattleTag matching \`${hotsBattleTag}\`.`,
         flags: MessageFlags.Ephemeral,
       })
       return
@@ -5588,3 +5648,138 @@ export async function handleAssignAccountAutocomplete(
 
   await interaction.respond(choices)
 }
+
+export async function handleAdminUnlinkedCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+  page = 0,
+  sortBy: 'recent' | 'games' = 'recent',
+  minGames = 1,
+  search = ''
+) {
+  if (interaction.isChatInputCommand()) {
+    const rawMinGames = interaction.options.getInteger(CommandIds.MIN_GAMES)
+    if (rawMinGames !== null && rawMinGames !== undefined) {
+      minGames = Math.max(1, rawMinGames)
+    }
+    const rawSearch = interaction.options.getString(CommandIds.SEARCH)
+    if (rawSearch !== null && rawSearch !== undefined) {
+      search = rawSearch.trim()
+    }
+    const rawSort = interaction.options.getString(CommandIds.SORT)
+    if (rawSort === 'games' || rawSort === 'recent') {
+      sortBy = rawSort
+    }
+  }
+
+  const pageSize = 10
+  const { accounts, totalCount } = getUnlinkedReplayAccounts({
+    search,
+    minGames,
+    sortBy,
+    limit: pageSize,
+    offset: page * pageSize,
+  })
+
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
+  const currentPage = Math.min(Math.max(0, page), totalPages - 1)
+
+  const embed = new EmbedBuilder()
+    .setTitle(`🎮 Unlinked Replay Accounts (${currentPage + 1}/${totalPages})`)
+    .setColor('#3498db')
+
+  const filterDesc: string[] = []
+  filterDesc.push(`Showing **${accounts.length}** of **${totalCount}** unlinked accounts`)
+  filterDesc.push(`• Min games: **${minGames}**`)
+  filterDesc.push(`• Sorted by: **${sortBy === 'recent' ? 'Most Recent' : 'Most Games'}**`)
+  if (search) {
+    filterDesc.push(`• Filter: \`${search}\``)
+  }
+  const header = filterDesc.join(' • ')
+
+  if (accounts.length === 0) {
+    const emptyMsg = search
+      ? `No unlinked accounts matching \`${search}\` with at least ${minGames} game${minGames === 1 ? '' : 's'}.`
+      : `No unlinked accounts with at least ${minGames} game${minGames === 1 ? '' : 's'}.`
+    embed.setDescription(`${header}\n\n*${emptyMsg}*`)
+  } else {
+    const lines = accounts.map((acc, idx) => {
+      const num = currentPage * pageSize + idx + 1
+      const gamesStr = acc.gameCount === 1 ? '1 game' : `${acc.gameCount} games`
+      const dateStr = acc.lastSeenDate ? formatDateToMMDDYYYY(new Date(acc.lastSeenDate)) : 'Unknown'
+      const heroesStr = acc.heroesPlayed ? ` (${acc.heroesPlayed.split(',').slice(0, 3).join(', ')})` : ''
+      return `**${num}. \`${acc.hotsBattleTag}\`** — ${gamesStr} • Last: ${dateStr}${heroesStr}\n↳ \`/admin add-account battle-tag:${acc.hotsBattleTag} discord-id:\``
+    })
+    embed.setDescription(`${header}\n\n${lines.join('\n\n')}`)
+  }
+
+  const encSearch = encodeURIComponent(search)
+  const prevCustomId = `admin_unlinked_page_${currentPage - 1}_${sortBy}_${minGames}_${encSearch}`
+  const nextCustomId = `admin_unlinked_page_${currentPage + 1}_${sortBy}_${minGames}_${encSearch}`
+  const refreshCustomId = `admin_unlinked_page_${currentPage}_${sortBy}_${minGames}_${encSearch}`
+
+  const prevButton = new ButtonBuilder()
+    .setCustomId(prevCustomId)
+    .setLabel('◀ Prev')
+    .setStyle(ButtonStyle.Secondary)
+    .setDisabled(currentPage <= 0)
+
+  const pageIndicator = new ButtonBuilder()
+    .setCustomId('admin_unlinked_page_noop')
+    .setLabel(`${currentPage + 1} / ${totalPages}`)
+    .setStyle(ButtonStyle.Secondary)
+    .setDisabled(true)
+
+  const nextButton = new ButtonBuilder()
+    .setCustomId(nextCustomId)
+    .setLabel('Next ▶')
+    .setStyle(ButtonStyle.Secondary)
+    .setDisabled(currentPage >= totalPages - 1)
+
+  const refreshButton = new ButtonBuilder()
+    .setCustomId(refreshCustomId)
+    .setEmoji('🔄')
+    .setStyle(ButtonStyle.Primary)
+
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    prevButton,
+    pageIndicator,
+    nextButton,
+    refreshButton
+  )
+
+  if (interaction.isButton()) {
+    await interaction.update({
+      embeds: [embed],
+      components: [row],
+    })
+  } else {
+    await safeReply(interaction, {
+      embeds: [embed],
+      components: [row],
+      flags: MessageFlags.Ephemeral,
+    })
+  }
+}
+
+export async function handleAdminUnlinkedButton(interaction: ButtonInteraction<CacheType>) {
+  if (interaction.customId === 'admin_unlinked_page_noop') {
+    await safeDeferUpdate(interaction)
+    return
+  }
+
+  // Format: admin_unlinked_page_${page}_${sortBy}_${minGames}_${encSearch}
+  const parts = interaction.customId.split('_')
+  if (parts.length < 7) {
+    await safeDeferUpdate(interaction)
+    return
+  }
+
+  const page = parseInt(parts[3], 10) || 0
+  const sortBy: 'recent' | 'games' = parts[4] === 'games' ? 'games' : 'recent'
+  const minGames = parseInt(parts[5], 10) || 1
+  const encSearch = parts.slice(6).join('_')
+  const search = decodeURIComponent(encSearch)
+
+  await handleAdminUnlinkedCommand(interaction, page, sortBy, minGames, search)
+}
+

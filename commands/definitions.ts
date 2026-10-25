@@ -59,6 +59,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
         name: CommandIds.BATTLE_TAG,
         type: ApplicationCommandOptionType.String,
         description: 'The Heroes of the Storm battle tag to add',
+        autocomplete: true,
       },
     ],
   },
@@ -650,15 +651,17 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
         type: ApplicationCommandOptionType.Subcommand,
         options: [
           {
+            name: CommandIds.BATTLE_TAG,
+            description: 'The Heroes of the Storm battle tag to add (including the # and number)',
+            type: ApplicationCommandOptionType.String,
+            autocomplete: true,
+            required: true,
+          },
+          {
             name: CommandIds.DISCORD_ID,
             description: 'The user to modify.',
             type: ApplicationCommandOptionType.String,
             required: true,
-          },
-          {
-            name: CommandIds.BATTLE_TAG,
-            description: 'The Heroes of the Storm battle tag to add (including the # and number)',
-            type: ApplicationCommandOptionType.String,
           },
         ],
       },
@@ -668,15 +671,17 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
         type: ApplicationCommandOptionType.Subcommand,
         options: [
           {
+            name: CommandIds.BATTLE_TAG,
+            description: 'The Heroes of the Storm battle tag to add (including the # and number)',
+            type: ApplicationCommandOptionType.String,
+            autocomplete: true,
+            required: true,
+          },
+          {
             name: CommandIds.DISCORD_ID,
             description: 'The user to modify.',
             type: ApplicationCommandOptionType.User,
             required: true,
-          },
-          {
-            name: CommandIds.BATTLE_TAG,
-            description: 'The Heroes of the Storm battle tag to add (including the # and number)',
-            type: ApplicationCommandOptionType.String,
           },
         ],
       },
@@ -747,6 +752,35 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
             description: 'Set to true to clear the Real ID name.',
             type: ApplicationCommandOptionType.Boolean,
             required: false,
+          },
+        ],
+      },
+      {
+        name: CommandIds.UNLINKED,
+        description: 'List unlinked HotS accounts found in custom match replays.',
+        type: ApplicationCommandOptionType.Subcommand,
+        options: [
+          {
+            name: CommandIds.MIN_GAMES,
+            description: 'Minimum number of games played (default: 1).',
+            type: ApplicationCommandOptionType.Integer,
+            required: false,
+          },
+          {
+            name: CommandIds.SEARCH,
+            description: 'Filter by player name or BattleTag.',
+            type: ApplicationCommandOptionType.String,
+            required: false,
+          },
+          {
+            name: CommandIds.SORT,
+            description: 'Sort by most recent game or total games played (default: recent).',
+            type: ApplicationCommandOptionType.String,
+            required: false,
+            choices: [
+              { name: 'Most Recent', value: 'recent' },
+              { name: 'Most Games', value: 'games' },
+            ],
           },
         ],
       },

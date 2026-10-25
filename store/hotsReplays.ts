@@ -1117,3 +1117,143 @@ export function optimizeDb(): void {
     console.error('Error optimizing database:', error)
   }
 }
+
+export interface UnlinkedReplayAccount {
+  hotsBattleTag: string
+  name: string
+  tag: number
+  gameCount: number
+  lastSeenDate: string
+  heroesPlayed: string
+}
+
+export interface GetUnlinkedAccountsOptions {
+  search?: string
+  minGames?: number
+  sortBy?: 'recent' | 'games'
+  limit?: number
+  offset?: number
+}
+
+export function getUnlinkedReplayAccounts(
+  options: GetUnlinkedAccountsOptions = {}
+): { accounts: UnlinkedReplayAccount[]; totalCount: number } {
+  const clean = options.search?.trim() ?? ''
+  const minGames = Math.max(1, options.minGames ?? 1)
+  const sortBy = options.sortBy ?? 'recent'
+  const limit = Math.max(1, options.limit ?? 10)
+  const offset = Math.max(0, options.offset ?? 0)
+  const orderClause = sortBy === 'recent' ? 'lastSeenDate DESC' : 'gameCount DESC, lastSeenDate DESC'
+
+  const whereSql = `
+    s.discord_id IS NULL
+    AND s.hots_account_id IS NULL
+    AND s.hots_battle_tag IS NOT NULL
+    AND s.hots_battle_tag != ''
+    AND (? = '' OR s.hots_battle_tag LIKE '%' || ? || '%' COLLATE NOCASE OR s.name LIKE '%' || ? || '%' COLLATE NOCASE)
+    AND NOT EXISTS (
+      SELECT 1 FROM hots_accounts ha
+      WHERE ha.hots_battle_tag = s.hots_battle_tag COLLATE NOCASE
+        AND ha.discord_id IS NOT NULL
+    )
+  `
+
+  interface CountRow {
+    total: number
+  }
+
+  const countRow = db
+    .prepare<[string, string, string, number], CountRow>(`
+      SELECT COUNT(*) AS total FROM (
+        SELECT s.hots_battle_tag
+        FROM hots_replay_player_game_stats s
+        JOIN hots_replays r ON s.replay_id = r.id
+        WHERE ${whereSql}
+        GROUP BY s.hots_battle_tag
+        HAVING COUNT(DISTINCT s.replay_id) >= ?
+      )
+    `)
+    .get(clean, clean, clean, minGames)
+
+  const totalCount = countRow?.total ?? 0
+  if (totalCount === 0) {
+    return { accounts: [], totalCount: 0 }
+  }
+
+  interface DataRow {
+    hots_battle_tag: string
+    name: string
+    tag: number
+    gameCount: number
+    lastSeenDate: string
+    heroesPlayed: string | null
+  }
+
+  const rows = db
+    .prepare<[string, string, string, number, number, number], DataRow>(`
+      SELECT 
+        s.hots_battle_tag,
+        s.name,
+        s.tag,
+        COUNT(DISTINCT s.replay_id) AS gameCount,
+        MAX(r.date) AS lastSeenDate,
+        GROUP_CONCAT(DISTINCT s.hero) AS heroesPlayed
+      FROM hots_replay_player_game_stats s
+      JOIN hots_replays r ON s.replay_id = r.id
+      WHERE ${whereSql}
+      GROUP BY s.hots_battle_tag
+      HAVING COUNT(DISTINCT s.replay_id) >= ?
+      ORDER BY ${orderClause}
+      LIMIT ? OFFSET ?
+    `)
+    .all(clean, clean, clean, minGames, limit, offset)
+
+  const accounts: UnlinkedReplayAccount[] = rows.map(r => ({
+    hotsBattleTag: r.hots_battle_tag,
+    name: r.name,
+    tag: r.tag,
+    gameCount: r.gameCount,
+    lastSeenDate: r.lastSeenDate,
+    heroesPlayed: r.heroesPlayed ?? '',
+  }))
+
+  return { accounts, totalCount }
+}
+
+export function getUnlinkedReplayAccountsForAutocomplete(
+  query: string,
+  limit = 10
+): Array<{ hotsBattleTag: string; gameCount: number }> {
+  const clean = query.trim()
+  interface AutoRow {
+    hots_battle_tag: string
+    gameCount: number
+  }
+
+  const rows = db
+    .prepare<[string, string, string, number], AutoRow>(`
+      SELECT 
+        s.hots_battle_tag,
+        COUNT(DISTINCT s.replay_id) AS gameCount
+      FROM hots_replay_player_game_stats s
+      WHERE s.discord_id IS NULL
+        AND s.hots_battle_tag IS NOT NULL
+        AND s.hots_battle_tag != ''
+        AND (? = '' OR s.hots_battle_tag LIKE '%' || ? || '%' COLLATE NOCASE OR s.name LIKE '%' || ? || '%' COLLATE NOCASE)
+        AND NOT EXISTS (
+          SELECT 1 FROM hots_accounts ha
+          WHERE ha.hots_battle_tag = s.hots_battle_tag COLLATE NOCASE
+            AND ha.discord_id IS NOT NULL
+        )
+      GROUP BY s.hots_battle_tag
+      ORDER BY gameCount DESC, MAX(s.replay_id) DESC
+      LIMIT ?
+    `)
+    .all(clean, clean, clean, limit)
+
+  return rows.map(r => ({
+    hotsBattleTag: r.hots_battle_tag,
+    gameCount: r.gameCount,
+  }))
+}
+

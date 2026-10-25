@@ -111,6 +111,10 @@ export const enum CommandIds {
   ASSIGN_ACCOUNT_CLEAR = 'assign_account_clear',
   ACCOUNT = 'account',
   TO = 'to',
+  UNLINKED = 'unlinked',
+  MIN_GAMES = 'min_games',
+  SEARCH = 'search',
+  SORT = 'sort',
 }
 
 export const roleMap: Record<string, string> = {
