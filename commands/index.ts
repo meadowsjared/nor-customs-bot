@@ -83,6 +83,8 @@ import {
   setAccountSubstitution,
   clearAccountSubstitutions,
   getSubstitutedAccountOwnerTag,
+  getAccountLoanStatusTag,
+  getActiveSubstitutions,
   getAssignAccountChoices,
   getAssignAccountClearChoices,
   getPlayerIdentifier,
@@ -2857,7 +2859,16 @@ export async function handleLookupAutocomplete(interaction: AutocompleteInteract
   }
 
   const choices = filtered.slice(0, 25).map(acc => {
-    const discordStr = `@${acc.discordDisplayName}`
+    let discordStr = `@${acc.discordDisplayName}`
+    if (acc.ownerDiscordId) {
+      const owner = getPlayerByDiscordId(acc.ownerDiscordId, guildId)
+      const ownerName =
+        owner?.usernames.discordDisplayName ??
+        owner?.usernames.discordGlobalName ??
+        owner?.usernames.discordName ??
+        'unknown'
+      discordStr += `, owned by @${ownerName}`
+    }
     const label = `${acc.hotsBattleTag} (${discordStr})`.slice(0, 100)
     return {
       name: label,
@@ -3065,11 +3076,17 @@ export async function handleLookupCommand(
 
     // Multiple matches found: list all matched players
     const publish = interaction.options.getString(CommandIds.PUBLISH) === 'true'
+    const activeSubs = getActiveSubstitutions(guildId)
     const list = matches
       .map(({ player, matchedAccounts }) => {
         const accountsStr =
           player.usernames.accounts
-            ?.map(a => `\`${a.hotsBattleTag}\`` + (a.isPrimary ? ' (Primary)' : ''))
+            ?.map(
+              a =>
+                `\`${a.hotsBattleTag}\`` +
+                (a.isPrimary ? ' (Primary)' : '') +
+                getAccountLoanStatusTag(a, guildId, player.discordId, activeSubs)
+            )
             .join(', ') || 'No HotS accounts'
         const matchedTags = matchedAccounts.map(a => `\`${a.hotsBattleTag}\``).join(', ')
         const userHeader = player.discordId
@@ -3134,12 +3151,14 @@ async function handleLookupCommandSub(
         const bMMR = Math.max(b.hpSlMMR || 0, b.hpArMMR || 0, b.hpQmMMR || 0)
         return bMMR - aMMR
       }) || []
+    const activeSubs = getActiveSubstitutions(guildId)
     const accounts =
       hotsAccounts
         ?.map(
           (a, index) =>
             `${index + 1}. ${Math.max(a.hpSlMMR || 0, a.hpArMMR || 0, a.hpQmMMR || 0)} ${a.hotsBattleTag}` +
-            (a.isPrimary ? ' (Primary)' : '')
+            (a.isPrimary ? ' (Primary)' : '') +
+            getAccountLoanStatusTag(a, guildId, discordId, activeSubs)
         )
         .join('\n') || 'No HotS accounts'
 
@@ -3877,10 +3896,11 @@ export async function handleAdminRealIdNameCommand(interaction: ChatInputCommand
   }
 
   // View current Real ID names for the player
+  const activeSubs = getActiveSubstitutions(guildId)
   const accountList = accounts
     .map(
       a =>
-        `• \`${a.hotsBattleTag}\`${a.isPrimary ? ' *(Primary)*' : ''}: ${a.realIdName ? `**${a.realIdName}**` : '*None*'
+        `• \`${a.hotsBattleTag}\`${a.isPrimary ? ' *(Primary)*' : ''}${getAccountLoanStatusTag(a, guildId, discordId, activeSubs)}: ${a.realIdName ? `**${a.realIdName}**` : '*None*'
         }`
     )
     .join('\n')
@@ -3934,8 +3954,12 @@ async function handleAddHotsAccountCommandSub(
       })
       return
     }
+    const activeSubs = getActiveSubstitutions(guildId)
     const accountsList = player.usernames.accounts
-      .map(account => `* \`${account.hotsBattleTag}\` ${account.isPrimary ? '(Primary)' : ''}`)
+      .map(
+        account =>
+          `* \`${account.hotsBattleTag}\` ${account.isPrimary ? '(Primary)' : ''}${getAccountLoanStatusTag(account, guildId, discordId, activeSubs)}`
+      )
       .join('\n')
     await safeReply(interaction, {
       content: `${interaction.user.id === discordId ? 'Your' : `<@${discordId}>'s`

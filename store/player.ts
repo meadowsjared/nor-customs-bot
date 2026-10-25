@@ -2028,6 +2028,33 @@ export function getSubstitutedAccountOwnerTag(ownerDiscordId: string, guildId: s
 }
 
 /**
+ * Formats a label describing the loan status of an account (e.g. " (owned by @Owner)" or " (loaned to @Borrower)").
+ */
+export function getAccountLoanStatusTag(
+  account: HotsAccount,
+  guildId: string,
+  playerDiscordId?: string | null,
+  activeSubs?: AccountSubstitution[]
+): string {
+  if (account.ownerDiscordId) {
+    return ` (owned by <@${account.ownerDiscordId}>)`
+  }
+
+  if (playerDiscordId) {
+    const subs = activeSubs ?? getActiveSubstitutions(guildId)
+    const activeSub = subs.find(
+      s => s.originalDiscordId === playerDiscordId && s.hotsBattleTag.toLowerCase() === account.hotsBattleTag.toLowerCase()
+    )
+    if (activeSub) {
+      return ` (loaned to <@${activeSub.substituteDiscordId}>)`
+    }
+  }
+
+  return ''
+}
+
+
+/**
  * Retrieves a substitution for a specific battle tag (either historical for a replay or active).
  */
 export function getSubstitutionForAccount(
