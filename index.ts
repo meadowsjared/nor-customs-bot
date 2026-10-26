@@ -84,6 +84,9 @@ import {
   handleAssignAccountAutocomplete,
   handleAdminUnlinkedCommand,
   handleAdminUnlinkedButton,
+  handleReassignReplayPlayerCommand,
+  handleRecentReplaysCommand,
+  handleReassignReplayPlayerAutocomplete,
 } from './commands'
 import { safeReply } from './utils/interaction'
 import { getBotChannel } from './utils/channel'
@@ -237,6 +240,10 @@ client.on('interactionCreate', async interaction => {
         interaction.commandName === CommandIds.ASSIGN_ACCOUNT_CLEAR
       ) {
         await handleAssignAccountAutocomplete(interaction)
+        return
+      }
+      if (interaction.commandName === CommandIds.REASSIGN_REPLAY_PLAYER) {
+        await handleReassignReplayPlayerAutocomplete(interaction)
         return
       }
     }
@@ -425,6 +432,26 @@ client.on('interactionCreate', async interaction => {
       case CommandIds.IMPORT_REPLAYS:
         // Handle import replays command
         await handleImportReplaysCommand(interaction)
+        break
+      case CommandIds.REASSIGN_REPLAY_PLAYER:
+        if (!interaction.isChatInputCommand()) {
+          await safeReply(interaction, {
+            content: 'This command can only be used as a slash command.',
+            flags: MessageFlags.Ephemeral,
+          })
+          return
+        }
+        await handleReassignReplayPlayerCommand(interaction)
+        break
+      case CommandIds.RECENT_REPLAYS:
+        if (!interaction.isChatInputCommand()) {
+          await safeReply(interaction, {
+            content: 'This command can only be used as a slash command.',
+            flags: MessageFlags.Ephemeral,
+          })
+          return
+        }
+        await handleRecentReplaysCommand(interaction)
         break
       case CommandIds.CHANNEL_COMMAND:
         if (!interaction.isChatInputCommand()) {

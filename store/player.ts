@@ -1940,6 +1940,14 @@ export function getDraftPickedCount(guildId: string, t1CaptainId?: string, t2Cap
 }
 
 const activePlayersCache = new Map<string, { data: Player[]; timestamp: number }>()
+
+export function clearActivePlayersCache(guildId?: string): void {
+  if (guildId) {
+    activePlayersCache.delete(guildId)
+  } else {
+    activePlayersCache.clear()
+  }
+}
 /**
  * Retrieves sorted active players for a specific guild, with per-guild caching.
  * @returns {Player[]}

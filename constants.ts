@@ -115,6 +115,10 @@ export const enum CommandIds {
   MIN_GAMES = 'min_games',
   SEARCH = 'search',
   SORT = 'sort',
+  REASSIGN_REPLAY_PLAYER = 'reassign-replay-player',
+  RECENT_REPLAYS = 'recent-replays',
+  REPLAY = 'replay',
+  COUNT = 'count',
 }
 
 export const roleMap: Record<string, string> = {

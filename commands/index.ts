@@ -110,6 +110,9 @@ import {
   isReplayImported,
   getUnlinkedReplayAccounts,
   getUnlinkedReplayAccountsForAutocomplete,
+  getRecentReplays,
+  getReplayPlayers,
+  reassignReplayPlayer,
 } from '../store/hotsReplays'
 import { getSetting, setSetting, getDraftCoinState, setDraftCoinState, resetDraftCoinState } from '../store/settings'
 import path from 'path'
@@ -5887,4 +5890,195 @@ export async function handleAdminUnlinkedButton(interaction: ButtonInteraction<C
 
   await handleAdminUnlinkedCommand(interaction, page, sortBy, minGames, search)
 }
+
+export async function handleReassignReplayPlayerAutocomplete(
+  interaction: AutocompleteInteraction
+): Promise<void> {
+  const focusedOption = interaction.options.getFocused(true)
+
+  if (focusedOption.name === CommandIds.REPLAY) {
+    const query = String(focusedOption.value || '').trim().toLowerCase()
+    const recents = getRecentReplays(20)
+
+    const choices: { name: string; value: number }[] = []
+
+    for (const r of recents) {
+      const durationMin = r.length ? Math.floor(r.length / 60) : 0
+      const durationSec = r.length ? Math.floor(r.length % 60) : 0
+      const durationStr = r.length ? `${durationMin}m ${durationSec}s` : 'Unknown duration'
+      const dateStr = r.date ? formatDateToMMDDYYYY(new Date(r.date)) : 'Unknown date'
+      const label = `#${r.id} - ${r.map} (${dateStr}, ${durationStr})`.slice(0, 100)
+
+      if (
+        !query ||
+        String(r.id).includes(query) ||
+        r.map.toLowerCase().includes(query) ||
+        dateStr.toLowerCase().includes(query)
+      ) {
+        choices.push({ name: label, value: r.id })
+      }
+    }
+
+    await interaction.respond(choices.slice(0, 25))
+    return
+  }
+
+  if (focusedOption.name === CommandIds.ACCOUNT) {
+    const query = String(focusedOption.value || '').trim().toLowerCase()
+    const replayIdOption = interaction.options.getInteger(CommandIds.REPLAY)
+
+    const choices: { name: string; value: string }[] = []
+
+    if (replayIdOption) {
+      const players = getReplayPlayers(replayIdOption)
+      for (const p of players) {
+        const label = `${p.hots_battle_tag} (${p.hero})`.slice(0, 100)
+        if (
+          !query ||
+          p.hots_battle_tag.toLowerCase().includes(query) ||
+          p.hero.toLowerCase().includes(query)
+        ) {
+          choices.push({ name: label, value: p.hots_battle_tag })
+        }
+      }
+    } else {
+      const guildId = interaction.guildId
+      if (guildId) {
+        const generalChoices = getAssignAccountChoices(guildId, query)
+        for (const c of generalChoices) {
+          choices.push(c)
+        }
+      }
+    }
+
+    await interaction.respond(choices.slice(0, 25))
+    return
+  }
+
+  await interaction.respond([])
+}
+
+export async function handleReassignReplayPlayerCommand(
+  interaction: ChatInputCommandInteraction<CacheType>
+): Promise<void> {
+  if (!(await userIsAdmin(interaction))) {
+    return
+  }
+
+  const guildId = await requireGuildId(interaction)
+  if (!guildId) return
+
+  const replayId = interaction.options.getInteger(CommandIds.REPLAY, true)
+  const accountInput = interaction.options.getString(CommandIds.ACCOUNT, true).trim()
+  const targetUser = interaction.options.getUser(CommandIds.TO, true)
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral })
+
+  const result = reassignReplayPlayer(guildId, replayId, accountInput, targetUser.id)
+
+  if (!result.success) {
+    await interaction.editReply({
+      content: `❌ ${result.message}`,
+    })
+    return
+  }
+
+  const originalMention = result.originalDiscordId ? `<@${result.originalDiscordId}>` : 'Unlinked/Unknown'
+  const targetMention = `<@${targetUser.id}>`
+
+  await interaction.editReply({
+    content:
+      `✅ Successfully reassigned player for match **#${result.replayId}** (${result.map}):\n` +
+      `• **HotS Account:** ${result.battleTag} (${result.hero})\n` +
+      `• **Original Owner:** ${originalMention}\n` +
+      `• **Reassigned To:** ${targetMention}\n` +
+      `• Match stats and SotS averages have been updated for both players.`,
+  })
+
+  // Update lobby message if active
+  try {
+    await updateLobbyMessage(guildId, interaction)
+  } catch (err) {
+    console.error('Error updating lobby message after reassigning replay player:', err)
+  }
+}
+
+export async function handleRecentReplaysCommand(
+  interaction: ChatInputCommandInteraction<CacheType>
+): Promise<void> {
+  const count = interaction.options.getInteger(CommandIds.COUNT) ?? 5
+  const clampedCount = Math.min(Math.max(1, count), 20)
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral })
+
+  const replays = getRecentReplays(clampedCount)
+  if (replays.length === 0) {
+    await interaction.editReply({
+      content: 'No custom replays found in the database.',
+    })
+    return
+  }
+
+  const entries: string[] = []
+
+  for (let i = 0; i < replays.length; i++) {
+    const r = replays[i]
+    const durationMin = r.length ? Math.floor(r.length / 60) : 0
+    const durationSec = r.length ? Math.floor(r.length % 60) : 0
+    const durationStr = r.length ? `${durationMin}m ${durationSec}s` : 'Unknown'
+    const dateStr = r.date ? formatDateToMMDDYYYY(new Date(r.date)) : 'Unknown'
+
+    const players = getReplayPlayers(r.id)
+    const bluePlayers = players
+      .filter(p => p.team === 0)
+      .map(p => `${p.hots_battle_tag.split('#')[0]} (${p.hero})`)
+      .join(', ')
+    const redPlayers = players
+      .filter(p => p.team === 1)
+      .map(p => `${p.hots_battle_tag.split('#')[0]} (${p.hero})`)
+      .join(', ')
+
+    const blueWin = r.winner === 0 ? '🏆 ' : ''
+    const redWin = r.winner === 1 ? '🏆 ' : ''
+
+    let entry = `**#${r.id}** — **${r.map}** (${dateStr}, ${durationStr})\n`
+    if (r.team0Takedowns !== null && r.team1Takedowns !== null) {
+      entry += `  Score: ${r.team0Takedowns} - ${r.team1Takedowns} | Winner: ${
+        r.winner === 0 ? 'Blue Team' : r.winner === 1 ? 'Red Team' : 'Unknown'
+      }\n`
+    }
+    if (bluePlayers) {
+      entry += `  ${blueWin}Blue: ${bluePlayers}\n`
+    }
+    if (redPlayers) {
+      entry += `  ${redWin}Red: ${redPlayers}\n`
+    }
+
+    entries.push(entry)
+  }
+
+  const chunks: string[] = []
+  let currentChunk = `📋 **Recent ${entries.length} Custom Match Replay${entries.length === 1 ? '' : 's'}:**\n\n`
+
+  for (const entry of entries) {
+    if (currentChunk.length + entry.length + 2 > 1900) {
+      chunks.push(currentChunk)
+      currentChunk = entry + '\n'
+    } else {
+      currentChunk += entry + '\n'
+    }
+  }
+  if (currentChunk.trim().length > 0) {
+    chunks.push(currentChunk)
+  }
+
+  for (let i = 0; i < chunks.length; i++) {
+    if (i === 0) {
+      await interaction.editReply({ content: chunks[0] })
+    } else {
+      await interaction.followUp({ content: chunks[i], flags: MessageFlags.Ephemeral })
+    }
+  }
+}
+
 

@@ -3,7 +3,7 @@ import { createRequire } from 'module'
 const require = createRequire(import.meta.url)
 import { db } from './db'
 import { ColumnDefinition, generateCreateTableSQL, InterfaceFromSchema, SQLiteColumnType } from '../utils/sql'
-import { getAccountWithSubstitution, ResolvedHotsAccount } from './player'
+import { clearActivePlayersCache, getAccountWithSubstitution, getOrCreateSubstituteAccount, ResolvedHotsAccount } from './player'
 
 export const HOTS_REPLAYS_MATCH_COLUMNS = [
   {
@@ -400,7 +400,7 @@ export async function parseReplay(file: string) {
 /**
  * Recalculates and updates the SotS_* summary columns in hots_accounts for a specific account.
  */
-function updateSotsStatsForAccount(acc: ResolvedHotsAccount) {
+export function updateSotsStatsForAccount(acc: ResolvedHotsAccount) {
   if (!acc.hotsAccountId) return
 
   try {
@@ -1255,4 +1255,181 @@ export function getUnlinkedReplayAccountsForAutocomplete(
     gameCount: r.gameCount,
   }))
 }
+
+export interface RecentReplaySummary {
+  id: number
+  map: string
+  date: string
+  length: number | null
+  winner: number | null
+  team0Takedowns: number | null
+  team1Takedowns: number | null
+}
+
+export interface ReplayPlayerInfo {
+  id: number
+  replay_id: number
+  hots_battle_tag: string
+  hero: string
+  team: number
+  win: number
+  discord_id: string | null
+  owner_discord_id: string | null
+  hots_account_id: number
+}
+
+export interface ReassignReplayResult {
+  success: boolean
+  message: string
+  replayId?: number
+  map?: string
+  date?: string
+  battleTag?: string
+  hero?: string
+  originalDiscordId?: string | null
+  substituteDiscordId?: string
+}
+
+/**
+ * Returns the most recent imported replays, ordered by newest ID first.
+ */
+export function getRecentReplays(limit = 20): RecentReplaySummary[] {
+  return db
+    .prepare<[number], RecentReplaySummary>(
+      'SELECT id, map, date, length, winner, team0Takedowns, team1Takedowns FROM hots_replays ORDER BY id DESC LIMIT ?'
+    )
+    .all(limit)
+}
+
+/**
+ * Returns the player roster and stats for a given replay ID.
+ */
+export function getReplayPlayers(replayId: number): ReplayPlayerInfo[] {
+  return db
+    .prepare<[number], ReplayPlayerInfo>(
+      'SELECT id, replay_id, hots_battle_tag, hero, team, win, discord_id, owner_discord_id, hots_account_id FROM hots_replay_player_game_stats WHERE replay_id = ? ORDER BY team ASC, hero ASC'
+    )
+    .all(replayId)
+}
+
+/**
+ * Reassigns a player in a historical replay match to a substitute user.
+ * Updates hots_replay_player_game_stats, stores historical substitution,
+ * and recalculates SotS summary stats for both accounts.
+ */
+export function reassignReplayPlayer(
+  guildId: string,
+  replayId: number,
+  battleTagInput: string,
+  substituteDiscordId: string
+): ReassignReplayResult {
+  const replay = db
+    .prepare<[number], { id: number; map: string; date: string }>(
+      'SELECT id, map, date FROM hots_replays WHERE id = ?'
+    )
+    .get(replayId)
+
+  if (!replay) {
+    return { success: false, message: `Replay ID ${replayId} was not found in the database.` }
+  }
+
+  const playerStat = db
+    .prepare<[number, string, string], ReplayPlayerInfo>(
+      `SELECT id, replay_id, hots_battle_tag, hero, team, win, discord_id, owner_discord_id, hots_account_id 
+       FROM hots_replay_player_game_stats 
+       WHERE replay_id = ? AND (hots_battle_tag = ? COLLATE NOCASE OR hots_battle_tag LIKE ? COLLATE NOCASE)
+       LIMIT 1`
+    )
+    .get(replayId, battleTagInput, battleTagInput + '#%')
+
+  if (!playerStat) {
+    return {
+      success: false,
+      message: `Could not find player matching "${battleTagInput}" in replay ID ${replayId}.`,
+    }
+  }
+
+  let originalDiscordId: string | null = playerStat.owner_discord_id ?? playerStat.discord_id
+
+  if (!originalDiscordId) {
+    const origAccount = db
+      .prepare<[string], { discord_id: string | null }>(
+        'SELECT discord_id FROM hots_accounts WHERE hots_battle_tag = ? COLLATE NOCASE AND owner_discord_id IS NULL LIMIT 1'
+      )
+      .get(playerStat.hots_battle_tag)
+    if (origAccount?.discord_id) {
+      originalDiscordId = origAccount.discord_id
+    }
+  }
+
+  const effectiveOwnerId = originalDiscordId ?? substituteDiscordId
+
+  const runReassignTx = db.transaction(() => {
+    const newHotsAccountId = getOrCreateSubstituteAccount(
+      substituteDiscordId,
+      playerStat.hots_battle_tag,
+      effectiveOwnerId
+    )
+
+    // Check if historical substitution for this replay already exists
+    const existingSub = db
+      .prepare<[number, string], { id: number }>(
+        'SELECT id FROM account_substitutions WHERE replay_id = ? AND hots_battle_tag = ? COLLATE NOCASE'
+      )
+      .get(replayId, playerStat.hots_battle_tag)
+
+    if (existingSub) {
+      db.prepare(
+        'UPDATE account_substitutions SET substitute_discord_id = ?, original_discord_id = ? WHERE id = ?'
+      ).run(substituteDiscordId, effectiveOwnerId, existingSub.id)
+    } else {
+      db.prepare(
+        `INSERT INTO account_substitutions (guild_id, hots_battle_tag, original_discord_id, substitute_discord_id, replay_id, is_active)
+         VALUES (?, ?, ?, ?, ?, 0)`
+      ).run(guildId, playerStat.hots_battle_tag, effectiveOwnerId, substituteDiscordId, replayId)
+    }
+
+    // Update player game stats row
+    db.prepare(
+      `UPDATE hots_replay_player_game_stats 
+       SET hots_account_id = ?, discord_id = ?, owner_discord_id = ?
+       WHERE id = ?`
+    ).run(newHotsAccountId, substituteDiscordId, originalDiscordId, playerStat.id)
+
+    // Recalculate SotS stats for original account
+    updateSotsStatsForAccount({
+      hotsAccountId: playerStat.hots_account_id,
+      ownerDiscordId: playerStat.owner_discord_id,
+      discordId: playerStat.discord_id,
+      battleTag: playerStat.hots_battle_tag,
+    })
+
+    // Recalculate SotS stats for new substitute account
+    updateSotsStatsForAccount({
+      hotsAccountId: newHotsAccountId,
+      ownerDiscordId: originalDiscordId,
+      discordId: substituteDiscordId,
+      battleTag: playerStat.hots_battle_tag,
+    })
+
+    clearActivePlayersCache(guildId)
+
+    return newHotsAccountId
+  })
+
+  runReassignTx()
+
+  return {
+    success: true,
+    message: 'Success',
+    replayId: replay.id,
+    map: replay.map,
+    date: replay.date,
+    battleTag: playerStat.hots_battle_tag,
+    hero: playerStat.hero,
+    originalDiscordId,
+    substituteDiscordId,
+  }
+}
+
 

@@ -944,4 +944,45 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
       },
     ],
   },
+  {
+    name: CommandIds.REASSIGN_REPLAY_PLAYER,
+    description: 'Reassign a player for a specific replay match to another user',
+    defaultMemberPermissions: minimumAdminPermissions,
+    options: [
+      {
+        name: CommandIds.REPLAY,
+        type: ApplicationCommandOptionType.Integer,
+        description: 'Replay match to update (select from recent 20 matches)',
+        required: true,
+        autocomplete: true,
+      },
+      {
+        name: CommandIds.ACCOUNT,
+        type: ApplicationCommandOptionType.String,
+        description: 'HotS account or BattleTag played in this match',
+        required: true,
+        autocomplete: true,
+      },
+      {
+        name: CommandIds.TO,
+        type: ApplicationCommandOptionType.User,
+        description: 'Player who actually played in this replay',
+        required: true,
+      },
+    ],
+  },
+  {
+    name: CommandIds.RECENT_REPLAYS,
+    description: 'View recently imported custom match replays',
+    options: [
+      {
+        name: CommandIds.COUNT,
+        type: ApplicationCommandOptionType.Integer,
+        description: 'Number of recent replays to show (1-20, default 5)',
+        required: false,
+        minValue: 1,
+        maxValue: 20,
+      },
+    ],
+  },
 ]
