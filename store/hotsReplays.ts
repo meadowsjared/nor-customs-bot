@@ -367,6 +367,29 @@ export async function parseReplay(file: string) {
     }
 
     const players = Object.values(replay.players).map(player => player)
+
+    // Check if any player has an unknown or missing hero (e.g. from Auto-Select in custom lobbies)
+    try {
+      const heroprotocol = require('heroprotocol')
+      const details = heroprotocol.get(heroprotocol.DETAILS, file)
+      if (details && Array.isArray(details.m_playerList)) {
+        for (const player of players) {
+          if (!player.hero || player.hero === 'Unknown' || player.hero === 'RAND' || player.hero === 'Auto') {
+            const match = details.m_playerList.find(
+              (p: any) => (p.m_name ? (typeof p.m_name === 'string' ? p.m_name : p.m_name.toString('utf8')) : '') === player.name
+            )
+            if (match && match.m_hero) {
+              let heroName = typeof match.m_hero === 'string' ? match.m_hero : match.m_hero.toString('utf8')
+              if (heroName === 'Lúcio') heroName = 'Lucio'
+              player.hero = heroName
+            }
+          }
+        }
+      }
+    } catch {
+      // Ignore if details cannot be parsed
+    }
+
     const team0Players = players
       .filter(p => p.team === 0)
       .map(p => `${p.name}#${p.tag}`)
@@ -800,6 +823,7 @@ export function saveReplayToDb(parsedReplay: ParsedReplay, guildId: string): num
         if (col.name === 'discord_id') return resolvedAccount.discordId ?? null
         if (col.name === 'owner_discord_id') return resolvedAccount.ownerDiscordId ?? null
         if (col.name === 'hots_battle_tag') return battleTag
+        if (col.name === 'hero') return player.hero || null
         if (col.name === 'sprays') return Array.isArray(player.sprays) ? player.sprays.length : player.sprays || 0
         if (col.name === 'sprayTD')
           return Array.isArray(player.sprays)
