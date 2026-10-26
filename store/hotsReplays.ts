@@ -1042,11 +1042,11 @@ export function getPlayerMatchStats(
     danceDeaths: 0,
   }
 
-  const matchFilter = `(s.discord_id = ? OR (s.discord_id IS NULL AND s.hots_battle_tag IN (SELECT hots_battle_tag FROM hots_accounts WHERE discord_id = ? AND owner_discord_id IS NULL)))`
+  const matchFilter = 's.discord_id = ?'
 
   type OverallRow = { totalGames: number; wins: number; winRate: number }
   const overall = db
-    .prepare<[string, string], OverallRow>(
+    .prepare<[string], OverallRow>(
       `
     SELECT 
       COUNT(*) as totalGames,
@@ -1056,7 +1056,7 @@ export function getPlayerMatchStats(
     WHERE ${matchFilter}
   `
     )
-    .get(discordId, discordId) || { totalGames: 0, wins: 0, winRate: 0 }
+    .get(discordId) || { totalGames: 0, wins: 0, winRate: 0 }
 
   const totalGames = overall.totalGames || 0
   const wins = overall.wins || 0
@@ -1073,7 +1073,7 @@ export function getPlayerMatchStats(
     deaths: number
   }
   const recentMatchesRaw = db
-    .prepare<[string, string, number], RecentMatchRow>(
+    .prepare<[string, number], RecentMatchRow>(
       `
     SELECT r.date, r.map, s.hero, s.win, s.SoloKill as kills, s.Assists as assists, s.Deaths as deaths
     FROM hots_replay_player_game_stats s
@@ -1083,7 +1083,7 @@ export function getPlayerMatchStats(
     LIMIT ?
   `
     )
-    .all(discordId, discordId, limit)
+    .all(discordId, limit)
 
   const recentMatches = recentMatchesRaw.map(m => ({
     ...m,
@@ -1097,7 +1097,7 @@ export function getPlayerMatchStats(
     winRate: number
   }
   const topHeroes = db
-    .prepare<[string, string, number], TopHeroRow>(
+    .prepare<[string, number], TopHeroRow>(
       `
     SELECT s.hero, COUNT(*) as games, SUM(CASE WHEN s.win = 1 THEN 1 ELSE 0 END) as wins, ROUND(AVG(s.win) * 100, 1) as winRate
     FROM hots_replay_player_game_stats s
@@ -1107,10 +1107,10 @@ export function getPlayerMatchStats(
     LIMIT ?
   `
     )
-    .all(discordId, discordId, numHeroesLimit)
+    .all(discordId, numHeroesLimit)
 
   const bestHeroes = db
-    .prepare<[string, string, number, number], TopHeroRow>(
+    .prepare<[string, number, number], TopHeroRow>(
       `
     SELECT s.hero, COUNT(*) as games, SUM(CASE WHEN s.win = 1 THEN 1 ELSE 0 END) as wins, ROUND(AVG(s.win) * 100, 1) as winRate
     FROM hots_replay_player_game_stats s
@@ -1121,7 +1121,7 @@ export function getPlayerMatchStats(
     LIMIT ?
   `
     )
-    .all(discordId, discordId, minBestHeroGames, numHeroesLimit)
+    .all(discordId, minBestHeroGames, numHeroesLimit)
 
   return {
     totalGames,
