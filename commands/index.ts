@@ -113,6 +113,7 @@ import {
   getRecentReplays,
   getReplayPlayers,
   reassignReplayPlayer,
+  ReplayPlayerInfo,
 } from '../store/hotsReplays'
 import { getSetting, setSetting, getDraftCoinState, setDraftCoinState, resetDraftCoinState } from '../store/settings'
 import path from 'path'
@@ -5932,11 +5933,14 @@ export async function handleReassignReplayPlayerAutocomplete(
     if (replayIdOption) {
       const players = getReplayPlayers(replayIdOption)
       for (const p of players) {
-        const label = `${p.hots_battle_tag} (${p.hero})`.slice(0, 100)
+        const isSub = Boolean(p.owner_discord_id && p.owner_discord_id !== p.discord_id)
+        const subSuffix = isSub && p.substitute_display_name ? ` 🔄 sub: ${p.substitute_display_name}` : ''
+        const label = `${p.hots_battle_tag} (${p.hero})${subSuffix}`.slice(0, 100)
         if (
           !query ||
           p.hots_battle_tag.toLowerCase().includes(query) ||
-          p.hero.toLowerCase().includes(query)
+          p.hero.toLowerCase().includes(query) ||
+          (p.substitute_display_name && p.substitute_display_name.toLowerCase().includes(query))
         ) {
           choices.push({ name: label, value: p.hots_battle_tag })
         }
@@ -6003,6 +6007,18 @@ export async function handleReassignReplayPlayerCommand(
   }
 }
 
+function formatReplayPlayerLine(p: ReplayPlayerInfo): string {
+  const baseTag = p.hots_battle_tag.split('#')[0]
+  const heroName = p.hero || 'Unknown'
+  const isSub = Boolean(p.owner_discord_id && p.owner_discord_id !== p.discord_id)
+
+  if (isSub) {
+    const subName = p.substitute_display_name || 'sub'
+    return `**${baseTag}** (${heroName}) 🔄 sub: **${subName}**`
+  }
+  return `**${baseTag}** (${heroName})`
+}
+
 export async function handleRecentReplaysCommand(
   interaction: ChatInputCommandInteraction<CacheType>
 ): Promise<void> {
@@ -6019,64 +6035,62 @@ export async function handleRecentReplaysCommand(
     return
   }
 
-  const entries: string[] = []
+  const embeds: EmbedBuilder[] = []
 
-  for (let i = 0; i < replays.length; i++) {
-    const r = replays[i]
+  for (const r of replays) {
     const durationMin = r.length ? Math.floor(r.length / 60) : 0
     const durationSec = r.length ? Math.floor(r.length % 60) : 0
     const durationStr = r.length ? `${durationMin}m ${durationSec}s` : 'Unknown'
     const dateStr = r.date ? formatDateToMMDDYYYY(new Date(r.date)) : 'Unknown'
 
     const players = getReplayPlayers(r.id)
-    const bluePlayers = players
-      .filter(p => p.team === 0)
-      .map(p => `${p.hots_battle_tag.split('#')[0]} (${p.hero})`)
-      .join(', ')
-    const redPlayers = players
-      .filter(p => p.team === 1)
-      .map(p => `${p.hots_battle_tag.split('#')[0]} (${p.hero})`)
-      .join(', ')
+    const bluePlayers = players.filter(p => p.team === 0).map(formatReplayPlayerLine)
+    const redPlayers = players.filter(p => p.team === 1).map(formatReplayPlayerLine)
 
-    const blueWin = r.winner === 0 ? '🏆 ' : ''
-    const redWin = r.winner === 1 ? '🏆 ' : ''
+    const isBlueWin = r.winner === 0
+    const isRedWin = r.winner === 1
+    const embedColor = isBlueWin ? 0x2b82d9 : isRedWin ? 0xd9382b : 0x5865f2
 
-    let entry = `**#${r.id}** — **${r.map}** (${dateStr}, ${durationStr})\n`
+    let description = `⏱️ **Duration:** ${durationStr}  •  📅 **Date:** ${dateStr}`
     if (r.team0Takedowns !== null && r.team1Takedowns !== null) {
-      entry += `  Score: ${r.team0Takedowns} - ${r.team1Takedowns} | Winner: ${
-        r.winner === 0 ? 'Blue Team' : r.winner === 1 ? 'Red Team' : 'Unknown'
-      }\n`
-    }
-    if (bluePlayers) {
-      entry += `  ${blueWin}Blue: ${bluePlayers}\n`
-    }
-    if (redPlayers) {
-      entry += `  ${redWin}Red: ${redPlayers}\n`
+      const winnerText = isBlueWin ? '🔵 Blue Team' : isRedWin ? '🔴 Red Team' : 'Unknown'
+      description += `\n🎯 **Score:** Blue **${r.team0Takedowns}** - **${r.team1Takedowns}** Red  •  🏆 **Winner:** ${winnerText}`
     }
 
-    entries.push(entry)
+    const embed = new EmbedBuilder()
+      .setTitle(`#${r.id} — ${r.map}`)
+      .setColor(embedColor)
+      .setDescription(description)
+      .addFields(
+        {
+          name: `🔵 Blue Team ${isBlueWin ? '🏆' : ''}`,
+          value: bluePlayers.length > 0 ? bluePlayers.map(p => `• ${p}`).join('\n') : '*No players recorded*',
+          inline: true,
+        },
+        {
+          name: `🔴 Red Team ${isRedWin ? '🏆' : ''}`,
+          value: redPlayers.length > 0 ? redPlayers.map(p => `• ${p}`).join('\n') : '*No players recorded*',
+          inline: true,
+        }
+      )
+      .setFooter({ text: `Replay ID: ${r.id} • Use /reassign-replay-player to adjust` })
+
+    embeds.push(embed)
   }
 
-  const chunks: string[] = []
-  let currentChunk = `📋 **Recent ${entries.length} Custom Match Replay${entries.length === 1 ? '' : 's'}:**\n\n`
-
-  for (const entry of entries) {
-    if (currentChunk.length + entry.length + 2 > 1900) {
-      chunks.push(currentChunk)
-      currentChunk = entry + '\n'
-    } else {
-      currentChunk += entry + '\n'
-    }
-  }
-  if (currentChunk.trim().length > 0) {
-    chunks.push(currentChunk)
-  }
-
-  for (let i = 0; i < chunks.length; i++) {
+  const batchSize = 5
+  for (let i = 0; i < embeds.length; i += batchSize) {
+    const batch = embeds.slice(i, i + batchSize)
     if (i === 0) {
-      await interaction.editReply({ content: chunks[0] })
+      await interaction.editReply({
+        content: `📋 **Showing ${replays.length} Most Recent Custom Match Replay${replays.length === 1 ? '' : 's'}:**`,
+        embeds: batch,
+      })
     } else {
-      await interaction.followUp({ content: chunks[i], flags: MessageFlags.Ephemeral })
+      await interaction.followUp({
+        embeds: batch,
+        flags: MessageFlags.Ephemeral,
+      })
     }
   }
 }

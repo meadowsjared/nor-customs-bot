@@ -1276,6 +1276,8 @@ export interface ReplayPlayerInfo {
   discord_id: string | null
   owner_discord_id: string | null
   hots_account_id: number
+  substitute_display_name?: string | null
+  owner_display_name?: string | null
 }
 
 export interface ReassignReplayResult {
@@ -1307,7 +1309,23 @@ export function getRecentReplays(limit = 20): RecentReplaySummary[] {
 export function getReplayPlayers(replayId: number): ReplayPlayerInfo[] {
   return db
     .prepare<[number], ReplayPlayerInfo>(
-      'SELECT id, replay_id, hots_battle_tag, hero, team, win, discord_id, owner_discord_id, hots_account_id FROM hots_replay_player_game_stats WHERE replay_id = ? ORDER BY team ASC, hero ASC'
+      `SELECT 
+        s.id, 
+        s.replay_id, 
+        s.hots_battle_tag, 
+        s.hero, 
+        s.team, 
+        s.win, 
+        s.discord_id, 
+        s.owner_discord_id, 
+        s.hots_account_id,
+        sub_p.discord_display_name AS substitute_display_name,
+        owner_p.discord_display_name AS owner_display_name
+       FROM hots_replay_player_game_stats s
+       LEFT JOIN players sub_p ON s.discord_id = sub_p.discord_id
+       LEFT JOIN players owner_p ON s.owner_discord_id = owner_p.discord_id
+       WHERE s.replay_id = ? 
+       ORDER BY s.team ASC, s.hero ASC`
     )
     .all(replayId)
 }
