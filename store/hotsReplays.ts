@@ -390,13 +390,18 @@ export async function parseReplay(file: string) {
       // Ignore if details cannot be parsed
     }
 
+    const formatPlayerEntry = (p: Record<string, any>) => {
+      const heroStr = p.hero ? ` (${p.hero})` : ''
+      return `${p.name}#${p.tag}${heroStr}`
+    }
+
     const team0Players = players
       .filter(p => p.team === 0)
-      .map(p => `${p.name}#${p.tag}`)
+      .map(formatPlayerEntry)
       .join(', ')
     const team1Players = players
       .filter(p => p.team === 1)
-      .map(p => `${p.name}#${p.tag}`)
+      .map(formatPlayerEntry)
       .join(', ')
 
     return {
