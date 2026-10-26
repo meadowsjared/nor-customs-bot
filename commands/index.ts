@@ -3256,8 +3256,14 @@ async function handleLookupCommandSub(
               .replace(/[\s,]+/g, '_')
 
             const prettyDate = `${dateStr}_${relativeStr}`
+            const heroPart = m.hero ? `__Hero:${m.hero.replace(/\s+/g, '_')}` : ''
+            const subTag = m.isSubstitute ? '(sub)' : ''
+            const tagPart = m.battleTag ? `__Account:${m.battleTag.replace(/\s+/g, '_')}${subTag}` : ''
+            const mapPart = m.map ? `__Map:${m.map.replace(/\s+/g, '_')}` : ''
+            const replayPart = m.replayId ? `__Match:#${m.replayId}` : ''
 
-            const gcalUrl = `<http://calendar.google.com/u/0/r/day/${year}/${month}/${day}?${prettyDate}>`
+            const details = `${prettyDate}${heroPart}${tagPart}${mapPart}${replayPart}`
+            const gcalUrl = `<http://calendar.google.com/u/0/r/day/${year}/${month}/${day}?${details}>`
             return `[${m.win ? '🟩' : '🟥'}](${gcalUrl})`
           })
           .join(' ')

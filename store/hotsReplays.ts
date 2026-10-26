@@ -951,9 +951,12 @@ export interface PlayerMatchStats {
   losses: number
   winRate: number
   recentMatches: Array<{
+    replayId?: number
     date: string
     map: string
     hero: string
+    battleTag?: string
+    isSubstitute?: boolean
     win: boolean
     kills: number
     assists: number
@@ -1064,9 +1067,13 @@ export function getPlayerMatchStats(
   const winRate = totalGames > 0 ? overall.winRate || 0 : 0
 
   type RecentMatchRow = {
+    replay_id: number
     date: string
     map: string
     hero: string
+    hots_battle_tag: string
+    owner_discord_id: string | null
+    discord_id: string | null
     win: number
     kills: number
     assists: number
@@ -1075,7 +1082,18 @@ export function getPlayerMatchStats(
   const recentMatchesRaw = db
     .prepare<[string, number], RecentMatchRow>(
       `
-    SELECT r.date, r.map, s.hero, s.win, s.SoloKill as kills, s.Assists as assists, s.Deaths as deaths
+    SELECT 
+      s.replay_id,
+      r.date, 
+      r.map, 
+      s.hero, 
+      s.hots_battle_tag, 
+      s.owner_discord_id, 
+      s.discord_id, 
+      s.win, 
+      s.SoloKill as kills, 
+      s.Assists as assists, 
+      s.Deaths as deaths
     FROM hots_replay_player_game_stats s
     JOIN hots_replays r ON s.replay_id = r.id
     WHERE ${matchFilter}
@@ -1086,8 +1104,16 @@ export function getPlayerMatchStats(
     .all(discordId, limit)
 
   const recentMatches = recentMatchesRaw.map(m => ({
-    ...m,
+    replayId: m.replay_id,
+    date: m.date,
+    map: m.map,
+    hero: m.hero,
+    battleTag: m.hots_battle_tag,
+    isSubstitute: Boolean(m.owner_discord_id && m.owner_discord_id !== m.discord_id),
     win: m.win === 1,
+    kills: m.kills,
+    assists: m.assists,
+    deaths: m.deaths,
   }))
 
   type TopHeroRow = {
