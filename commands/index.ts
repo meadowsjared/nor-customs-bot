@@ -111,6 +111,8 @@ import {
   getUnlinkedReplayAccounts,
   getUnlinkedReplayAccountsForAutocomplete,
   getRecentReplays,
+  getReplaySummary,
+  RecentReplaySummary,
   getReplayPlayers,
   reassignReplayPlayer,
   ReplayPlayerInfo,
@@ -5145,63 +5147,68 @@ function isReplayInFilterRange(
   return true
 }
 
-/**
- * Formats a single imported custom match entry string for display in import command replies.
- */
-function formatReplayEntry(
-  index: number,
-  fileName: string,
-  replayId: number,
-  replayData: NonNullable<Awaited<ReturnType<typeof parseReplay>>>
-): string {
-  const durationMin = Math.floor(replayData.length / 60)
-  const durationSec = Math.floor(replayData.length % 60)
-  const replayDate = formatDateToMMDDYYYY(new Date(replayData.date))
-  const blueWin = replayData.winner === 0 ? ' 🎉' : ''
-  const redWin = replayData.winner === 1 ? ' 🎉' : ''
+function formatReplayPlayerLine(p: ReplayPlayerInfo): string {
+  const baseTag = p.hots_battle_tag.split('#')[0]
+  const heroName = p.hero || 'Unknown'
+  const isSub = Boolean(p.owner_discord_id && p.owner_discord_id !== p.discord_id)
 
-  let entryStr = `${index.toLocaleString('en-US')}. ${fileName}\n`
-  entryStr += `  - Replay ID: ${replayId} Map: ${replayData.map}, Date: ${replayDate}, Duration: ${durationMin}m ${durationSec}s\n`
-  entryStr += `  - Winner: ${replayData.winner} Takedowns: ${replayData.team0Takedowns.toLocaleString('en-US')} - ${replayData.team1Takedowns.toLocaleString('en-US')}, Players:\n`
-  entryStr += `    Blue Team: ${blueWin} ${replayData.team0Players}\n`
-  entryStr += `    Red Team: ${redWin} ${replayData.team1Players}\n`
-  return entryStr
+  if (isSub) {
+    const subName = p.substitute_display_name || 'sub'
+    return `**${baseTag}** (${heroName}) 🔄 sub: **${subName}**`
+  }
+  return `**${baseTag}** (${heroName})`
 }
 
 /**
- * Formats a single imported custom match entry as a Discord Embed.
+ * Builds a standardized Discord Embed for a replay, fetching resolved players and substitutions from DB.
  */
-function formatReplayEmbed(
-  fileName: string,
-  replayId: number,
-  replayData: NonNullable<Awaited<ReturnType<typeof parseReplay>>>
+function buildReplayOverviewEmbed(
+  replayOrId: RecentReplaySummary | number,
+  fileName?: string
 ): EmbedBuilder {
-  const durationMin = Math.floor(replayData.length / 60)
-  const durationSec = Math.floor(replayData.length % 60)
-  const durationStr = `${durationMin}m ${durationSec}s`
-  const replayDate = formatDateToMMDDYYYY(new Date(replayData.date))
+  const r: RecentReplaySummary =
+    typeof replayOrId === 'number'
+      ? (getReplaySummary(replayOrId) ?? {
+          id: replayOrId,
+          map: 'Unknown Map',
+          date: '',
+          length: null,
+          winner: null,
+          team0Takedowns: null,
+          team1Takedowns: null,
+        })
+      : replayOrId
 
-  const isBlueWin = replayData.winner === 0
-  const isRedWin = replayData.winner === 1
+  const durationMin = r.length ? Math.floor(r.length / 60) : 0
+  const durationSec = r.length ? Math.floor(r.length % 60) : 0
+  const durationStr = r.length ? `${durationMin}m ${durationSec}s` : 'Unknown'
+  const dateStr = r.date ? formatDateToMMDDYYYY(new Date(r.date)) : 'Unknown'
+
+  const players = getReplayPlayers(r.id)
+  const bluePlayers = players.filter(p => p.team === 0).map(formatReplayPlayerLine)
+  const redPlayers = players.filter(p => p.team === 1).map(formatReplayPlayerLine)
+
+  const isBlueWin = r.winner === 0
+  const isRedWin = r.winner === 1
   const embedColor = isBlueWin ? 0x2b82d9 : isRedWin ? 0xd9382b : 0x5865f2
-  const winnerText = isBlueWin ? '🔵 Blue Team' : isRedWin ? '🔴 Red Team' : 'Unknown'
 
-  const players = Object.values(replayData.replayObj.players)
-  const formatPlayerLine = (p: Record<string, any>) => {
-    const heroStr = p.hero ? ` (${p.hero})` : ''
-    return `• ${p.name}#${p.tag}${heroStr}`
+  let description = `⏱️ **Duration:** ${durationStr}  •  📅 **Date:** ${dateStr}`
+  if (
+    r.team0Takedowns !== null &&
+    r.team0Takedowns !== undefined &&
+    r.team1Takedowns !== null &&
+    r.team1Takedowns !== undefined
+  ) {
+    const winnerText = isBlueWin ? '🔵 Blue Team' : isRedWin ? '🔴 Red Team' : 'Unknown'
+    description += `\n🎯 **Score:** Blue **${r.team0Takedowns}** - **${r.team1Takedowns}** Red  •  🏆 **Winner:** ${winnerText}`
   }
 
-  const bluePlayers = players.filter(p => p.team === 0).map(formatPlayerLine)
-  const redPlayers = players.filter(p => p.team === 1).map(formatPlayerLine)
+  const footerText = fileName ? `File: ${fileName} • Replay ID: ${r.id}` : `Replay ID: ${r.id}`
 
   return new EmbedBuilder()
-    .setTitle(`Imported Match #${replayId} — ${replayData.map}`)
+    .setTitle(`#${r.id} — ${r.map ?? 'Unknown Map'}`)
     .setColor(embedColor)
-    .setDescription(
-      `⏱️ **Duration:** ${durationStr}  •  📅 **Date:** ${replayDate}\n` +
-      `🎯 **Score:** Blue **${replayData.team0Takedowns}** - **${replayData.team1Takedowns}** Red  •  🏆 **Winner:** ${winnerText}`
-    )
+    .setDescription(description)
     .addFields(
       {
         name: `🔵 Blue Team ${isBlueWin ? '🏆' : ''}`,
@@ -5215,8 +5222,46 @@ function formatReplayEmbed(
       }
     )
     .setFooter({
-      text: `File: ${fileName} • Replay ID: ${replayId}`,
+      text: footerText,
     })
+}
+
+/**
+ * Sends a list of replay embeds in batches of 5 to respect Discord limits.
+ */
+async function sendReplayEmbedBatches(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
+  headerMessage: string,
+  embeds: EmbedBuilder[],
+  numTotalFiles?: number
+): Promise<void> {
+  const maxEmbedDisplay = 25
+  const embedsToSend = embeds.slice(0, maxEmbedDisplay)
+  const batchSize = 5
+
+  for (let i = 0; i < embedsToSend.length; i += batchSize) {
+    const batch = embedsToSend.slice(i, i + batchSize)
+    if (i === 0) {
+      await interaction.editReply({
+        content: headerMessage,
+        embeds: batch,
+      })
+    } else {
+      await interaction.followUp({
+        flags: MessageFlags.Ephemeral,
+        embeds: batch,
+      })
+    }
+  }
+
+  if (embeds.length > maxEmbedDisplay) {
+    const remaining = embeds.length - maxEmbedDisplay
+    const totalSuffix = numTotalFiles ? ` from ${numTotalFiles.toLocaleString('en-US')}` : ''
+    await interaction.followUp({
+      flags: MessageFlags.Ephemeral,
+      content: `... and **${remaining.toLocaleString('en-US')}** more custom replay${remaining === 1 ? '' : 's'} imported (total: **${embeds.length.toLocaleString('en-US')}**${totalSuffix}).`,
+    })
+  }
 }
 
 /**
@@ -5225,18 +5270,18 @@ function formatReplayEmbed(
  */
 export async function syncRecentReplays(
   guildId: string
-): Promise<{ importedCount: number; details: string[]; embeds: EmbedBuilder[] }> {
+): Promise<{ importedCount: number; embeds: EmbedBuilder[] }> {
   const folderPath = '/mnt/HotsBandayd'
   let files: string[] = []
   try {
     files = findStormReplays(folderPath)
   } catch (error) {
     console.error('Error reading replay folder for sync:', error)
-    return { importedCount: 0, details: [], embeds: [] }
+    return { importedCount: 0, embeds: [] }
   }
 
   if (files.length === 0) {
-    return { importedCount: 0, details: [], embeds: [] }
+    return { importedCount: 0, embeds: [] }
   }
 
   // Sort files by date (newest first)
@@ -5257,7 +5302,7 @@ export async function syncRecentReplays(
 
   if (firstImportedIndex === 0) {
     // Newest file is already in DB, nothing to import
-    return { importedCount: 0, details: [], embeds: [] }
+    return { importedCount: 0, embeds: [] }
   }
 
   const unimportedFiles =
@@ -5265,7 +5310,6 @@ export async function syncRecentReplays(
       ? files.slice().reverse()
       : files.slice(0, firstImportedIndex).reverse()
 
-  const details: string[] = []
   const embeds: EmbedBuilder[] = []
   let importedCount = 0
 
@@ -5281,12 +5325,11 @@ export async function syncRecentReplays(
       } catch (error) {
         console.error('Error copying replay:', fileName, error)
       }
-      details.push(formatReplayEntry(importedCount, fileName, replayId, replayData))
-      embeds.push(formatReplayEmbed(fileName, replayId, replayData))
+      embeds.push(buildReplayOverviewEmbed(replayId, fileName))
     }
   }
 
-  return { importedCount, details, embeds }
+  return { importedCount, embeds }
 }
 
 export async function handleImportReplaysCommand(
@@ -5321,21 +5364,11 @@ export async function handleImportReplaysCommand(
       return
     }
 
-    const batchSize = 5
-    for (let i = 0; i < result.embeds.length; i += batchSize) {
-      const batch = result.embeds.slice(i, i + batchSize)
-      if (i === 0) {
-        await interaction.editReply({
-          content: `📥 **Synced ${result.importedCount} new custom replay${result.importedCount > 1 ? 's' : ''} in chronological order:**`,
-          embeds: batch,
-        })
-      } else {
-        await interaction.followUp({
-          flags: MessageFlags.Ephemeral,
-          embeds: batch,
-        })
-      }
-    }
+    await sendReplayEmbedBatches(
+      interaction,
+      `📥 **Synced ${result.importedCount} new custom replay${result.importedCount > 1 ? 's' : ''} in chronological order:**`,
+      result.embeds
+    )
     return
   }
 
@@ -5410,37 +5443,18 @@ export async function handleImportReplaysCommand(
       } catch (error) {
         console.error('Error copying replay:', fileName, error)
       }
-      embeds.push(formatReplayEmbed(fileName, replayId, replayData))
+      embeds.push(buildReplayOverviewEmbed(replayId, fileName))
     }
   }
 
   if (count > 0) {
     optimizeDb()
-    const maxEmbedDisplay = 25
-    const embedsToSend = embeds.slice(0, maxEmbedDisplay)
-    const batchSize = 5
-
-    for (let i = 0; i < embedsToSend.length; i += batchSize) {
-      const batch = embedsToSend.slice(i, i + batchSize)
-      if (i === 0) {
-        await interaction.editReply({
-          content: `📥 **Finished importing ${count.toLocaleString('en-US')} custom replay${count === 1 ? '' : 's'}:**`,
-          embeds: batch,
-        })
-      } else {
-        await interaction.followUp({
-          flags: MessageFlags.Ephemeral,
-          embeds: batch,
-        })
-      }
-    }
-
-    if (embeds.length > maxEmbedDisplay) {
-      await interaction.followUp({
-        flags: MessageFlags.Ephemeral,
-        content: `... and **${(embeds.length - maxEmbedDisplay).toLocaleString('en-US')}** more custom files imported (total: **${count.toLocaleString('en-US')}** from ${numTotalFiles.toLocaleString('en-US')}).`,
-      })
-    }
+    await sendReplayEmbedBatches(
+      interaction,
+      `📥 **Finished importing ${count.toLocaleString('en-US')} custom replay${count === 1 ? '' : 's'}:**`,
+      embeds,
+      numTotalFiles
+    )
   } else {
     try {
       await interaction.editReply({
@@ -5978,19 +5992,6 @@ export async function handleReassignReplayPlayerCommand(
     console.error('Error updating lobby message after reassigning replay player:', err)
   }
 }
-
-function formatReplayPlayerLine(p: ReplayPlayerInfo): string {
-  const baseTag = p.hots_battle_tag.split('#')[0]
-  const heroName = p.hero || 'Unknown'
-  const isSub = Boolean(p.owner_discord_id && p.owner_discord_id !== p.discord_id)
-
-  if (isSub) {
-    const subName = p.substitute_display_name || 'sub'
-    return `**${baseTag}** (${heroName}) 🔄 sub: **${subName}**`
-  }
-  return `**${baseTag}** (${heroName})`
-}
-
 export async function handleRecentReplaysCommand(
   interaction: ChatInputCommandInteraction<CacheType>
 ): Promise<void> {
@@ -6007,64 +6008,12 @@ export async function handleRecentReplaysCommand(
     return
   }
 
-  const embeds: EmbedBuilder[] = []
-
-  for (const r of replays) {
-    const durationMin = r.length ? Math.floor(r.length / 60) : 0
-    const durationSec = r.length ? Math.floor(r.length % 60) : 0
-    const durationStr = r.length ? `${durationMin}m ${durationSec}s` : 'Unknown'
-    const dateStr = r.date ? formatDateToMMDDYYYY(new Date(r.date)) : 'Unknown'
-
-    const players = getReplayPlayers(r.id)
-    const bluePlayers = players.filter(p => p.team === 0).map(formatReplayPlayerLine)
-    const redPlayers = players.filter(p => p.team === 1).map(formatReplayPlayerLine)
-
-    const isBlueWin = r.winner === 0
-    const isRedWin = r.winner === 1
-    const embedColor = isBlueWin ? 0x2b82d9 : isRedWin ? 0xd9382b : 0x5865f2
-
-    let description = `⏱️ **Duration:** ${durationStr}  •  📅 **Date:** ${dateStr}`
-    if (r.team0Takedowns !== null && r.team1Takedowns !== null) {
-      const winnerText = isBlueWin ? '🔵 Blue Team' : isRedWin ? '🔴 Red Team' : 'Unknown'
-      description += `\n🎯 **Score:** Blue **${r.team0Takedowns}** - **${r.team1Takedowns}** Red  •  🏆 **Winner:** ${winnerText}`
-    }
-
-    const embed = new EmbedBuilder()
-      .setTitle(`#${r.id} — ${r.map}`)
-      .setColor(embedColor)
-      .setDescription(description)
-      .addFields(
-        {
-          name: `🔵 Blue Team ${isBlueWin ? '🏆' : ''}`,
-          value: bluePlayers.length > 0 ? bluePlayers.map(p => `• ${p}`).join('\n') : '*No players recorded*',
-          inline: true,
-        },
-        {
-          name: `🔴 Red Team ${isRedWin ? '🏆' : ''}`,
-          value: redPlayers.length > 0 ? redPlayers.map(p => `• ${p}`).join('\n') : '*No players recorded*',
-          inline: true,
-        }
-      )
-      .setFooter({ text: `Replay ID: ${r.id}` })
-
-    embeds.push(embed)
-  }
-
-  const batchSize = 5
-  for (let i = 0; i < embeds.length; i += batchSize) {
-    const batch = embeds.slice(i, i + batchSize)
-    if (i === 0) {
-      await interaction.editReply({
-        content: `📋 **Showing ${replays.length} Most Recent Custom Match Replay${replays.length === 1 ? '' : 's'}:**`,
-        embeds: batch,
-      })
-    } else {
-      await interaction.followUp({
-        embeds: batch,
-        flags: MessageFlags.Ephemeral,
-      })
-    }
-  }
+  const embeds = replays.map(r => buildReplayOverviewEmbed(r))
+  await sendReplayEmbedBatches(
+    interaction,
+    `📋 **Showing ${replays.length} Most Recent Custom Match Replay${replays.length === 1 ? '' : 's'}:**`,
+    embeds
+  )
 }
 
 

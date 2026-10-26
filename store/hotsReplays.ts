@@ -1333,6 +1333,17 @@ export function getRecentReplays(limit = 20): RecentReplaySummary[] {
 }
 
 /**
+ * Returns a single replay summary by its ID.
+ */
+export function getReplaySummary(replayId: number): RecentReplaySummary | undefined {
+  return db
+    .prepare<[number], RecentReplaySummary>(
+      'SELECT id, map, date, length, winner, team0Takedowns, team1Takedowns FROM hots_replays WHERE id = ?'
+    )
+    .get(replayId)
+}
+
+/**
  * Returns the player roster and stats for a given replay ID.
  */
 export function getReplayPlayers(replayId: number): ReplayPlayerInfo[] {
