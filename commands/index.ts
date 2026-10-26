@@ -5170,23 +5170,74 @@ function formatReplayEntry(
 }
 
 /**
+ * Formats a single imported custom match entry as a Discord Embed.
+ */
+function formatReplayEmbed(
+  fileName: string,
+  replayId: number,
+  replayData: NonNullable<Awaited<ReturnType<typeof parseReplay>>>
+): EmbedBuilder {
+  const durationMin = Math.floor(replayData.length / 60)
+  const durationSec = Math.floor(replayData.length % 60)
+  const durationStr = `${durationMin}m ${durationSec}s`
+  const replayDate = formatDateToMMDDYYYY(new Date(replayData.date))
+
+  const isBlueWin = replayData.winner === 0
+  const isRedWin = replayData.winner === 1
+  const embedColor = isBlueWin ? 0x2b82d9 : isRedWin ? 0xd9382b : 0x5865f2
+  const winnerText = isBlueWin ? '🔵 Blue Team' : isRedWin ? '🔴 Red Team' : 'Unknown'
+
+  const players = Object.values(replayData.replayObj.players)
+  const formatPlayerLine = (p: Record<string, any>) => {
+    const heroStr = p.hero ? ` (${p.hero})` : ''
+    return `• ${p.name}#${p.tag}${heroStr}`
+  }
+
+  const bluePlayers = players.filter(p => p.team === 0).map(formatPlayerLine)
+  const redPlayers = players.filter(p => p.team === 1).map(formatPlayerLine)
+
+  return new EmbedBuilder()
+    .setTitle(`Imported Match #${replayId} — ${replayData.map}`)
+    .setColor(embedColor)
+    .setDescription(
+      `⏱️ **Duration:** ${durationStr}  •  📅 **Date:** ${replayDate}\n` +
+      `🎯 **Score:** Blue **${replayData.team0Takedowns}** - **${replayData.team1Takedowns}** Red  •  🏆 **Winner:** ${winnerText}`
+    )
+    .addFields(
+      {
+        name: `🔵 Blue Team ${isBlueWin ? '🏆' : ''}`,
+        value: bluePlayers.length > 0 ? bluePlayers.join('\n') : '*No players recorded*',
+        inline: true,
+      },
+      {
+        name: `🔴 Red Team ${isRedWin ? '🏆' : ''}`,
+        value: redPlayers.length > 0 ? redPlayers.join('\n') : '*No players recorded*',
+        inline: true,
+      }
+    )
+    .setFooter({
+      text: `File: ${fileName} • Replay ID: ${replayId} • Use /reassign-replay-player to adjust`,
+    })
+}
+
+/**
  * Synchronizes recent replays without requiring parameters by checking newest files backwards
  * and importing unimported custom games chronologically.
  */
 export async function syncRecentReplays(
   guildId: string
-): Promise<{ importedCount: number; details: string[] }> {
+): Promise<{ importedCount: number; details: string[]; embeds: EmbedBuilder[] }> {
   const folderPath = '/mnt/HotsBandayd'
   let files: string[] = []
   try {
     files = findStormReplays(folderPath)
   } catch (error) {
     console.error('Error reading replay folder for sync:', error)
-    return { importedCount: 0, details: [] }
+    return { importedCount: 0, details: [], embeds: [] }
   }
 
   if (files.length === 0) {
-    return { importedCount: 0, details: [] }
+    return { importedCount: 0, details: [], embeds: [] }
   }
 
   // Sort files by date (newest first)
@@ -5207,7 +5258,7 @@ export async function syncRecentReplays(
 
   if (firstImportedIndex === 0) {
     // Newest file is already in DB, nothing to import
-    return { importedCount: 0, details: [] }
+    return { importedCount: 0, details: [], embeds: [] }
   }
 
   const unimportedFiles =
@@ -5216,6 +5267,7 @@ export async function syncRecentReplays(
       : files.slice(0, firstImportedIndex).reverse()
 
   const details: string[] = []
+  const embeds: EmbedBuilder[] = []
   let importedCount = 0
 
   for (const file of unimportedFiles) {
@@ -5231,10 +5283,11 @@ export async function syncRecentReplays(
         console.error('Error copying replay:', fileName, error)
       }
       details.push(formatReplayEntry(importedCount, fileName, replayId, replayData))
+      embeds.push(formatReplayEmbed(fileName, replayId, replayData))
     }
   }
 
-  return { importedCount, details }
+  return { importedCount, details, embeds }
 }
 
 export async function handleImportReplaysCommand(
@@ -5257,7 +5310,6 @@ export async function handleImportReplaysCommand(
   const rawEndInput = interaction.options.getString(CommandIds.END_DATE)
   const filterParams = parseReplayFilterParams(rawStartInput, rawEndInput)
 
-  const maxContentLength = 1700 // Buffer for 2000 character limit
   await interaction.deferReply({ flags: MessageFlags.Ephemeral })
 
   // If no date or count provided, run smart sync of unimported replays
@@ -5270,29 +5322,19 @@ export async function handleImportReplaysCommand(
       return
     }
 
-    const header = `Synced **${result.importedCount}** new custom replay${result.importedCount > 1 ? 's' : ''} in chronological order:\n\n`
-    let currentChunk = header
-    let isFirstMessage = true
-
-    for (const entry of result.details) {
-      if (currentChunk.length + entry.length > maxContentLength) {
-        if (isFirstMessage) {
-          await interaction.editReply({ content: currentChunk })
-          isFirstMessage = false
-        } else {
-          await interaction.followUp({ flags: MessageFlags.Ephemeral, content: currentChunk })
-        }
-        currentChunk = entry
+    const batchSize = 5
+    for (let i = 0; i < result.embeds.length; i += batchSize) {
+      const batch = result.embeds.slice(i, i + batchSize)
+      if (i === 0) {
+        await interaction.editReply({
+          content: `📥 **Synced ${result.importedCount} new custom replay${result.importedCount > 1 ? 's' : ''} in chronological order:**`,
+          embeds: batch,
+        })
       } else {
-        currentChunk += entry
-      }
-    }
-
-    if (currentChunk.length > 0) {
-      if (isFirstMessage) {
-        await interaction.editReply({ content: currentChunk })
-      } else {
-        await interaction.followUp({ flags: MessageFlags.Ephemeral, content: currentChunk })
+        await interaction.followUp({
+          flags: MessageFlags.Ephemeral,
+          embeds: batch,
+        })
       }
     }
     return
@@ -5343,19 +5385,8 @@ export async function handleImportReplaysCommand(
     }
   })
 
-  let headerMsg = 'Found the following custom .StormReplay files'
-  if (filterParams.maxFilesLimit !== null) {
-    headerMsg += ` (import limit: **${filterParams.maxFilesLimit}** files)`
-  } else if (filterParams.startDate && filterParams.endDate) {
-    headerMsg += ` between **${formatDateToMMDDYYYY(filterParams.startDate)}** and **${formatDateToMMDDYYYY(filterParams.endDate)}**`
-  } else if (filterParams.startDate) {
-    headerMsg += ` on or after **${formatDateToMMDDYYYY(filterParams.startDate)}**`
-  }
-  headerMsg += ` in:\n\`${folderPath}\`\n\n`
-
   let count = 0
-  let currentChunk = headerMsg
-  let isFirstMessage = true
+  const embeds: EmbedBuilder[] = []
 
   for (const file of files) {
     if (filterParams.maxFilesLimit !== null && count >= filterParams.maxFilesLimit) {
@@ -5380,96 +5411,38 @@ export async function handleImportReplaysCommand(
       } catch (error) {
         console.error('Error copying replay:', fileName, error)
       }
-      const entryStr = formatReplayEntry(count, fileName, replayId, replayData)
-
-      // // write the replayData to a file
-      // const replayDataPath = path.join('/mnt/NorCustoms', `${fileName}.json`);
-      // fs.writeFileSync(replayDataPath, JSON.stringify(replayData, null, 2));
-      // console.log('replayData written to file path:', replayDataPath)
-      let webhookExpired = false
-      const sendChunkUpdate = async (contentToSend: string, isFirst: boolean) => {
-        if (webhookExpired) return
-        try {
-          if (isFirst) {
-            await interaction.editReply({ content: contentToSend })
-          } else {
-            await interaction.followUp({
-              flags: MessageFlags.Ephemeral,
-              content: contentToSend,
-            })
-          }
-        } catch (err: any) {
-          if (err?.code === 50027 || err?.status === 401 || String(err?.message).includes('Invalid Webhook Token')) {
-            console.warn(
-              `[import-replays] Discord interaction token expired after 15m (file ${count}). Continuing import in background...`
-            )
-            webhookExpired = true
-          } else {
-            console.error('Error sending Discord interaction update:', err)
-          }
-        }
-      }
-
-      if (isFirstMessage) {
-        if (currentChunk.length + entryStr.length > maxContentLength) {
-          // First message is full! Flush first message via editReply
-          await sendChunkUpdate(currentChunk, true)
-          isFirstMessage = false
-          currentChunk = entryStr
-        } else {
-          currentChunk += entryStr
-          // Live update the first message while filling it up
-          await sendChunkUpdate(currentChunk, true)
-        }
-      } else {
-        if (currentChunk.length + entryStr.length > maxContentLength) {
-          // Subsequent message is full! Send followUp message
-          await sendChunkUpdate(currentChunk, false)
-          currentChunk = entryStr
-        } else {
-          currentChunk += entryStr
-        }
-      }
+      embeds.push(formatReplayEmbed(fileName, replayId, replayData))
     }
   }
 
   if (count > 0) {
     optimizeDb()
-  }
+    const maxEmbedDisplay = 25
+    const embedsToSend = embeds.slice(0, maxEmbedDisplay)
+    const batchSize = 5
 
-  // After loop completes, append summary and send final chunk
-  if (count > 0 && currentChunk.length > 0) {
-    const summaryStr = `\nFinished importing **${count.toLocaleString('en-US')}** customs file${count === 1 ? '' : 's'} from ${numTotalFiles.toLocaleString('en-US')}.`
-
-    try {
-      if (currentChunk.length + summaryStr.length <= maxContentLength) {
-        currentChunk += summaryStr
-        if (isFirstMessage) {
-          await interaction.editReply({ content: currentChunk })
-        } else {
-          await interaction.followUp({
-            flags: MessageFlags.Ephemeral,
-            content: currentChunk,
-          })
-        }
+    for (let i = 0; i < embedsToSend.length; i += batchSize) {
+      const batch = embedsToSend.slice(i, i + batchSize)
+      if (i === 0) {
+        await interaction.editReply({
+          content: `📥 **Finished importing ${count.toLocaleString('en-US')} custom replay${count === 1 ? '' : 's'}:**`,
+          embeds: batch,
+        })
       } else {
-        if (isFirstMessage) {
-          await interaction.editReply({ content: currentChunk })
-        } else {
-          await interaction.followUp({
-            flags: MessageFlags.Ephemeral,
-            content: currentChunk,
-          })
-        }
         await interaction.followUp({
           flags: MessageFlags.Ephemeral,
-          content: summaryStr,
+          embeds: batch,
         })
       }
-    } catch (err: any) {
-      console.warn(`[import-replays] Final summary could not be sent to Discord (interaction expired): ${summaryStr}`)
     }
-  } else if (count === 0) {
+
+    if (embeds.length > maxEmbedDisplay) {
+      await interaction.followUp({
+        flags: MessageFlags.Ephemeral,
+        content: `... and **${(embeds.length - maxEmbedDisplay).toLocaleString('en-US')}** more custom files imported (total: **${count.toLocaleString('en-US')}** from ${numTotalFiles.toLocaleString('en-US')}).`,
+      })
+    }
+  } else {
     try {
       await interaction.editReply({
         content: `No custom .StormReplay games matched the criteria in:\n\`${folderPath}\``,
