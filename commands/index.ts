@@ -166,9 +166,8 @@ function generateLobbyStatusMessage(guildId: string, pPreviousPlayersList?: stri
       }
     }
 
-    return `${index + 1}: @${p.usernames.discordDisplayName}: (${accountDisplay}) \`${getPlayerRolesFormatted(p.role)}\`${
-      isLoading ? ' loading MMR...' : ''
-    }${isError ? ' MMR error!... :scream:' : ''}`
+    return `${index + 1}: @${p.usernames.discordDisplayName}: (${accountDisplay}) \`${getPlayerRolesFormatted(p.role)}\`${isLoading ? ' loading MMR...' : ''
+      }${isError ? ' MMR error!... :scream:' : ''}`
   })
 
   // combine the lobbyPlayers and previousPlayersList, into one string, labeling each section, but skip a section if there are no players in that section
@@ -5216,7 +5215,7 @@ function formatReplayEmbed(
       }
     )
     .setFooter({
-      text: `File: ${fileName} • Replay ID: ${replayId} • Use /reassign-replay-player to adjust`,
+      text: `File: ${fileName} • Replay ID: ${replayId}`,
     })
 }
 
@@ -6046,7 +6045,7 @@ export async function handleRecentReplaysCommand(
           inline: true,
         }
       )
-      .setFooter({ text: `Replay ID: ${r.id} • Use /reassign-replay-player to adjust` })
+      .setFooter({ text: `Replay ID: ${r.id}` })
 
     embeds.push(embed)
   }
