@@ -5235,12 +5235,10 @@ async function sendReplayEmbedBatches(
   embeds: EmbedBuilder[],
   numTotalFiles?: number
 ): Promise<void> {
-  const maxEmbedDisplay = 25
-  const embedsToSend = embeds.slice(0, maxEmbedDisplay)
   const batchSize = 5
 
-  for (let i = 0; i < embedsToSend.length; i += batchSize) {
-    const batch = embedsToSend.slice(i, i + batchSize)
+  for (let i = 0; i < embeds.length; i += batchSize) {
+    const batch = embeds.slice(i, i + batchSize)
     if (i === 0) {
       await interaction.editReply({
         content: headerMessage,
@@ -5254,12 +5252,10 @@ async function sendReplayEmbedBatches(
     }
   }
 
-  if (embeds.length > maxEmbedDisplay) {
-    const remaining = embeds.length - maxEmbedDisplay
-    const totalSuffix = numTotalFiles ? ` from ${numTotalFiles.toLocaleString('en-US')}` : ''
+  if (numTotalFiles && numTotalFiles > embeds.length) {
     await interaction.followUp({
       flags: MessageFlags.Ephemeral,
-      content: `... and **${remaining.toLocaleString('en-US')}** more custom replay${remaining === 1 ? '' : 's'} imported (total: **${embeds.length.toLocaleString('en-US')}**${totalSuffix}).`,
+      content: `Finished importing **${embeds.length.toLocaleString('en-US')}** customs files from ${numTotalFiles.toLocaleString('en-US')}.`,
     })
   }
 }
@@ -5996,7 +5992,7 @@ export async function handleRecentReplaysCommand(
   interaction: ChatInputCommandInteraction<CacheType>
 ): Promise<void> {
   const count = interaction.options.getInteger(CommandIds.COUNT) ?? 5
-  const clampedCount = Math.min(Math.max(1, count), 20)
+  const clampedCount = Math.max(1, count)
 
   await interaction.deferReply({ flags: MessageFlags.Ephemeral })
 

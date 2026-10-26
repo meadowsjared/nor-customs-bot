@@ -978,10 +978,9 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
       {
         name: CommandIds.COUNT,
         type: ApplicationCommandOptionType.Integer,
-        description: 'Number of recent replays to show (1-20, default 5)',
+        description: 'Number of recent replays to show (default 5)',
         required: false,
         minValue: 1,
-        maxValue: 20,
       },
     ],
   },
