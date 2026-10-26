@@ -1,6 +1,6 @@
 {
   "name": "nor-customs",
-  "version": "4.1.19",
+  "version": "5.0.0",
   "main": "index.ts",
   "type": "module",
   "scripts": {
