@@ -2824,9 +2824,24 @@ export async function handleLookupAutocomplete(interaction: AutocompleteInteract
   const query = focusedOption.value.trim().toLowerCase()
   const registeredAccounts = getAllRegisteredHotSAccounts(guildId)
 
-  let filtered = registeredAccounts
+  const rawDiscordId = interaction.options.get(CommandIds.DISCORD_ID)?.value
+  const targetDiscordId =
+    typeof rawDiscordId === 'string' && rawDiscordId.trim().length > 0
+      ? rawDiscordId.replace(/[<@!>]/g, '').trim()
+      : undefined
+
+  let baseAccounts = registeredAccounts
+  if (targetDiscordId) {
+    baseAccounts = registeredAccounts.filter(acc => acc.discordId === targetDiscordId)
+    const subCommand = interaction.options.getSubcommand(false)
+    if (subCommand === CommandIds.PRIMARY) {
+      baseAccounts = baseAccounts.filter(acc => !acc.ownerDiscordId)
+    }
+  }
+
+  let filtered = baseAccounts
   if (query.length > 0) {
-    filtered = registeredAccounts.filter(acc => {
+    filtered = baseAccounts.filter(acc => {
       const tag = acc.hotsBattleTag.toLowerCase()
       const tagPrefix = tag.split('#')[0]
       const realId = acc.realIdName?.toLowerCase() ?? ''
@@ -2876,8 +2891,8 @@ export async function handleLookupAutocomplete(interaction: AutocompleteInteract
     }
   })
 
-  // Fallback to unlinked replay accounts if choices under limit
-  if (choices.length < 25) {
+  // Fallback to unlinked replay accounts if choices under limit and not filtering for a specific player
+  if (choices.length < 25 && !targetDiscordId) {
     const remainingSlots = 25 - choices.length
     const unlinked = getUnlinkedReplayAccountsForAutocomplete(query, remainingSlots)
     const existingTags = new Set(choices.map(c => c.value.toLowerCase()))

@@ -227,11 +227,7 @@ client.on('interactionCreate', async interaction => {
       if (
         interaction.commandName === CommandIds.LOOKUP ||
         interaction.commandName === CommandIds.ADD_ACCOUNT ||
-        (interaction.commandName === CommandIds.ADMIN &&
-          (interaction.options.getSubcommand(false) === CommandIds.REAL_ID_NAME ||
-            interaction.options.getSubcommand(false) === CommandIds.ACTIVE ||
-            interaction.options.getSubcommand(false) === CommandIds.ADD_ACCOUNT ||
-            interaction.options.getSubcommand(false) === `${CommandIds.ADD_ACCOUNT}_${CommandIds.DISCORD_ID}`))
+        interaction.options.getFocused(true).name === CommandIds.BATTLE_TAG
       ) {
         await handleLookupAutocomplete(interaction)
         return
