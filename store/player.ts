@@ -2157,32 +2157,44 @@ export function getSubstitutionForAccount(
   // 1. Check historical substitution if this replay was previously imported
   if (replayId !== undefined) {
     row = db
-      .prepare<[number, string, string], AccountSubstitutionRow>(
+      .prepare<[number, string, string, string], AccountSubstitutionRow>(
         `SELECT * FROM account_substitutions 
-         WHERE replay_id = ? AND (hots_battle_tag = ? COLLATE NOCASE OR ? LIKE (hots_battle_tag || '#%'))
+         WHERE replay_id = ? AND (
+           hots_battle_tag = ? COLLATE NOCASE 
+           OR ? LIKE (hots_battle_tag || '#%')
+           OR hots_battle_tag LIKE (? || '#%')
+         )
          LIMIT 1`
       )
-      .get(replayId, battleTag, battleTag)
+      .get(replayId, battleTag, battleTag, battleTag)
   }
 
   // 2. Otherwise check currently active substitution
   if (!row) {
     if (guildId) {
       row = db
-        .prepare<[string, string, string], AccountSubstitutionRow>(
+        .prepare<[string, string, string, string], AccountSubstitutionRow>(
           `SELECT * FROM account_substitutions 
-           WHERE guild_id = ? AND is_active = 1 AND (hots_battle_tag = ? COLLATE NOCASE OR hots_battle_tag LIKE ? COLLATE NOCASE)
+           WHERE guild_id = ? AND is_active = 1 AND (
+             hots_battle_tag = ? COLLATE NOCASE 
+             OR ? LIKE (hots_battle_tag || '#%')
+             OR hots_battle_tag LIKE (? || '#%')
+           )
            ORDER BY date DESC LIMIT 1`
         )
-        .get(guildId, battleTag, battleTag + '#%')
+        .get(guildId, battleTag, battleTag, battleTag)
     } else {
       row = db
-        .prepare<[string, string], AccountSubstitutionRow>(
+        .prepare<[string, string, string], AccountSubstitutionRow>(
           `SELECT * FROM account_substitutions 
-           WHERE is_active = 1 AND (hots_battle_tag = ? COLLATE NOCASE OR hots_battle_tag LIKE ? COLLATE NOCASE)
+           WHERE is_active = 1 AND (
+             hots_battle_tag = ? COLLATE NOCASE 
+             OR ? LIKE (hots_battle_tag || '#%')
+             OR hots_battle_tag LIKE (? || '#%')
+           )
            ORDER BY date DESC LIMIT 1`
         )
-        .get(battleTag, battleTag + '#%')
+        .get(battleTag, battleTag, battleTag)
     }
   }
 
