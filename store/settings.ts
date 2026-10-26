@@ -1,7 +1,5 @@
-import Database from 'better-sqlite3'
 import { DraftCoinState } from '../types/player'
-
-const db = new Database('./store/nor_customs.db')
+import { db } from './db'
 
 // Ensure the settings table exists with guild_id support
 db.exec(`

@@ -1,7 +1,5 @@
-import Database from 'better-sqlite3'
 import { MapDefinition, MapVoteSession, MapVoteTally } from '../types/mapVote'
-
-const db = new Database('./store/nor_customs.db')
+import { db } from './db'
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS map_vote_sessions (

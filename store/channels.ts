@@ -1,8 +1,6 @@
 import { VoiceChannel } from 'discord.js'
 import { ChannelExtended, ChannelLocal } from '../types/channel'
-import Database from 'better-sqlite3'
-
-const db = new Database('./store/nor_customs.db')
+import { db } from './db'
 
 // Ensure channels table exists
 db.exec(`

@@ -1,10 +1,8 @@
 import { HPData, HPPlayerData, HPPlayerStatsData } from '../types/heroesProfile' // Assuming you have a types.ts file for type definitions
-import Database from 'better-sqlite3'
+import { db } from './db'
 import { puppeteerRefreshXsrfTokenAndCookies } from './heroesProfilePuppeteer'
 import { PageWithCursor } from 'puppeteer-real-browser'
 import type { Browser } from 'rebrowser-puppeteer-core'
-
-const db = new Database('./store/nor_customs.db')
 export const userAgent =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36'
 

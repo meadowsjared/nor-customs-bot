@@ -1,16 +1,12 @@
-import Database from 'better-sqlite3'
 import { readFileSync } from 'fs'
 import { parse } from 'csv-parse/sync'
 import { CSVColumnDefinition, CSVRecord, HOTS_ACCOUNTS_COLUMNS } from '../types/csvSpreadsheet'
 import { HotsAccountRow } from '../types/player'
 import { SQLiteColumnType } from './sql'
+import { db } from '../store/db'
 
 class CSVImporter {
-  private readonly db: Database.Database
-
-  constructor() {
-    this.db = new Database('./store/nor_customs.db')
-  }
+  private readonly db = db
 
   // Helper function to convert string values to appropriate types
   private parseValue(value: string | number): number | string | null {

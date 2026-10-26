@@ -1,5 +1,5 @@
 import { writeFile, rename } from 'fs/promises'
-import Database from 'better-sqlite3'
+import { db } from './db'
 import { AccountSubstitution, AccountSubstitutionRow, DiscordUserNames, FlatPlayer, HotsAccount, HotsAccountRow, Player } from '../types/player'
 import {
   ActionRowBuilder,
@@ -17,9 +17,6 @@ import { CommandIds, roleMap } from '../constants'
 import { getHeroesProfileData } from './heroesProfile'
 import { requireGuildId, safeReply, safeDeferUpdate } from '../utils/interaction'
 import { validateBattleTag } from '../utils/heroesOfTheStorm'
-
-const db = new Database('./store/nor_customs.db')
-db.pragma('foreign_keys = ON')
 
 export const interactionStore = new Map<string, ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>>()
 

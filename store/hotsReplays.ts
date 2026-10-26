@@ -1,8 +1,7 @@
-import Database from 'better-sqlite3'
 import path from 'path'
 import { createRequire } from 'module'
 const require = createRequire(import.meta.url)
-const db = new Database('./store/nor_customs.db')
+import { db } from './db'
 import { ColumnDefinition, generateCreateTableSQL, InterfaceFromSchema, SQLiteColumnType } from '../utils/sql'
 import { getAccountWithSubstitution, ResolvedHotsAccount } from './player'
 
