@@ -89,6 +89,8 @@ import {
   getAssignAccountClearChoices,
   getPlayerIdentifier,
   getPlayerByIdentifier,
+  isFetchingMmr,
+  triggerAccountMmrFetch,
 } from '../store/player'
 import {
   saveChannel,
@@ -135,19 +137,34 @@ function generateLobbyStatusMessage(guildId: string, pPreviousPlayersList?: stri
       accountDisplay += getSubstitutedAccountOwnerTag(primaryAccount.ownerDiscordId, guildId)
     }
 
-    return `${index + 1}: @${p.usernames.discordDisplayName}: (${accountDisplay}) \`${getPlayerRolesFormatted(p.role)}\`${p.usernames.accounts?.length === 1 &&
-      p.usernames.accounts[0].hpSlGames === null &&
-      p.usernames.accounts[0].hpQmGames === null &&
-      p.usernames.accounts[0].hpArGames === null
-      ? ' loading MMR...'
-      : ''
-      }${p.usernames.accounts?.length === 1 &&
-        p.usernames.accounts[0].hpSlGames === -1 &&
-        p.usernames.accounts[0].hpQmGames === -1 &&
-        p.usernames.accounts[0].hpArGames === -1
-        ? ' MMR error!... :scream:'
-        : ''
-      }`
+    const hasSingleAccount = p.usernames.accounts?.length === 1
+    const acc = p.usernames.accounts?.[0]
+    let isLoading = false
+    let isError = false
+    if (hasSingleAccount && acc) {
+      if (isFetchingMmr(acc.hotsBattleTag)) {
+        isLoading = true
+      } else if (
+        acc.hpSlGames === null &&
+        acc.hpQmGames === null &&
+        acc.hpArGames === null
+      ) {
+        isLoading = true
+        triggerAccountMmrFetch(acc.hotsBattleTag, guildId).catch(err => {
+          console.error(`Error triggering MMR fetch for ${acc.hotsBattleTag}:`, err)
+        })
+      } else if (
+        acc.hpSlGames === -1 &&
+        acc.hpQmGames === -1 &&
+        acc.hpArGames === -1
+      ) {
+        isError = true
+      }
+    }
+
+    return `${index + 1}: @${p.usernames.discordDisplayName}: (${accountDisplay}) \`${getPlayerRolesFormatted(p.role)}\`${
+      isLoading ? ' loading MMR...' : ''
+    }${isError ? ' MMR error!... :scream:' : ''}`
   })
 
   // combine the lobbyPlayers and previousPlayersList, into one string, labeling each section, but skip a section if there are no players in that section
@@ -184,10 +201,12 @@ function generatePreviousPlayersMessage(previousPlayersList: string[]): string {
  */
 export async function updateLobbyMessage(
   guildId: string,
-  interaction: chatOrButtonOrModal,
+  interaction?: chatOrButtonOrModal,
   previousPlayersList?: string[]
 ) {
-  await updateAdminActiveButtons(interaction, previousPlayersList)
+  if (interaction) {
+    await updateAdminActiveButtons(interaction, previousPlayersList)
+  }
 
   const lobbyMessages = getLobbyMessages(guildId, [CommandIds.NEW_GAME])
   if (!lobbyMessages || lobbyMessages.length === 0) {
@@ -195,9 +214,11 @@ export async function updateLobbyMessage(
   }
 
   try {
-    const channel = interaction.guild?.channels.cache.get(lobbyMessages[0].channelId)
-    if (channel?.isTextBased()) {
-      const message = await channel.messages.fetch(lobbyMessages[0].messageId)
+    const targetChannel =
+      interaction?.guild?.channels.cache.get(lobbyMessages[0].channelId) ??
+      (client?.isReady() ? await client.channels.fetch(lobbyMessages[0].channelId).catch(() => null) : null)
+    if (targetChannel?.isTextBased()) {
+      const message = await targetChannel.messages.fetch(lobbyMessages[0].messageId)
       // purposely don't pass in the previousPlayersList, so it uses the stored value in the database
       const updatedContent = generateLobbyStatusMessage(guildId)
       await message.edit({

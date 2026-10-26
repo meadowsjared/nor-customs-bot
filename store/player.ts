@@ -751,6 +751,82 @@ export function getAllPlayers(page: number, sort: 'mmr' | 'alphabetical', ascend
   return rows.map<Player>(row => getPlayerFromRow(row, accounts))
 }
 
+const activeMmrLoadingTags = new Set<string>()
+
+/**
+ * Checks if MMR is currently being fetched in the background for a BattleTag.
+ */
+export function isFetchingMmr(battleTag: string): boolean {
+  return activeMmrLoadingTags.has(battleTag.toLowerCase())
+}
+
+/**
+ * Triggers a background MMR fetch from Heroes Profile for an account (guest or registered).
+ * Updates the database and refreshes the lobby message when finished.
+ */
+export async function triggerAccountMmrFetch(battleTag: string, guildId?: string): Promise<void> {
+  const lowerTag = battleTag.toLowerCase()
+  if (activeMmrLoadingTags.has(lowerTag)) return
+  activeMmrLoadingTags.add(lowerTag)
+
+  try {
+    const profileData = await getHeroesProfileData(battleTag)
+    if (profileData && !(profileData.qmGames === -1 && profileData.slGames === -1 && profileData.arGames === -1)) {
+      db.prepare(`
+        UPDATE hots_accounts SET
+          HP_Region = ?,
+          HP_Blizz_ID = ?,
+          HP_QM_MMR = ?,
+          HP_SL_MMR = ?,
+          HP_AR_MMR = ?,
+          HP_QM_Games = ?,
+          HP_SL_Games = ?,
+          HP_AR_Games = ?,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE hots_battle_tag = ? COLLATE NOCASE
+      `).run(
+        profileData.region,
+        profileData.blizz_id,
+        profileData.qmMmr,
+        profileData.slMmr,
+        profileData.arMmr,
+        profileData.qmGames,
+        profileData.slGames,
+        profileData.arGames,
+        battleTag
+      )
+    } else {
+      db.prepare(`
+        UPDATE hots_accounts SET
+          HP_QM_Games = -1,
+          HP_SL_Games = -1,
+          HP_AR_Games = -1,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE hots_battle_tag = ? COLLATE NOCASE
+      `).run(battleTag)
+    }
+  } catch (err) {
+    console.error(`Error fetching HP MMR for ${battleTag}:`, err)
+    db.prepare(`
+      UPDATE hots_accounts SET
+        HP_QM_Games = -1,
+        HP_SL_Games = -1,
+        HP_AR_Games = -1,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE hots_battle_tag = ? COLLATE NOCASE
+    `).run(battleTag)
+  } finally {
+    activeMmrLoadingTags.delete(lowerTag)
+    if (guildId) {
+      try {
+        await updateLobbyMessage(guildId)
+      } catch (e) {
+        console.error('Error updating lobby message after MMR fetch:', e)
+      }
+    }
+  }
+}
+
 export async function handleAddHotsAccount(
   interaction:
     | ChatInputCommandInteraction<CacheType>
@@ -821,7 +897,13 @@ ${validationResult.rules}
   //     '🔍 Fetching Heroes Profile data... This may take 30-60 seconds.\n<a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004>',
   // });
   // get their heroes profile data
-  const profileData = await getHeroesProfileData(hotsBattleTag)
+  activeMmrLoadingTags.add(hotsBattleTag.toLowerCase())
+  let profileData
+  try {
+    profileData = await getHeroesProfileData(hotsBattleTag)
+  } finally {
+    activeMmrLoadingTags.delete(hotsBattleTag.toLowerCase())
+  }
   // const profileData = await getHeroesProfileDataPuppeteer(hotsBattleTag);
   if (!profileData) {
     await safeReply(interaction, {
@@ -1540,6 +1622,9 @@ function resolvePlayerForActive(
     `)
     const info = insertStmt.run(tag)
     const newAccId = Number(info.lastInsertRowid)
+    triggerAccountMmrFetch(tag, guildId).catch(err => {
+      console.error(`Error in background MMR fetch for ${tag}:`, err)
+    })
     return getPlayerByIdentifier(`${PlayerIdPrefix.HOTS_ROW_ID}${newAccId}`, guildId)
   }
 
