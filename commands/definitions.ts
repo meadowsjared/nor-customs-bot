@@ -976,6 +976,13 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     description: 'View recently imported custom match replays',
     options: [
       {
+        name: CommandIds.REPLAY,
+        type: ApplicationCommandOptionType.Integer,
+        description: 'Specific match ID to view (optional, select from recent matches)',
+        required: false,
+        autocomplete: true,
+      },
+      {
         name: CommandIds.COUNT,
         type: ApplicationCommandOptionType.Integer,
         description: 'Number of recent replays to show (default 5)',

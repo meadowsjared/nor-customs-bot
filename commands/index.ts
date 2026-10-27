@@ -12,17 +12,15 @@ import {
   ChannelType,
   ChatInputCommandInteraction,
   EmbedBuilder,
-  GuildChannel,
   Interaction,
-  InteractionReplyOptions,
   InteractionResponse,
   Message,
   MessageFlags,
-  MessagePayload,
   ModalBuilder,
   ModalSubmitInteraction,
+  StringSelectMenuBuilder,
+  StringSelectMenuInteraction,
   TextBasedChannel,
-  TextChannel,
   TextInputBuilder,
   TextInputStyle,
   User,
@@ -3245,26 +3243,29 @@ async function handleLookupCommandSub(
 
             const matchDayStart = new Date(year, month - 1, day).getTime()
             const diffDays = Math.round((todayStart - matchDayStart) / (1000 * 60 * 60 * 24))
-            const relativeStr = diffDays <= 0 ? 'Today' : diffDays === 1 ? 'Yesterday' : `${diffDays}_days_ago`
+            const relativeStr = diffDays <= 0 ? 'Today' : diffDays === 1 ? 'Yesterday' : `${diffDays}d_ago`
 
             const dateStr = matchDate
               .toLocaleDateString('en-US', {
                 month: 'short',
                 day: 'numeric',
-                year: '2-digit',
               })
               .replace(/[\s,]+/g, '_')
 
-            const prettyDate = `${dateStr}_${relativeStr}`
-            const heroPart = m.hero ? `__Hero:${m.hero.replace(/\s+/g, '_')}` : ''
+            const heroPart = m.hero ? `hero=${encodeURIComponent(m.hero.replace(/\s+/g, '_'))}` : ''
+            const mapPart = m.map ? `map=${encodeURIComponent(m.map.replace(/\s+/g, '_'))}` : ''
+            const datePart = `date=${dateStr}(${relativeStr})`
             const subTag = m.isSubstitute ? '(sub)' : ''
-            const tagPart = m.battleTag ? `__Account:${m.battleTag.replace(/\s+/g, '_')}${subTag}` : ''
-            const mapPart = m.map ? `__Map:${m.map.replace(/\s+/g, '_')}` : ''
-            const replayPart = m.replayId ? `__Match:#${m.replayId}` : ''
+            const tagPart = m.battleTag
+              ? `account=${encodeURIComponent(m.battleTag.replace(/\s+/g, '_').replace(/#/g, '-'))}${subTag}`
+              : ''
 
-            const details = `${prettyDate}${heroPart}${tagPart}${mapPart}${replayPart}`
-            const gcalUrl = `<http://calendar.google.com/u/0/r/day/${year}/${month}/${day}?${details}>`
-            return `[${m.win ? '🟩' : '🟥'}](${gcalUrl})`
+            const queryParams = [heroPart, mapPart, datePart, tagPart].filter(Boolean).join('&')
+            const matchId = m.replayId ? `${m.replayId}` : 'custom'
+            const baseUrl =
+              process.env.MATCH_VIEWER_BASE_URL?.replace(/\/$/, '') || 'https://storm-stats.duckdns.org'
+            const url = `<${baseUrl}/replay/${matchId}?${queryParams}>`
+            return `[${m.win ? '🟩' : '🟥'}](${url})`
           })
           .join(' ')
       }
@@ -3421,16 +3422,66 @@ async function handleLookupCommandSub(
       }
     }
 
+    const components: ActionRowBuilder<StringSelectMenuBuilder>[] = []
+    if (matchStats && matchStats.recentMatches && matchStats.recentMatches.length > 0) {
+      const seenReplayIds = new Set<number>()
+      const selectOptions: { label: string; description: string; value: string }[] = []
+      for (const m of matchStats.recentMatches) {
+        if (!m.replayId || seenReplayIds.has(m.replayId)) continue
+        seenReplayIds.add(m.replayId)
+
+        const matchDate = m.date ? new Date(m.date) : null
+        const dateStr =
+          matchDate && !isNaN(matchDate.getTime())
+            ? matchDate.toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+            })
+            : 'Unknown date'
+
+        const winLoss = m.win ? '🟩 Win' : '🟥 Loss'
+        const label = `#${m.replayId} • ${winLoss} • ${m.hero || 'Unknown'} on ${m.map || 'Unknown'}`.slice(0, 100)
+        const subInfo = m.isSubstitute
+          ? ` • Sub: ${m.battleTag || 'unknown'}`
+          : m.battleTag
+            ? ` • Account: ${m.battleTag}`
+            : ''
+        const description = `${dateStr}${subInfo}`.slice(0, 100)
+
+        selectOptions.push({
+          label,
+          description,
+          value: String(m.replayId),
+        })
+
+        if (selectOptions.length >= 25) break
+      }
+
+      if (selectOptions.length > 0) {
+        const replaySelectMenu = new StringSelectMenuBuilder()
+          .setCustomId(`lookup_replay_select:${discordId}`)
+          .setPlaceholder('🔍 Select a recent match to view full replay details...')
+          .addOptions(selectOptions)
+
+        components.push(
+          new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(replaySelectMenu)
+        )
+      }
+    }
+
     const publish = interaction.options.getString(CommandIds.PUBLISH) === 'true'
 
     if (publish) {
       // send the message publicly
       await announce(interaction, {
         embeds: [embed],
+        components,
       })
     } else {
       await safeReply(interaction, {
         embeds: [embed],
+        components,
         flags: safePing(MessageFlags.Ephemeral),
       })
     }
@@ -5175,14 +5226,14 @@ function buildReplayOverviewEmbed(
   const r: RecentReplaySummary =
     typeof replayOrId === 'number'
       ? (getReplaySummary(replayOrId) ?? {
-          id: replayOrId,
-          map: 'Unknown Map',
-          date: '',
-          length: null,
-          winner: null,
-          team0Takedowns: null,
-          team1Takedowns: null,
-        })
+        id: replayOrId,
+        map: 'Unknown Map',
+        date: '',
+        length: null,
+        winner: null,
+        team0Takedowns: null,
+        team1Takedowns: null,
+      })
       : replayOrId
 
   const durationMin = r.length ? Math.floor(r.length / 60) : 0
@@ -5997,10 +6048,28 @@ export async function handleReassignReplayPlayerCommand(
 export async function handleRecentReplaysCommand(
   interaction: ChatInputCommandInteraction<CacheType>
 ): Promise<void> {
+  const replayIdOption = interaction.options.getInteger(CommandIds.REPLAY)
   const count = interaction.options.getInteger(CommandIds.COUNT) ?? 5
   const clampedCount = Math.max(1, count)
 
   await interaction.deferReply({ flags: MessageFlags.Ephemeral })
+
+  if (replayIdOption !== null && replayIdOption !== undefined) {
+    const replay = getReplaySummary(replayIdOption)
+    if (!replay) {
+      await interaction.editReply({
+        content: `❌ Replay ID **#${replayIdOption}** was not found in the database.`,
+      })
+      return
+    }
+
+    const embed = buildReplayOverviewEmbed(replay)
+    await interaction.editReply({
+      content: `📋 **Match Details for Replay #${replay.id}:**`,
+      embeds: [embed],
+    })
+    return
+  }
 
   const replays = getRecentReplays(clampedCount)
   if (replays.length === 0) {
@@ -6017,5 +6086,32 @@ export async function handleRecentReplaysCommand(
     embeds
   )
 }
+
+export async function handleLookupReplaySelect(
+  interaction: StringSelectMenuInteraction
+): Promise<void> {
+  const selectedValue = interaction.values[0]
+  if (!selectedValue) return
+
+  const replayId = Number(selectedValue)
+  if (isNaN(replayId)) return
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral })
+
+  const replay = getReplaySummary(replayId)
+  if (!replay) {
+    await interaction.editReply({
+      content: `❌ Replay ID **#${replayId}** was not found in the database.`,
+    })
+    return
+  }
+
+  const embed = buildReplayOverviewEmbed(replay)
+  await interaction.editReply({
+    content: `📋 **Match Details for Replay #${replay.id}:**`,
+    embeds: [embed],
+  })
+}
+
 
 

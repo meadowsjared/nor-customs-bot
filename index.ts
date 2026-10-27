@@ -87,6 +87,7 @@ import {
   handleReassignReplayPlayerCommand,
   handleRecentReplaysCommand,
   handleReassignReplayPlayerAutocomplete,
+  handleLookupReplaySelect,
 } from './commands'
 import { safeReply } from './utils/interaction'
 import { getBotChannel } from './utils/channel'
@@ -242,10 +243,18 @@ client.on('interactionCreate', async interaction => {
         await handleAssignAccountAutocomplete(interaction)
         return
       }
-      if (interaction.commandName === CommandIds.REASSIGN_REPLAY_PLAYER) {
+      if (
+        interaction.commandName === CommandIds.REASSIGN_REPLAY_PLAYER ||
+        interaction.commandName === CommandIds.RECENT_REPLAYS
+      ) {
         await handleReassignReplayPlayerAutocomplete(interaction)
         return
       }
+    }
+
+    if (interaction.isStringSelectMenu() && interaction.customId.startsWith('lookup_replay_select:')) {
+      await handleLookupReplaySelect(interaction)
+      return
     }
 
     if (!interaction.isChatInputCommand() && !interaction.isButton()) return
