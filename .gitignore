@@ -14,3 +14,5 @@ logs/
 .running_version
 store_backup/
 *.traineddata
+store/nor_customs.db-shm
+store/nor_customs.db-wal
