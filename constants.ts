@@ -8,7 +8,7 @@ import {
   ModalSubmitInteraction,
 } from 'discord.js'
 
-export const botChannelName = '🫠-nor-customs'
+export const botChannelName = '🫠-customs-cruncher'
 
 export const norDiscordId = '192116769870184448' // Nor's Discord ID
 export const norsServerId = '706998529582956654' // Nor's Server ID

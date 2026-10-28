@@ -1,8 +1,8 @@
-# nor-customs-bot
-A Discord bot for managing Nor Customs lobbies and roles in Heroes of the Storm.
+# customs-cruncher
+A Discord bot for managing Hots Customs lobbies and roles in Heroes of the Storm.
 
 # to start the app:
-cd /home/jmeadows/ghq/github.com/meadowsjared/nor-customs-bot
+cd /home/jmeadows/ghq/github.com/meadowsjared/customs-cruncher
 bun start
 
   ### or run it directly:

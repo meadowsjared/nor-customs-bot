@@ -35,7 +35,7 @@ export async function announce(
   if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
     await interaction.reply({
       content:
-        '⚠️ No bot channel is configured for this server. Please ask an admin to run `/set_bot_channel #channel` or create a channel named `🫠-nor-customs`.',
+        '⚠️ No bot channel is configured for this server. Please ask an admin to run `/set_bot_channel #channel` or create a channel named `🫠-customs-cruncher`.',
       flags: MessageFlags.Ephemeral,
     })
   }

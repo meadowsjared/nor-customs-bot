@@ -146,14 +146,14 @@ client.on('guildCreate', async guild => {
   if (channel && 'send' in channel) {
     await channel
       .send(
-        `Hello! 👋 This channel (<#${channel.id}>) is configured as the bot channel for **Nor's Customs Bot**. You can rename it anytime with \`/rename_bot_channel\` or select a different channel with \`/set_bot_channel\`.`
+        `Hello! 👋 This channel (<#${channel.id}>) is configured as the bot channel for **Customs Cruncher Bot**. You can rename it anytime with \`/rename_bot_channel\` or select a different channel with \`/set_bot_channel\`.`
       )
       .catch(err => console.error(`Error sending welcome message in guild ${guild.name}:`, err))
   } else {
     try {
       const owner = await guild.fetchOwner()
       await owner.send(
-        `Thanks for adding **Nor's Customs Bot** to **${guild.name}**! 👋\n\nPlease run \`/set_bot_channel #channel\` in your server or create a text channel named \`${botChannelName}\` to complete setup.`
+        `Thanks for adding **Customs Cruncher Bot** to **${guild.name}**! 👋\n\nPlease run \`/set_bot_channel #channel\` in your server or create a text channel named \`${botChannelName}\` to complete setup.`
       )
     } catch (err) {
       console.error(`Could not DM owner of guild ${guild.name}:`, err)
@@ -167,7 +167,7 @@ client.once('clientReady', async () => {
     status: 'online', // 'online' | 'idle' | 'dnd' | 'invisible'
     activities: [
       {
-        name: "Nor's Customs",
+        name: "Customs Cruncher",
         type: ActivityType.Watching,
         url: 'https://www.twitch.tv/norator',
         state: 'Heroes of the Storm',

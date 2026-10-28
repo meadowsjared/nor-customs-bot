@@ -1,4 +1,4 @@
-name: Build and Release Nor Customs Bot
+name: Build and Release Customs Cruncher
 
 on:
   push:

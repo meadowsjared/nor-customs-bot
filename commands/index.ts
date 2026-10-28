@@ -2450,7 +2450,7 @@ export async function handleGuideCommand(
   // inside a command, event listener, etc.
   const exampleEmbed = new EmbedBuilder()
     .setColor(0x0099ff)
-    .setTitle("Nor's Hots Customs — Lobby Guide")
+    .setTitle("Customs Cruncher — Lobby Guide")
     /*
     .setDescription(
       'This is a custom lobby for Heroes of the Storm. Use the commands below to join, leave, or manage your role in the lobby.'
@@ -5372,7 +5372,7 @@ export async function syncRecentReplays(
     if (replayData && replayData.mode === -1) {
       importedCount++
       const replayId = saveReplayToDb(replayData, guildId)
-      const destPath = path.join('/mnt/NorCustoms', fileName)
+      const destPath = path.join('/mnt/CustomsCruncher', fileName)
       try {
         fs.copyFileSync(file, destPath)
       } catch (error) {
@@ -5489,8 +5489,8 @@ export async function handleImportReplaysCommand(
     ) {
       count++
       const replayId = saveReplayToDb(replayData, guildId)
-      // copy the replay from its nested path 'file' to /mnt/NorCustoms/
-      const destPath = path.join('/mnt/NorCustoms', fileName)
+      // copy the replay from its nested path 'file' to /mnt/CustomsCruncher/
+      const destPath = path.join('/mnt/CustomsCruncher', fileName)
       try {
         fs.copyFileSync(file, destPath)
       } catch (error) {

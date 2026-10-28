@@ -2,6 +2,8 @@ node_modules
 .env
 store/*.json
 store/*.db
+store/*.db-shm
+store/*.db-wal
 bun.lockb
 sqlite3_analyzer.exe
 sqlite3_rsync.exe
@@ -14,5 +16,3 @@ logs/
 .running_version
 store_backup/
 *.traineddata
-store/nor_customs.db-shm
-store/nor_customs.db-wal

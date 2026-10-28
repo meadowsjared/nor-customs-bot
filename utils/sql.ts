@@ -34,7 +34,7 @@ export interface ColumnDefinition {
   autoIncrement?: true
   isBoolean?: true
   isPercentage?: true
-  /** true if this column should not be imported from the Nor-Customs CSV file */
+  /** true if this column should not be imported from the Customs Cruncher CSV file */
   skipImport?: true
   importToPlayer?: true
 }
@@ -49,10 +49,10 @@ export enum SQLiteColumnType {
 type PrimitiveFromDbType<T extends SQLiteColumnType> = T extends SQLiteColumnType.INTEGER | SQLiteColumnType.REAL
   ? number
   : T extends SQLiteColumnType.TEXT | SQLiteColumnType.DATETIME
-    ? string
-    : never
+  ? string
+  : never
 
 // Generic type to create an interface from a schema array
 export type InterfaceFromSchema<T extends readonly ColumnDefinition[]> = {
-  [Item in T[number] as Item extends { skipImport: true } ? never : Item['name']]: PrimitiveFromDbType<Item['dbType']>
+  [Item in T[number]as Item extends { skipImport: true } ? never : Item['name']]: PrimitiveFromDbType<Item['dbType']>
 }

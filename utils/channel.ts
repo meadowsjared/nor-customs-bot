@@ -5,7 +5,7 @@ import { getSetting, setSetting } from '../store/settings'
 /**
  * Gets or resolves the primary text channel for bot commands and announcements in a guild.
  * It first checks the SQLite settings table for `bot_channel_id`.
- * If missing or pointing to an invalid channel, it falls back to finding a channel named `🫠-nor-customs`.
+ * If missing or pointing to an invalid channel, it falls back to finding a channel named `🫠-customs-cruncher`.
  * When found by name, it automatically persists the channel ID in SQLite settings.
  *
  * @param guild The Discord guild instance
@@ -27,7 +27,7 @@ export async function getBotChannel(guild: Guild | null | undefined): Promise<Te
     }
   }
 
-  // 2. Fallback to searching by channel name ('🫠-nor-customs')
+  // 2. Fallback to searching by channel name ('🫠-customs-cruncher')
   const channelByName = guild.channels.cache.find(ch => ch.name === botChannelName)
   if (channelByName && channelByName.isTextBased()) {
     // Automatically persist to settings so future lookups are fast and immune to renames
