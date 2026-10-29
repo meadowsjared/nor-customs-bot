@@ -2,6 +2,9 @@ import { appendFileSync, existsSync, mkdirSync, unlinkSync } from 'fs'
 import { connect, PageWithCursor } from 'puppeteer-real-browser'
 import type { Browser, Protocol } from 'rebrowser-puppeteer-core'
 
+// Enable rebrowser CDP isolation patches so Cloudflare does not detect DevTools protocol
+process.env.REBROWSER_PATCHES_RUNTIME_FIX_MODE = 'addBinding'
+
 // Save original console methods
 const origLog = console.log
 const origError = console.error
@@ -30,7 +33,7 @@ export async function puppeteerRefreshXsrfTokenAndCookies(url: string): Promise<
     try {
       const { execSync } = await import('child_process')
       const foundPath = execSync(
-        'find ~/.cache/puppeteer/chrome -name chrome -type f 2>/dev/null | sort -V | tail -n 1',
+        'find ~/.cache/puppeteer/chrome -name chrome -type f 2>/dev/null | grep -v "156" | sort -V | tail -n 1',
         {
           encoding: 'utf8',
         }
@@ -54,14 +57,19 @@ export async function puppeteerRefreshXsrfTokenAndCookies(url: string): Promise<
 
   const { browser, page } = await connect({
     headless: false,
-    turnstile: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--user-data-dir=' + userDataDir],
+    turnstile: false,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-blink-features=AutomationControlled',
+      '--user-data-dir=' + userDataDir,
+    ],
     customConfig: {
       userDataDir,
     },
   })
   try {
-    await page.goto(url, { waitUntil: 'networkidle2' })
+    await page.goto(url, { waitUntil: 'domcontentloaded' })
 
     // Allow Cloudflare Turnstile / security challenge to complete
     await new Promise(r => setTimeout(r, 2000))
@@ -70,7 +78,7 @@ export async function puppeteerRefreshXsrfTokenAndCookies(url: string): Promise<
     let xsrfCookie: Protocol.Network.Cookie | undefined
     let cookieObjects: Protocol.Network.Cookie[] = []
 
-    for (let i = 0; i < 45; i++) {
+    for (let i = 0; i < 20; i++) {
       const client = await page.createCDPSession()
       const res = await client.send('Network.getAllCookies')
       cookieObjects = res.cookies
@@ -81,6 +89,7 @@ export async function puppeteerRefreshXsrfTokenAndCookies(url: string): Promise<
     }
 
     if (!xsrfCookie) {
+      await page.screenshot({ path: '/tmp/cf_screenshot.png' }).catch(() => {})
       const currentUrl = page.url()
       const currentTitle = await page.title().catch(() => 'unknown')
       throw new Error(

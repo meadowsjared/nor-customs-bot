@@ -664,15 +664,7 @@ ${validationResult.rules}
     removeFetchingMmrTag(hotsBattleTag)
   }
 
-  if (!profileData) {
-    await safeReply(interaction, {
-      content: `Failed to retrieve Heroes profile data for \`${hotsBattleTag}\`.\nAre you sure you typed it right?`,
-      flags: MessageFlags.Ephemeral,
-    })
-    return false
-  }
-
-  if (profileData.qmGames === -1 && profileData.slGames === -1 && profileData.arGames === -1) {
+  if (profileData && profileData.qmGames === -1 && profileData.slGames === -1 && profileData.arGames === -1) {
     await handleAccountNotFound(interaction, discordId, hotsBattleTag)
     return false
   }
@@ -703,9 +695,14 @@ ${validationResult.rules}
         ? Boolean(currentAccount.is_primary)
         : !player.usernames.accounts || player.usernames.accounts.length <= 1
 
-    const qmMmr = Number.isNaN(profileData.qmMmr) ? null : profileData.qmMmr
-    const slMmr = Number.isNaN(profileData.slMmr) ? null : profileData.slMmr
-    const arMmr = Number.isNaN(profileData.arMmr) ? null : profileData.arMmr
+    const qmMmr = profileData && !Number.isNaN(profileData.qmMmr) ? profileData.qmMmr : null
+    const slMmr = profileData && !Number.isNaN(profileData.slMmr) ? profileData.slMmr : null
+    const arMmr = profileData && !Number.isNaN(profileData.arMmr) ? profileData.arMmr : null
+    const hpRegion = profileData?.region ?? null
+    const hpBlizzId = profileData?.blizz_id != null ? String(profileData.blizz_id) : null
+    const hpQmGames = profileData?.qmGames ?? null
+    const hpSlGames = profileData?.slGames ?? null
+    const hpArGames = profileData?.arGames ?? null
 
     await sql.begin(async tx => {
       let accountId: number
@@ -716,14 +713,14 @@ ${validationResult.rules}
             discord_id = ${discordId},
             hots_battle_tag = ${hotsBattleTag},
             is_primary = ${isPrimary},
-            hp_region = ${profileData.region},
-            hp_blizz_id = ${String(profileData.blizz_id)},
+            hp_region = ${hpRegion},
+            hp_blizz_id = ${hpBlizzId},
             hp_qm_mmr = ${qmMmr},
             hp_sl_mmr = ${slMmr},
             hp_ar_mmr = ${arMmr},
-            hp_qm_games = ${profileData.qmGames},
-            hp_sl_games = ${profileData.slGames},
-            hp_ar_games = ${profileData.arGames},
+            hp_qm_games = ${hpQmGames},
+            hp_sl_games = ${hpSlGames},
+            hp_ar_games = ${hpArGames},
             updated_at = NOW()
           WHERE id = ${currentAccount.id}
         `
@@ -734,8 +731,8 @@ ${validationResult.rules}
             discord_id, hots_battle_tag, is_primary, hp_region, hp_blizz_id,
             hp_qm_mmr, hp_sl_mmr, hp_ar_mmr, hp_qm_games, hp_sl_games, hp_ar_games
           ) VALUES (
-            ${discordId}, ${hotsBattleTag}, ${isPrimary}, ${profileData.region}, ${String(profileData.blizz_id)},
-            ${qmMmr}, ${slMmr}, ${arMmr}, ${profileData.qmGames}, ${profileData.slGames}, ${profileData.arGames}
+            ${discordId}, ${hotsBattleTag}, ${isPrimary}, ${hpRegion}, ${hpBlizzId},
+            ${qmMmr}, ${slMmr}, ${arMmr}, ${hpQmGames}, ${hpSlGames}, ${hpArGames}
           )
           RETURNING id
         `
@@ -761,7 +758,7 @@ ${validationResult.rules}
       `
     })
 
-    if (profileData.detectedRoles && !player.role) {
+    if (profileData?.detectedRoles && !player.role) {
       await setPlayerRole(discordId, guildId, profileData.detectedRoles)
       player.role = profileData.detectedRoles
     }
@@ -769,17 +766,20 @@ ${validationResult.rules}
     if (interaction) {
       await updateLobbyMessage(guildId, interaction)
     }
+    const noticeText = !profileData
+      ? '\n*(Note: Heroes Profile could not be reached to fetch MMR, but the account has been registered!)*'
+      : ''
     if (hotsAccountAlreadyExists) {
-      const reasonText = profileData.detectedRolesReason ? `\n(${profileData.detectedRolesReason})` : ''
+      const reasonText = profileData?.detectedRolesReason ? `\n(${profileData.detectedRolesReason})` : ''
       const roleText =
-        profileData.detectedRoles && player.role === profileData.detectedRoles
+        profileData?.detectedRoles && player.role === profileData.detectedRoles
           ? `\nAuto-populated role: ${getPlayerRolesFormatted(player.role)}${reasonText}`
           : ''
       const content = `${userIsSelf ? 'You' : '<@' + discordId + '>'} already ${
         userIsSelf ? 'have' : 'has'
       } this HotS account linked: \`${hotsBattleTag}\`\n\nHowever, ${
         userIsSelf ? 'your' : '<@' + discordId + '>' + "'s"
-      } Heroes profile data and BattleTag formatting have been updated.${roleText}`
+      } Heroes profile data and BattleTag formatting have been updated.${roleText}${noticeText}`
       try {
         await interaction?.editReply({
           content,
@@ -791,15 +791,15 @@ ${validationResult.rules}
         })
       }
     } else {
-      const reasonText = profileData.detectedRolesReason ? `\n(${profileData.detectedRolesReason})` : ''
+      const reasonText = profileData?.detectedRolesReason ? `\n(${profileData.detectedRolesReason})` : ''
       const roleText =
-        profileData.detectedRoles && player.role === profileData.detectedRoles
+        profileData?.detectedRoles && player.role === profileData.detectedRoles
           ? `\nAuto-populated role: ${getPlayerRolesFormatted(player.role)}${reasonText}`
           : ''
       await safeReply(interaction, {
         content: `${
           discordId === interaction?.user.id ? 'Your' : '<@' + discordId + ">'s"
-        } HotS account has been added: \`${hotsBattleTag}\`${roleText}`,
+        } HotS account has been added: \`${hotsBattleTag}\`${roleText}${noticeText}`,
         flags: MessageFlags.Ephemeral,
       })
     }
