@@ -1,9 +1,9 @@
 import { parse } from 'csv-parse/sync'
 import { readFileSync } from 'fs'
 import { sql } from '../store/db'
-import { CSVColumnDefinition, CSVRecord, HOTS_ACCOUNTS_COLUMNS } from '../types/csvSpreadsheet'
+import { CSVColumnDefinition, CSVRecord, HOTS_ACCOUNTS_COLUMNS } from './csvSpreadsheet.types'
 import { HotsAccountRow } from '../types/player'
-import { SQLiteColumnType } from './sql'
+import { SQLiteColumnType } from '../utils/sql'
 
 class CSVImporter {
   private readonly db = sql
