@@ -1,6 +1,6 @@
 {
   "name": "customs-cruncher",
-  "version": "6.0.5",
+  "version": "6.0.6",
   "main": "index.ts",
   "type": "module",
   "scripts": {
