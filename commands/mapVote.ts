@@ -8,12 +8,11 @@ import {
   ButtonStyle,
   CacheType,
   ChatInputCommandInteraction,
-  ComponentType,
   EmbedBuilder,
   MessageFlags,
   TextBasedChannel,
 } from 'discord.js'
-import { adminUserIds, CommandIds } from '../constants'
+import { adminUserIds } from '../constants'
 import {
   castMapVote,
   deleteMapVoteSession,
@@ -42,7 +41,7 @@ function buildMapVoteButtonRows(
   activeMaps: MapDefinition[],
   sessionId: string,
   talliesMap: Record<string, number>,
-  isEnded: boolean = false
+  isEnded = false
 ): ActionRowBuilder<ButtonBuilder>[] {
   const rows: ActionRowBuilder<ButtonBuilder>[] = []
   let currentRow = new ActionRowBuilder<ButtonBuilder>()
@@ -87,14 +86,16 @@ function isSessionAdminOrCreator(session: MapVoteSession, userId: string): boole
 /**
  * Builds the live standings summary embed featuring the current #1 leading map's image
  */
-function buildSummaryEmbed(
+async function buildSummaryEmbed(
   title: string,
   tallies: MapVoteTally[],
   leaderMap: MapDefinition | undefined,
   recentlyPlayedMaps: MapDefinition[],
   isEnded: boolean,
   winnerMap?: MapDefinition
-): { embeds: EmbedBuilder[]; files: AttachmentBuilder[] } {
+): Promise<{ embeds: EmbedBuilder[]; files: AttachmentBuilder[] }> {
+  void leaderMap
+  void winnerMap
   const totalVotes = tallies.reduce((sum, t) => sum + t.count, 0)
 
   const maxVotes = Math.max(...tallies.map(t => t.count))
@@ -117,7 +118,7 @@ function buildSummaryEmbed(
   const embeds: EmbedBuilder[] = [mainEmbed]
 
   let mapsToDisplay: MapDefinition[] = []
-  const sortedMaps = getSortedHotsMaps()
+  const sortedMaps = await getSortedHotsMaps()
   if (!isEnded) {
     if (topTiedTallies.length > 0) {
       mapsToDisplay = topTiedTallies
@@ -165,10 +166,10 @@ function buildSummaryEmbed(
 }
 
 /**
- * Ends a map vote session in SQLite database and locks its main Discord message.
+ * Ends a map vote session in PostgreSQL and locks its main Discord message.
  */
 async function closeAndLockMapVoteSession(channel: TextBasedChannel | null, session: MapVoteSession): Promise<void> {
-  endMapVoteSession(session.id)
+  await endMapVoteSession(session.id)
 
   if (!channel || !('messages' in channel)) return
   const voteMsgId = session.messageIds[0]
@@ -177,8 +178,8 @@ async function closeAndLockMapVoteSession(channel: TextBasedChannel | null, sess
   try {
     const voteMsg = await channel.messages.fetch(voteMsgId)
     if (voteMsg) {
-      const { recentlyPlayedMaps, tallies } = getMapVoteSortedList(session.id)
-      const { embeds: summaryEmbeds } = buildSummaryEmbed(
+      const { recentlyPlayedMaps, tallies } = await getMapVoteSortedList(session.id)
+      const { embeds: summaryEmbeds } = await buildSummaryEmbed(
         session.title ?? 'Vote Ended',
         tallies,
         undefined,
@@ -226,13 +227,13 @@ export async function handleMapVoteCommand(interaction: ChatInputCommandInteract
   }
 
   // Auto-close any active map vote session in this channel
-  const prevSession = getActiveMapVoteSession(guildId, channel.id)
+  const prevSession = await getActiveMapVoteSession(guildId, channel.id)
   if (prevSession) {
     await closeAndLockMapVoteSession(channel, prevSession)
   }
 
   const userTitle = interaction.options.getString('title')
-  const gameNumber = interaction.options.getNumber('game-number') ?? getGameNumberTonight()
+  const gameNumber = interaction.options.getNumber('game-number') ?? (await getGameNumberTonight())
   const customTitle = userTitle ? `${userTitle} - Game ${gameNumber}` : `Game ${gameNumber}`
   const sessionId = Date.now().toString()
   const createdBy = interaction.user.id
@@ -240,7 +241,7 @@ export async function handleMapVoteCommand(interaction: ChatInputCommandInteract
   // Store interaction reference to allow deleting ephemeral host control message later via webhook
   activeSessionInteractions.set(sessionId, interaction)
 
-  const { activeMaps, recentlyPlayedMaps, tallies } = getMapVoteSortedList(sessionId)
+  const { activeMaps, recentlyPlayedMaps, tallies } = await getMapVoteSortedList(sessionId)
   const postedMessageIds: string[] = []
 
   const talliesMap: Record<string, number> = {}
@@ -251,7 +252,13 @@ export async function handleMapVoteCommand(interaction: ChatInputCommandInteract
   // 1. Build combined message (Header content, Standings embed, and Map Buttons)
   const buttonRows = buildMapVoteButtonRows(activeMaps, sessionId, talliesMap, false)
   const leaderMap = activeMaps.length > 0 ? activeMaps[0] : undefined
-  const { embeds: summaryEmbeds, files } = buildSummaryEmbed(customTitle, tallies, leaderMap, recentlyPlayedMaps, false)
+  const { embeds: summaryEmbeds, files } = await buildSummaryEmbed(
+    customTitle,
+    tallies,
+    leaderMap,
+    recentlyPlayedMaps,
+    false
+  )
 
   const combinedMessage = await interaction.editReply({
     content: `# 🗺️ ${customTitle}\nClick a map button below to cast your vote!`,
@@ -281,7 +288,7 @@ export async function handleMapVoteCommand(interaction: ChatInputCommandInteract
   postedMessageIds.push(controlMessage.id)
 
   // Store session in DB
-  startMapVoteSession(sessionId, guildId, channel.id, postedMessageIds, createdBy, customTitle)
+  await startMapVoteSession(sessionId, guildId, channel.id, postedMessageIds, createdBy, customTitle)
 }
 
 /**
@@ -295,7 +302,7 @@ export async function handleVoteMapButtonClick(
   // Silently acknowledge button click without ephemeral message popups
   await safeDeferUpdate(interaction)
 
-  const session = getMapVoteSessionById(sessionId)
+  const session = await getMapVoteSessionById(sessionId)
   if (!session || !session.active) {
     await interaction.followUp({
       content: 'This map vote session has already ended or is no longer active.',
@@ -304,7 +311,8 @@ export async function handleVoteMapButtonClick(
     return
   }
 
-  const mapDef = getSortedHotsMaps().find(m => m.id === mapId)
+  const sortedMaps = await getSortedHotsMaps()
+  const mapDef = sortedMaps.find(m => m.id === mapId)
   if (!mapDef) {
     await interaction.followUp({
       content: 'Unknown map.',
@@ -314,14 +322,14 @@ export async function handleVoteMapButtonClick(
   }
 
   const userName = interaction.user.displayName || interaction.user.username
-  const previousVote = getUserVote(sessionId, interaction.user.id)
+  const previousVote = await getUserVote(sessionId, interaction.user.id)
 
   if (previousVote === mapId) {
     // Voting for the same map -> TOGGLE OFF (remove vote)
-    removeMapVote(sessionId, interaction.user.id)
+    await removeMapVote(sessionId, interaction.user.id)
   } else {
     // Voting for a new map -> TOGGLE ON / SWAP VOTE
-    castMapVote(sessionId, interaction.user.id, userName, mapId)
+    await castMapVote(sessionId, interaction.user.id, userName, mapId)
   }
 
   // Trigger throttled refresh (max once per second per session)
@@ -334,7 +342,7 @@ export async function handleVoteMapButtonClick(
 export async function handleVoteRemoveButtonClick(interaction: ButtonInteraction<CacheType>, sessionId: string) {
   await safeDeferUpdate(interaction)
 
-  const session = getMapVoteSessionById(sessionId)
+  const session = await getMapVoteSessionById(sessionId)
   if (!session || !session.active) {
     await interaction.followUp({
       content: 'This map vote session has already ended or is no longer active.',
@@ -343,11 +351,11 @@ export async function handleVoteRemoveButtonClick(interaction: ButtonInteraction
     return
   }
 
-  removeMapVote(sessionId, interaction.user.id)
+  await removeMapVote(sessionId, interaction.user.id)
   triggerSessionRefresh(interaction.channel, session)
 }
 
-interface RefreshState {
+type RefreshState = {
   timer: NodeJS.Timeout | null
   firstVoteTime: number
 }
@@ -376,7 +384,7 @@ function triggerSessionRefresh(channel: TextBasedChannel | null, session: MapVot
       clearTimeout(state.timer)
       state.timer = null
       sessionRefreshStates.delete(session.id)
-      refreshMapVoteSessionMessages(channel, session)
+      void refreshMapVoteSessionMessages(channel, session)
       return
     }
 
@@ -397,7 +405,7 @@ function triggerSessionRefresh(channel: TextBasedChannel | null, session: MapVot
 async function refreshMapVoteSessionMessages(channel: TextBasedChannel | null, session: MapVoteSession) {
   if (!channel || !('messages' in channel)) return
 
-  const { activeMaps, recentlyPlayedMaps, tallies } = getMapVoteSortedList(session.id)
+  const { activeMaps, recentlyPlayedMaps, tallies } = await getMapVoteSortedList(session.id)
   const talliesMap: Record<string, number> = {}
   for (const t of tallies) {
     talliesMap[t.mapId] = t.count
@@ -411,7 +419,7 @@ async function refreshMapVoteSessionMessages(channel: TextBasedChannel | null, s
       if (voteMsg) {
         const buttonRows = buildMapVoteButtonRows(activeMaps, session.id, talliesMap, false)
         const leaderMap = activeMaps.length > 0 ? activeMaps[0] : undefined
-        const { embeds: summaryEmbeds, files } = buildSummaryEmbed(
+        const { embeds: summaryEmbeds, files } = await buildSummaryEmbed(
           session.title ?? 'Vote for the Next Map!',
           tallies,
           leaderMap,
@@ -437,7 +445,7 @@ async function refreshMapVoteSessionMessages(channel: TextBasedChannel | null, s
       const summaryMsg = await channel.messages.fetch(legacySummaryMsgId)
       if (summaryMsg) {
         const leaderMap = activeMaps.length > 0 ? activeMaps[0] : undefined
-        const { embeds: summaryEmbeds, files } = buildSummaryEmbed(
+        const { embeds: summaryEmbeds, files } = await buildSummaryEmbed(
           session.title ?? 'Vote for the Next Map!',
           tallies,
           leaderMap,
@@ -450,7 +458,7 @@ async function refreshMapVoteSessionMessages(channel: TextBasedChannel | null, s
           files,
         })
       }
-    } catch (err) {
+    } catch {
       // Ignore legacy summary errors
     }
   }
@@ -467,7 +475,7 @@ export async function handleEndMapVoteCommand(
     await safeDeferUpdate(interaction)
     try {
       await interaction.deleteReply()
-    } catch (err) {
+    } catch {
       // Ignore if already deleted
     }
   } else {
@@ -485,11 +493,11 @@ export async function handleEndMapVoteCommand(
 
   let session: MapVoteSession | undefined
   if (sessionIdParam) {
-    session = getMapVoteSessionById(sessionIdParam)
+    session = await getMapVoteSessionById(sessionIdParam)
   } else {
     const guildId = await requireGuildId(interaction)
     if (!guildId) return
-    session = getActiveMapVoteSession(guildId, channel.id)
+    session = await getActiveMapVoteSession(guildId, channel.id)
   }
 
   if (!session || !session.active) {
@@ -509,18 +517,16 @@ export async function handleEndMapVoteCommand(
     return
   }
 
-  const { tallies } = getMapVoteSortedList(session.id)
+  const { tallies } = await getMapVoteSortedList(session.id)
 
   // Determine winner(s)
   const maxVotes = Math.max(...tallies.map(t => t.count))
   const winners = tallies.filter(t => t.count === maxVotes && t.count > 0)
 
-  let winnerMap: MapDefinition | undefined
   let winnerText = ''
 
-  const sortedMaps = getSortedHotsMaps()
+  const sortedMaps = await getSortedHotsMaps()
   if (winners.length === 1) {
-    winnerMap = sortedMaps.find(m => m.id === winners[0].mapId)
     winnerText = `🏆 **Winning Map: ${winners[0].mapName}** with ${winners[0].count} vote${winners[0].count === 1 ? '' : 's'}!`
   } else if (winners.length > 1) {
     winnerText = `🤝 **Tie between:** ${winners.map(w => `**${w.mapName}**`).join(', ')} (${maxVotes} votes each)!`
@@ -577,7 +583,7 @@ export async function handleEndMapVoteCommand(
       files,
     })
     session.messageIds.push(winningMapAnnouncementMsg.id)
-    updateMapVoteSessionMessageIds(session.id, session.messageIds)
+    await updateMapVoteSessionMessageIds(session.id, session.messageIds)
   }
 
   await deleteEphemeralHostControlMessage(session)
@@ -601,7 +607,7 @@ export async function handleCancelMapVoteCommand(
     await safeDeferUpdate(interaction)
     try {
       await interaction.deleteReply()
-    } catch (err) {
+    } catch {
       // Ignore if already deleted
     }
   } else {
@@ -621,11 +627,12 @@ export async function handleCancelMapVoteCommand(
 
   let session: MapVoteSession | undefined
   if (sessionIdParam) {
-    session = getMapVoteSessionById(sessionIdParam)
+    session = await getMapVoteSessionById(sessionIdParam)
   } else {
     const guildId = await requireGuildId(interaction)
     if (!guildId) return
-    session = getActiveMapVoteSession(guildId, channel.id) ?? getNewestMapVoteSession(guildId, channel.id)
+    session =
+      (await getActiveMapVoteSession(guildId, channel.id)) ?? (await getNewestMapVoteSession(guildId, channel.id))
   }
 
   if (!session) {
@@ -649,7 +656,7 @@ export async function handleCancelMapVoteCommand(
     return
   }
 
-  deleteMapVoteSession(session.id)
+  await deleteMapVoteSession(session.id)
 
   // Delete all messages stored for this session
   for (const msgId of session.messageIds) {
@@ -659,7 +666,7 @@ export async function handleCancelMapVoteCommand(
       if (msg) {
         await msg.delete()
       }
-    } catch (err) {
+    } catch {
       // Ignore if message was already deleted or is ephemeral
     }
   }
@@ -682,7 +689,7 @@ async function deleteEphemeralHostControlMessage(session: MapVoteSession) {
     if (controlMsgId) {
       try {
         await startInteraction.webhook.deleteMessage(controlMsgId)
-      } catch (err) {
+      } catch {
         // Ignore if webhook expired or message already deleted
       }
     }

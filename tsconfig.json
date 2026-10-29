@@ -13,5 +13,5 @@
     "allowSyntheticDefaultImports": true
   },
   "include": ["**/**/*.ts"],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "store_backup", "store/player_old.ts", "types/player_old.ts"]
 }

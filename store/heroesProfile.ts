@@ -1,5 +1,5 @@
-import { HPData, HPPlayerData, HPPlayerStatsData } from '../types/heroesProfile' // Assuming you have a types.ts file for type definitions
-import { db } from './db'
+import { HPData, HPPlayerData, HPPlayerStatsData } from '../types/heroesProfile'
+import { sql } from './db'
 import { puppeteerRefreshXsrfTokenAndCookies } from './heroesProfilePuppeteer'
 import { PageWithCursor } from 'puppeteer-real-browser'
 import type { Browser } from 'rebrowser-puppeteer-core'
@@ -25,14 +25,17 @@ export async function getHeroesProfileData(battleTag: string): Promise<HPData | 
   try {
     const startTime = Date.now()
     // first check if we have their region and blizz_id stored already
-    const hpRegionStmt = db.prepare<string, { HP_Blizz_ID: string; HP_Region: number }>(
-      'SELECT HP_Blizz_ID, HP_Region FROM hots_accounts WHERE hots_battle_tag = ? COLLATE NOCASE'
-    )
-    const row = hpRegionStmt.get(battleTag)
+    const rows = await sql<Array<{ hp_blizz_id: string | null; hp_region: number | null }>>`
+      SELECT hp_blizz_id, hp_region
+      FROM hots_accounts
+      WHERE LOWER(hots_battle_tag) = LOWER(${battleTag})
+      LIMIT 1
+    `
+    const row = rows[0]
     console.log(`Getting HP Data for ${battleTag}`)
 
-    let blizz_id = row?.HP_Blizz_ID
-    let region = row?.HP_Region
+    let blizz_id = row?.hp_blizz_id ?? undefined
+    let region = row?.hp_region ?? undefined
     const initialized = await initializeHPPage()
     browser = initialized.browser
     const { xsrfToken, page } = initialized
@@ -48,10 +51,11 @@ export async function getHeroesProfileData(battleTag: string): Promise<HPData | 
       blizz_id = bestMatch.blizz_id
       region = bestMatch.region
       // store blizz_id, region for the first item in the array
-      const hpUpdateStmt = db.prepare(
-        'UPDATE hots_accounts SET HP_Blizz_ID = ?, HP_Region = ? WHERE hots_battle_tag = ? COLLATE NOCASE'
-      )
-      hpUpdateStmt.run(blizz_id, region, battleTag)
+      await sql`
+        UPDATE hots_accounts
+        SET hp_blizz_id = ${String(blizz_id)}, hp_region = ${region}
+        WHERE LOWER(hots_battle_tag) = LOWER(${battleTag})
+      `
     }
 
     const hpDataReturned: HPPlayerStatsData = await page.evaluate(

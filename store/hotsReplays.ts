@@ -1,360 +1,53 @@
-import path from 'path'
 import { createRequire } from 'module'
+import path from 'path'
+import type { HotSReplayObject, ReplayData } from '../types/replay'
+import { sql } from './db'
+import {
+  clearActivePlayersCache,
+  getAccountWithSubstitution,
+  getOrCreateSubstituteAccount,
+  refreshPlayerStatsView,
+  ResolvedHotsAccount,
+} from './player'
+import { initReplaysTable, insertReplays } from './replays'
+
 const require = createRequire(import.meta.url)
-import { db } from './db'
-import { ColumnDefinition, generateCreateTableSQL, InterfaceFromSchema, SQLiteColumnType } from '../utils/sql'
-import { clearActivePlayersCache, getAccountWithSubstitution, getOrCreateSubstituteAccount, ResolvedHotsAccount } from './player'
 
-export const HOTS_REPLAYS_MATCH_COLUMNS = [
-  {
-    name: 'id',
-    dbType: SQLiteColumnType.INTEGER,
-    primaryKey: true,
-    autoIncrement: true,
-    skipImport: true,
-  },
-  { name: 'type', dbType: SQLiteColumnType.INTEGER },
-  { name: 'loopLength', dbType: SQLiteColumnType.INTEGER },
-  { name: 'filename', dbType: SQLiteColumnType.TEXT },
-  { name: 'mode', dbType: SQLiteColumnType.INTEGER },
-  { name: 'map', dbType: SQLiteColumnType.TEXT },
-  { name: 'date', dbType: SQLiteColumnType.TEXT },
-  { name: 'rawDate', dbType: SQLiteColumnType.INTEGER },
-  { name: 'build', dbType: SQLiteColumnType.INTEGER },
-  { name: 'region', dbType: SQLiteColumnType.INTEGER },
-  { name: 'loopGameStart', dbType: SQLiteColumnType.INTEGER },
-  { name: 'length', dbType: SQLiteColumnType.REAL }, // in seconds
-  { name: 'team0Takedowns', dbType: SQLiteColumnType.INTEGER },
-  { name: 'team1Takedowns', dbType: SQLiteColumnType.INTEGER },
-  { name: 'winner', dbType: SQLiteColumnType.INTEGER },
-  { name: 'firstPick', dbType: SQLiteColumnType.INTEGER },
-  { name: 'firstPickWin', dbType: SQLiteColumnType.INTEGER, isBoolean: true },
-  { name: 'firstObjective', dbType: SQLiteColumnType.INTEGER },
-  {
-    name: 'firstObjectiveWin',
-    dbType: SQLiteColumnType.INTEGER,
-    isBoolean: true,
-  },
-  { name: 'firstFort', dbType: SQLiteColumnType.INTEGER },
-  { name: 'firstKeep', dbType: SQLiteColumnType.INTEGER },
-  { name: 'firstFortWin', dbType: SQLiteColumnType.INTEGER, isBoolean: true },
-  { name: 'firstKeepWin', dbType: SQLiteColumnType.INTEGER, isBoolean: true },
-  { name: 'team0Ban1', dbType: SQLiteColumnType.TEXT },
-  { name: 'team0Ban2', dbType: SQLiteColumnType.TEXT },
-  { name: 'team0Ban3', dbType: SQLiteColumnType.TEXT },
-  { name: 'team1Ban1', dbType: SQLiteColumnType.TEXT },
-  { name: 'team1Ban2', dbType: SQLiteColumnType.TEXT },
-  { name: 'team1Ban3', dbType: SQLiteColumnType.TEXT },
-  { name: 'team0Pick1', dbType: SQLiteColumnType.TEXT },
-  { name: 'team0Pick2', dbType: SQLiteColumnType.TEXT },
-  { name: 'team0Pick3', dbType: SQLiteColumnType.TEXT },
-  { name: 'team0Pick4', dbType: SQLiteColumnType.TEXT },
-  { name: 'team0Pick5', dbType: SQLiteColumnType.TEXT },
-  { name: 'team1Pick1', dbType: SQLiteColumnType.TEXT },
-  { name: 'team1Pick2', dbType: SQLiteColumnType.TEXT },
-  { name: 'team1Pick3', dbType: SQLiteColumnType.TEXT },
-  { name: 'team1Pick4', dbType: SQLiteColumnType.TEXT },
-  { name: 'team1Pick5', dbType: SQLiteColumnType.TEXT },
-] as const satisfies readonly ColumnDefinition[]
-
-export const HOTS_REPLAY_GAME_STATS_COLUMNS = [
-  {
-    name: 'id',
-    dbType: SQLiteColumnType.INTEGER,
-    primaryKey: true,
-    autoIncrement: true,
-    skipImport: true,
-  },
-  { name: 'replay_id', dbType: SQLiteColumnType.INTEGER },
-  { name: 'hots_account_id', dbType: SQLiteColumnType.INTEGER },
-  { name: 'discord_id', dbType: SQLiteColumnType.TEXT },
-  { name: 'owner_discord_id', dbType: SQLiteColumnType.TEXT },
-  { name: 'hots_battle_tag', dbType: SQLiteColumnType.TEXT },
-  { name: 'ToonHandle', dbType: SQLiteColumnType.TEXT },
-  { name: 'name', dbType: SQLiteColumnType.TEXT },
-  { name: 'tag', dbType: SQLiteColumnType.INTEGER },
-  { name: 'region', dbType: SQLiteColumnType.INTEGER },
-  { name: 'realm', dbType: SQLiteColumnType.INTEGER },
-  { name: 'hero', dbType: SQLiteColumnType.TEXT },
-  { name: 'internalHeroName', dbType: SQLiteColumnType.TEXT },
-  { name: 'team', dbType: SQLiteColumnType.INTEGER },
-  { name: 'win', dbType: SQLiteColumnType.INTEGER, isBoolean: true },
-  { name: 'heroLevel', dbType: SQLiteColumnType.INTEGER },
-  { name: 'skin', dbType: SQLiteColumnType.TEXT },
-  { name: 'mount', dbType: SQLiteColumnType.TEXT },
-  { name: 'announcer', dbType: SQLiteColumnType.TEXT },
-  { name: 'silenced', dbType: SQLiteColumnType.INTEGER, isBoolean: true },
-  { name: 'voiceSilenced', dbType: SQLiteColumnType.INTEGER, isBoolean: true },
-  { name: 'Tier1Choice', dbType: SQLiteColumnType.TEXT },
-  { name: 'Tier2Choice', dbType: SQLiteColumnType.TEXT },
-  { name: 'Tier3Choice', dbType: SQLiteColumnType.TEXT },
-  { name: 'Tier4Choice', dbType: SQLiteColumnType.TEXT },
-  { name: 'Tier5Choice', dbType: SQLiteColumnType.TEXT },
-  { name: 'Tier6Choice', dbType: SQLiteColumnType.TEXT },
-  { name: 'Tier7Choice', dbType: SQLiteColumnType.TEXT },
-  { name: 'awards', dbType: SQLiteColumnType.TEXT },
-  { name: 'votes', dbType: SQLiteColumnType.INTEGER },
-  { name: 'sprays', dbType: SQLiteColumnType.INTEGER },
-  { name: 'sprayTD', dbType: SQLiteColumnType.INTEGER },
-  { name: 'sprayDeaths', dbType: SQLiteColumnType.INTEGER },
-  { name: 'bsteps', dbType: SQLiteColumnType.INTEGER },
-  { name: 'bstepTD', dbType: SQLiteColumnType.INTEGER },
-  { name: 'bstepDeaths', dbType: SQLiteColumnType.INTEGER },
-  { name: 'taunts', dbType: SQLiteColumnType.INTEGER },
-  { name: 'tauntTD', dbType: SQLiteColumnType.INTEGER },
-  { name: 'tauntDeaths', dbType: SQLiteColumnType.INTEGER },
-  { name: 'dances', dbType: SQLiteColumnType.INTEGER },
-  { name: 'danceTD', dbType: SQLiteColumnType.INTEGER },
-  { name: 'danceDeaths', dbType: SQLiteColumnType.INTEGER },
-  { name: 'voiceLines', dbType: SQLiteColumnType.INTEGER },
-  { name: 'DDRatio', dbType: SQLiteColumnType.REAL },
-  { name: 'DPct', dbType: SQLiteColumnType.REAL },
-  { name: 'DTPct', dbType: SQLiteColumnType.REAL },
-  { name: 'HPct', dbType: SQLiteColumnType.REAL },
-  { name: 'SoftCCPct', dbType: SQLiteColumnType.REAL },
-  { name: 'HardCCPct', dbType: SQLiteColumnType.REAL },
-  { name: 'timeDeadPct', dbType: SQLiteColumnType.REAL },
-  { name: 'Takedowns', dbType: SQLiteColumnType.INTEGER },
-  { name: 'Deaths', dbType: SQLiteColumnType.INTEGER },
-  { name: 'TownKills', dbType: SQLiteColumnType.INTEGER },
-  { name: 'SoloKill', dbType: SQLiteColumnType.INTEGER },
-  { name: 'Assists', dbType: SQLiteColumnType.INTEGER },
-  { name: 'MetaExperience', dbType: SQLiteColumnType.INTEGER },
-  { name: 'Level', dbType: SQLiteColumnType.INTEGER },
-  { name: 'TeamTakedowns', dbType: SQLiteColumnType.INTEGER },
-  { name: 'ExperienceContribution', dbType: SQLiteColumnType.INTEGER },
-  { name: 'Healing', dbType: SQLiteColumnType.INTEGER },
-  { name: 'SiegeDamage', dbType: SQLiteColumnType.INTEGER },
-  { name: 'StructureDamage', dbType: SQLiteColumnType.INTEGER },
-  { name: 'MinionDamage', dbType: SQLiteColumnType.INTEGER },
-  { name: 'HeroDamage', dbType: SQLiteColumnType.INTEGER },
-  { name: 'MercCampCaptures', dbType: SQLiteColumnType.INTEGER },
-  { name: 'WatchTowerCaptures', dbType: SQLiteColumnType.INTEGER },
-  { name: 'SelfHealing', dbType: SQLiteColumnType.INTEGER },
-  { name: 'TimeSpentDead', dbType: SQLiteColumnType.INTEGER },
-  { name: 'TimeCCdEnemyHeroes', dbType: SQLiteColumnType.INTEGER },
-  { name: 'CreepDamage', dbType: SQLiteColumnType.INTEGER },
-  { name: 'SummonDamage', dbType: SQLiteColumnType.INTEGER },
-  { name: 'Tier1Talent', dbType: SQLiteColumnType.INTEGER },
-  { name: 'Tier2Talent', dbType: SQLiteColumnType.INTEGER },
-  { name: 'Tier3Talent', dbType: SQLiteColumnType.INTEGER },
-  { name: 'Tier4Talent', dbType: SQLiteColumnType.INTEGER },
-  { name: 'Tier5Talent', dbType: SQLiteColumnType.INTEGER },
-  { name: 'Tier6Talent', dbType: SQLiteColumnType.INTEGER },
-  { name: 'Tier7Talent', dbType: SQLiteColumnType.INTEGER },
-  { name: 'DamageTaken', dbType: SQLiteColumnType.INTEGER },
-  { name: 'DamageSoaked', dbType: SQLiteColumnType.INTEGER },
-  { name: 'Role', dbType: SQLiteColumnType.INTEGER },
-  { name: 'KilledTreasureGoblin', dbType: SQLiteColumnType.INTEGER },
-  { name: 'GameScore', dbType: SQLiteColumnType.INTEGER },
-  { name: 'HighestKillStreak', dbType: SQLiteColumnType.INTEGER },
-  { name: 'TeamLevel', dbType: SQLiteColumnType.INTEGER },
-  { name: 'ProtectionGivenToAllies', dbType: SQLiteColumnType.INTEGER },
-  { name: 'TimeSilencingEnemyHeroes', dbType: SQLiteColumnType.INTEGER },
-  { name: 'TimeRootingEnemyHeroes', dbType: SQLiteColumnType.INTEGER },
-  { name: 'TimeStunningEnemyHeroes', dbType: SQLiteColumnType.INTEGER },
-  { name: 'ClutchHealsPerformed', dbType: SQLiteColumnType.INTEGER },
-  { name: 'EscapesPerformed', dbType: SQLiteColumnType.INTEGER },
-  { name: 'VengeancesPerformed', dbType: SQLiteColumnType.INTEGER },
-  { name: 'TeamfightEscapesPerformed', dbType: SQLiteColumnType.INTEGER },
-  { name: 'OutnumberedDeaths', dbType: SQLiteColumnType.INTEGER },
-  { name: 'TeamfightHealingDone', dbType: SQLiteColumnType.INTEGER },
-  { name: 'TeamfightDamageTaken', dbType: SQLiteColumnType.INTEGER },
-  { name: 'TeamfightHeroDamage', dbType: SQLiteColumnType.INTEGER },
-  { name: 'OnFireTimeOnFire', dbType: SQLiteColumnType.INTEGER },
-  {
-    name: 'LunarNewYearSuccesfulArtifactTurnIns',
-    dbType: SQLiteColumnType.INTEGER,
-  },
-  { name: 'TimeOnPoint', dbType: SQLiteColumnType.INTEGER },
-  { name: 'CageUnlocksInterrupted', dbType: SQLiteColumnType.INTEGER },
-  { name: 'GardenSeedsCollectedByPlayer', dbType: SQLiteColumnType.INTEGER },
-  { name: 'TeamWinsDiablo', dbType: SQLiteColumnType.INTEGER },
-  { name: 'TeamWinsFemale', dbType: SQLiteColumnType.INTEGER },
-  { name: 'TeamWinsMale', dbType: SQLiteColumnType.INTEGER },
-  { name: 'TeamWinsStarCraft', dbType: SQLiteColumnType.INTEGER },
-  { name: 'TeamWinsWarcraft', dbType: SQLiteColumnType.INTEGER },
-  { name: 'WinsWarrior', dbType: SQLiteColumnType.INTEGER },
-  { name: 'WinsAssassin', dbType: SQLiteColumnType.INTEGER },
-  { name: 'WinsSupport', dbType: SQLiteColumnType.INTEGER },
-  { name: 'WinsSpecialist', dbType: SQLiteColumnType.INTEGER },
-  { name: 'WinsStarCraft', dbType: SQLiteColumnType.INTEGER },
-  { name: 'WinsDiablo', dbType: SQLiteColumnType.INTEGER },
-  { name: 'WinsWarcraft', dbType: SQLiteColumnType.INTEGER },
-  { name: 'WinsMale', dbType: SQLiteColumnType.INTEGER },
-  { name: 'WinsFemale', dbType: SQLiteColumnType.INTEGER },
-  { name: 'PlaysStarCraft', dbType: SQLiteColumnType.INTEGER },
-  { name: 'PlaysDiablo', dbType: SQLiteColumnType.INTEGER },
-  { name: 'PlaysOverwatch', dbType: SQLiteColumnType.INTEGER },
-  { name: 'PlaysWarCraft', dbType: SQLiteColumnType.INTEGER },
-  { name: 'PlaysNexus', dbType: SQLiteColumnType.INTEGER },
-  { name: 'PlaysOverwatchOrNexus', dbType: SQLiteColumnType.INTEGER },
-  { name: 'PlaysWarrior', dbType: SQLiteColumnType.INTEGER },
-  { name: 'PlaysAssassin', dbType: SQLiteColumnType.INTEGER },
-  { name: 'PlaysSupport', dbType: SQLiteColumnType.INTEGER },
-  { name: 'PlaysSpecialist', dbType: SQLiteColumnType.INTEGER },
-  { name: 'PlaysMale', dbType: SQLiteColumnType.INTEGER },
-  { name: 'PlaysFemale', dbType: SQLiteColumnType.INTEGER },
-  { name: 'LunarNewYearEventCompleted', dbType: SQLiteColumnType.INTEGER },
-  { name: 'StarcraftDailyEventCompleted', dbType: SQLiteColumnType.INTEGER },
-  { name: 'StarcraftPiecesCollected', dbType: SQLiteColumnType.INTEGER },
-  {
-    name: 'LunarNewYearRoosterEventCompleted',
-    dbType: SQLiteColumnType.INTEGER,
-  },
-  { name: 'TouchByBlightPlague', dbType: SQLiteColumnType.INTEGER },
-  { name: 'PachimariMania', dbType: SQLiteColumnType.INTEGER },
-  { name: 'LessThan4Deaths', dbType: SQLiteColumnType.INTEGER },
-  { name: 'LessThan3TownStructuresLost', dbType: SQLiteColumnType.INTEGER },
-  { name: 'PhysicalDamage', dbType: SQLiteColumnType.INTEGER },
-  { name: 'SpellDamage', dbType: SQLiteColumnType.INTEGER },
-  { name: 'Multikill', dbType: SQLiteColumnType.INTEGER },
-  { name: 'MinionKills', dbType: SQLiteColumnType.INTEGER },
-  { name: 'RegenGlobes', dbType: SQLiteColumnType.INTEGER },
-  { name: 'DragonNumberOfDragonCaptures', dbType: SQLiteColumnType.INTEGER },
-  { name: 'DragonShrinesCaptured', dbType: SQLiteColumnType.INTEGER },
-  { name: 'KDA', dbType: SQLiteColumnType.REAL },
-  { name: 'damageDonePerDeath', dbType: SQLiteColumnType.REAL },
-  { name: 'damageTakenPerDeath', dbType: SQLiteColumnType.REAL },
-  { name: 'healingDonePerDeath', dbType: SQLiteColumnType.REAL },
-  { name: 'DPM', dbType: SQLiteColumnType.REAL },
-  { name: 'HPM', dbType: SQLiteColumnType.REAL },
-  { name: 'XPM', dbType: SQLiteColumnType.REAL },
-  { name: 'KillParticipation', dbType: SQLiteColumnType.REAL },
-  { name: 'length', dbType: SQLiteColumnType.REAL },
-  { name: 'passiveXPRate', dbType: SQLiteColumnType.REAL },
-  { name: 'passiveXPDiff', dbType: SQLiteColumnType.REAL },
-  { name: 'passiveXPGain', dbType: SQLiteColumnType.REAL },
-  { name: 'aces', dbType: SQLiteColumnType.INTEGER },
-  { name: 'wipes', dbType: SQLiteColumnType.INTEGER },
-  { name: 'timeWithHeroAdv', dbType: SQLiteColumnType.REAL },
-  { name: 'pctWithHeroAdv', dbType: SQLiteColumnType.REAL },
-  { name: 'levelAdvTime', dbType: SQLiteColumnType.REAL },
-  { name: 'levelAdvPct', dbType: SQLiteColumnType.REAL },
-  { name: 'AltarDamageDone', dbType: SQLiteColumnType.INTEGER },
-  { name: 'DamageDoneToImmortal', dbType: SQLiteColumnType.INTEGER },
-  { name: 'BlackheartDoubloonsCollected', dbType: SQLiteColumnType.INTEGER },
-  { name: 'BlackheartDoubloonsTurnedIn', dbType: SQLiteColumnType.INTEGER },
-  { name: 'MinesSkullsCollected', dbType: SQLiteColumnType.INTEGER },
-  { name: 'DamageDoneToShrineMinions', dbType: SQLiteColumnType.INTEGER },
-  { name: 'GardensPlantDamage', dbType: SQLiteColumnType.INTEGER },
-  { name: 'GardensSeedsCollected', dbType: SQLiteColumnType.INTEGER },
-  { name: 'GemsTurnedIn', dbType: SQLiteColumnType.INTEGER },
-  { name: 'NukeDamageDone', dbType: SQLiteColumnType.INTEGER },
-  { name: 'CurseDamageDone', dbType: SQLiteColumnType.INTEGER },
-  { name: 'TimeInTemple', dbType: SQLiteColumnType.INTEGER },
-  { name: 'DamageDoneToZerg', dbType: SQLiteColumnType.INTEGER },
-  { name: 'isMVP', dbType: SQLiteColumnType.INTEGER },
-  { name: 'awardCount', dbType: SQLiteColumnType.INTEGER },
-] as const satisfies readonly ColumnDefinition[]
-
-interface HotSReplay {
-  match: Record<string, any>
-  players: Record<string, Record<string, any>>
-}
-
-export type HotSReplayGameStats = InterfaceFromSchema<typeof HOTS_REPLAY_GAME_STATS_COLUMNS>
-
-function ensureTableColumns(tableName: string, columns: readonly ColumnDefinition[]) {
-  const existingCols = db.prepare<[], { name: string }>(`PRAGMA table_info(${tableName})`).all()
-  const existingColNames = new Set(existingCols.map(c => c.name))
-
-  for (const col of columns) {
-    if (!existingColNames.has(col.name)) {
-      try {
-        let sql = `ALTER TABLE ${tableName} ADD COLUMN ${col.name} ${col.dbType}`
-        if (col.defaultValue !== undefined) {
-          sql += ` DEFAULT ${typeof col.defaultValue === 'string' ? `'${col.defaultValue}'` : col.defaultValue}`
-        }
-        db.exec(sql)
-      } catch (err) {
-        console.error(`Error adding column ${col.name} to ${tableName}:`, err)
-      }
-    }
-  }
-}
-
-const initSchema = db.transaction(() => {
-  // hots_replays
-  const createHotsReplaysTableSQL = generateCreateTableSQL('hots_replays', HOTS_REPLAYS_MATCH_COLUMNS)
-  db.exec(createHotsReplaysTableSQL)
-  ensureTableColumns('hots_replays', HOTS_REPLAYS_MATCH_COLUMNS)
-
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_hots_replays_name_date_type
-    ON hots_replays(map, date, type)
-  `)
-  db.exec(`
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_hots_replays_unique_match
-    ON hots_replays(map, date, loopLength)
-  `)
-
-  // Remove legacy hots_replay_players table if it exists
-  db.exec('DROP TABLE IF EXISTS hots_replay_players')
-
-  // hots_replay_player_game_stats
-  const createHotsReplayPlayerGameStatsTableSQL = generateCreateTableSQL(
-    'hots_replay_player_game_stats',
-    HOTS_REPLAY_GAME_STATS_COLUMNS
-  )
-  db.exec(createHotsReplayPlayerGameStatsTableSQL)
-  ensureTableColumns('hots_replay_player_game_stats', HOTS_REPLAY_GAME_STATS_COLUMNS)
-
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_hots_replay_player_game_stats_replay_id
-    ON hots_replay_player_game_stats(replay_id)
-  `)
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_hots_replay_player_game_stats_account_id
-    ON hots_replay_player_game_stats(hots_account_id)
-  `)
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_hots_replay_player_game_stats_discord_id
-    ON hots_replay_player_game_stats(discord_id)
-  `)
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_hots_replay_player_game_stats_battle_tag
-    ON hots_replay_player_game_stats(hots_battle_tag)
-  `)
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_hots_replay_player_game_stats_owner_discord_id
-    ON hots_replay_player_game_stats(owner_discord_id)
-  `)
-
-  // Backfill any historical rows where hots_account_id is null
-  db.exec(`
-    UPDATE hots_replay_player_game_stats
-    SET hots_account_id = (
-      SELECT id FROM hots_accounts ha
-      WHERE ha.hots_battle_tag = hots_replay_player_game_stats.hots_battle_tag COLLATE NOCASE
-      AND ha.owner_discord_id IS NULL
-      LIMIT 1
-    )
-    WHERE hots_account_id IS NULL;
-  `)
+// Initialize replays table and materialized view on startup
+initReplaysTable().catch(error => {
+  console.error('Error initializing replays schema in PostgreSQL:', error)
 })
 
-try {
-  initSchema()
-} catch (error) {
-  console.error('Error initializing database schema:', error)
+export type ParsedReplay = ReplayData
+
+type HeroProtocolDetailsPlayer = {
+  m_name?: string | Buffer
+  m_hero?: string | Buffer
 }
 
-type ParsedReplay = NonNullable<Awaited<ReturnType<typeof parseReplay>>>
+type HeroProtocolDetails = {
+  m_playerList?: HeroProtocolDetailsPlayer[]
+}
 
 /**
  * Parses a Heroes of the Storm replay file using hots-parser and extracts relevant information.
  * @param file The path to the replay file
  */
-export async function parseReplay(file: string) {
+export async function parseReplay(file: string): Promise<ReplayData | null> {
   try {
-    const Parser = require('hots-parser')
-    const replay: HotSReplay = Parser.processReplay(file, {
+    const Parser: {
+      processReplay: (filePath: string, options: { overrideVerifiedBuild: boolean }) => HotSReplayObject | null
+    } = require('hots-parser')
+    const replay = Parser.processReplay(file, {
       overrideVerifiedBuild: true,
     })
     if (!replay || !replay.match) {
       console.error(`Invalid or incomplete replay data for file: ${file}`)
       return null
+    }
+
+    if (!replay.match.filename) {
+      replay.match.filename = file
     }
 
     let mapName = replay.match.map
@@ -366,18 +59,22 @@ export async function parseReplay(file: string) {
       }
     }
 
-    const players = Object.values(replay.players).map(player => player)
+    const players = Object.values(replay.players)
 
     // Check if any player has an unknown or missing hero (e.g. from Auto-Select in custom lobbies)
     try {
-      const heroprotocol = require('heroprotocol')
+      const heroprotocol: {
+        DETAILS: string
+        get: (part: string, filePath: string) => HeroProtocolDetails | null
+      } = require('heroprotocol')
       const details = heroprotocol.get(heroprotocol.DETAILS, file)
       if (details && Array.isArray(details.m_playerList)) {
         for (const player of players) {
           if (!player.hero || player.hero === 'Unknown' || player.hero === 'RAND' || player.hero === 'Auto') {
-            const match = details.m_playerList.find(
-              (p: any) => (p.m_name ? (typeof p.m_name === 'string' ? p.m_name : p.m_name.toString('utf8')) : '') === player.name
-            )
+            const match = details.m_playerList.find(p => {
+              const nameStr = p.m_name ? (typeof p.m_name === 'string' ? p.m_name : p.m_name.toString('utf8')) : ''
+              return nameStr === player.name
+            })
             if (match && match.m_hero) {
               let heroName = typeof match.m_hero === 'string' ? match.m_hero : match.m_hero.toString('utf8')
               if (heroName === 'Lúcio') heroName = 'Lucio'
@@ -390,7 +87,7 @@ export async function parseReplay(file: string) {
       // Ignore if details cannot be parsed
     }
 
-    const formatPlayerEntry = (p: Record<string, any>) => {
+    const formatPlayerEntry = (p: { name: string; tag: number; hero?: string }) => {
       const heroStr = p.hero ? ` (${p.hero})` : ''
       return `${p.name}#${p.tag}${heroStr}`
     }
@@ -425,527 +122,79 @@ export async function parseReplay(file: string) {
 }
 
 /**
-/**
- * Recalculates and updates the SotS_* summary columns in hots_accounts for a specific account.
+ * Legacy helper retained for compatibility; player stats are now pre-aggregated via `mv_replay_player_stats`.
  */
-export function updateSotsStatsForAccount(acc: ResolvedHotsAccount) {
-  if (!acc.hotsAccountId) return
-
-  try {
-    const stats = db
-      .prepare<[number], Record<string, number>>(
-        `
-      SELECT 
-        COUNT(*) as totalGames,
-        COUNT(DISTINCT hero) as heroPool,
-        AVG(win) as winPct,
-        AVG(SoloKill) as avgKills,
-        AVG(Assists) as avgAssists,
-        AVG(Deaths) as avgDeaths,
-        AVG(Takedowns) as avgTakedowns,
-        AVG(HeroDamage) as avgHeroDamage,
-        AVG(SiegeDamage) as avgSiegeDamage,
-        AVG(StructureDamage) as avgStructureDamage,
-        AVG(MinionDamage) as avgMinionDamage,
-        AVG(SummonDamage) as avgSummonDamage,
-        AVG(CreepDamage) as avgCreepDamage,
-        AVG(PhysicalDamage) as avgPhysicalDamage,
-        AVG(SpellDamage) as avgAbilityDamage,
-        AVG(Healing) as avgHealing,
-        AVG(SelfHealing) as avgSelfHealing,
-        AVG(ProtectionGivenToAllies) as avgAlliedShields,
-        AVG(ClutchHealsPerformed) as avgClutchHeals,
-        AVG(DamageTaken) as avgDamageTaken,
-        AVG(DamageSoaked) as avgDamageSoaked,
-        AVG(ExperienceContribution) as avgXP,
-        AVG(DPM) as avgDPM,
-        AVG(HPM) as avgHPM,
-        AVG(XPM) as avgXPM,
-        AVG(KDA) as avgKDA,
-        AVG(KillParticipation) as avgKillPart,
-        MAX(HighestKillStreak) as maxKillStreak,
-        AVG(VengeancesPerformed) as avgVengeances,
-        AVG(TimeSpentDead) as avgTimeDead,
-        AVG(timeDeadPct) * 100 as avgTimeDeadPct,
-        AVG(OutnumberedDeaths) as avgOutnumberedDeaths,
-        AVG(EscapesPerformed) as avgEscapes,
-        AVG(TeamfightEscapesPerformed) as avgTeamFightEscapes,
-        AVG(damageDonePerDeath) as avgDamagePerDeath,
-        AVG(healingDonePerDeath) as avgHealingPerDeath,
-        AVG(damageTakenPerDeath) as avgDamageTakenPerDeath,
-        AVG(TeamfightHeroDamage) as avgTeamFightHeroDamage,
-        AVG(TeamfightDamageTaken) as avgTeamFightDamageTaken,
-        AVG(TeamfightHealingDone) as avgTeamFightHealing,
-        AVG(TimeCCdEnemyHeroes) as avgCCTime,
-        AVG(TimeRootingEnemyHeroes) as avgRootTime,
-        AVG(TimeSilencingEnemyHeroes) as avgSilenceTime,
-        AVG(TimeStunningEnemyHeroes) as avgStunTime,
-        AVG(OnFireTimeOnFire) as avgTimeOnFire,
-        AVG(MercCampCaptures) as avgMercCaptures,
-        AVG(WatchTowerCaptures) as avgWatchTowerCaptures,
-        SUM(aces) as totalAces,
-        SUM(wipes) as totalWipes,
-        AVG(levelAdvPct) as avgLevelAdvPct,
-        AVG(pctWithHeroAdv) as avgHeroAdvPct,
-        AVG(passiveXPRate) as avgPassiveXPRate,
-        AVG(passiveXPGain) as avgPassiveXPGain,
-        AVG(AltarDamageDone) as avgAltarDamage,
-        AVG(DamageDoneToImmortal) as avgImmortalDamage,
-        AVG(DragonNumberOfDragonCaptures) as avgDragonCaptures,
-        AVG(DragonShrinesCaptured) as avgShrinesCaptured,
-        AVG(BlackheartDoubloonsCollected) as avgDubloonsHeld,
-        AVG(BlackheartDoubloonsTurnedIn) as avgDubloonsTurnedIn,
-        AVG(MinesSkullsCollected) as avgSkullsCollected,
-        AVG(DamageDoneToShrineMinions) as avgShrineMinionDamage,
-        AVG(GardensPlantDamage) as avgPlantDamage,
-        AVG(GardensSeedsCollected) as avgSeedsCollected,
-        AVG(GardenSeedsCollectedByPlayer) as avgGardenSeeds,
-        AVG(GemsTurnedIn) as avgGemsTurnedIn,
-        AVG(NukeDamageDone) as avgNukeDamage,
-        AVG(CurseDamageDone) as avgCurseDamage,
-        AVG(TimeInTemple) as avgTimeInTemple,
-        AVG(DamageDoneToZerg) as avgDamageDoneToZerg,
-        AVG(CageUnlocksInterrupted) as avgCageUnlocks,
-        AVG(DDRatio) as avgDamageRatio,
-        AVG(DPct) * 100 as avgPctOfTeamDamage,
-        AVG(DTPct) * 100 as avgPctOfTeamDamageTaken,
-        AVG(HPct) * 100 as avgPctOfTeamDamageHealed,
-        AVG(SoftCCPct) * 100 as avgPctOfTimeSlowCC,
-        AVG(HardCCPct) * 100 as avgPctOfTimeNonSlowCC,
-        SUM(votes) as totalVotes,
-        SUM(awardCount) as totalAwards,
-        SUM(isMVP) as totalMVP,
-        SUM(sprays) as totalSprays,
-        SUM(sprayTD) as totalSprayTD,
-        SUM(sprayDeaths) as totalSprayDeaths,
-        SUM(bsteps) as totalBsteps,
-        SUM(bstepTD) as totalBstepTD,
-        SUM(bstepDeaths) as totalBstepDeaths,
-        SUM(taunts) as totalTaunts,
-        SUM(tauntTD) as totalTauntTD,
-        SUM(tauntDeaths) as totalTauntDeaths,
-        SUM(dances) as totalDances,
-        SUM(danceTD) as totalDanceTD,
-        SUM(danceDeaths) as totalDanceDeaths
-      FROM hots_replay_player_game_stats
-      WHERE hots_account_id = ?
-    `
-      )
-      .get(acc.hotsAccountId)
-
-    if (stats && stats.totalGames > 0) {
-      db.prepare(
-        `
-        UPDATE hots_accounts SET
-          SotS_Games = ?,
-          SotS_Win_Pct = ?,
-          SotS_Kills = ?,
-          SotS_Assists = ?,
-          SotS_Deaths = ?,
-          SotS_Takedowns = ?,
-          SotS_Hero_Damage = ?,
-          SotS_Siege_Damage = ?,
-          SotS_Structure_Damage = ?,
-          SotS_Minion_Damage = ?,
-          SotS_Summon_Damage = ?,
-          SotS_Creep_Damage = ?,
-          SotS_Physical_Damage = ?,
-          SotS_Ability_Damage = ?,
-          SotS_Healing = ?,
-          SotS_Self_Healing = ?,
-          SotS_Allied_Shields = ?,
-          SotS_Clutch_Heals = ?,
-          SotS_Damage_Taken = ?,
-          SotS_Damage_Soaked = ?,
-          SotS_XP_Contribution = ?,
-          SotS_DPM = ?,
-          SotS_HPM = ?,
-          SotS_XPM = ?,
-          SotS_KDA = ?,
-          SotS_Kill_Participation = ?,
-          SotS_Highest_Kill_Streak = ?,
-          SotS_Vengeances = ?,
-          SotS_Time_Dead = ?,
-          SotS_Time_Dead_Pct = ?,
-          SotS_Deaths_While_Outnumbered = ?,
-          SotS_Escapes = ?,
-          SotS_Team_Fight_Escapes = ?,
-          SotS_Damage_per_Death = ?,
-          SotS_Healing_per_Death = ?,
-          SotS_Damage_Taken_per_Death = ?,
-          SotS_Team_Fight_Hero_Damage = ?,
-          SotS_Team_Fight_Damage_Taken = ?,
-          SotS_Team_Fight_Healing = ?,
-          SotS_CC_Time = ?,
-          SotS_Root_Time = ?,
-          SotS_Silence_Time = ?,
-          SotS_Stun_Time = ?,
-          SotS_Time_on_Fire = ?,
-          SotS_Merc_Camp_Captures = ?,
-          SotS_Watch_Tower_Captures = ?,
-          SotS_Aces = ?,
-          SotS_Wipes = ?,
-          SotS_Pct_of_Game_with_Level_Adv = ?,
-          SotS_Pct_of_Game_with_Hero_Adv = ?,
-          SotS_Passive_XP_Second = ?,
-          SotS_Passive_XP_Gained = ?,
-          SotS_Altar_Damage_Done = ?,
-          SotS_Damage_to_Immortal = ?,
-          SotS_Dragon_Knights_Captured = ?,
-          SotS_Shrines_Captured = ?,
-          SotS_Dubloons_Held_At_End = ?,
-          SotS_Dubloons_Turned_In = ?,
-          SotS_Skulls_Collected = ?,
-          SotS_Shrine_Minion_Damage = ?,
-          SotS_Plant_Damage = ?,
-          SotS_Seeds_Collected = ?,
-          SotS_Garden_Seeds_Collected = ?,
-          SotS_Gems_Turned_In = ?,
-          SotS_Nuke_Damage = ?,
-          SotS_Curse_Damage = ?,
-          SotS_Time_On_Temple = ?,
-          SotS_Damage_Done_to_Zerg = ?,
-          SotS_Cage_Unlocks_Interrupted = ?,
-          SotS_Hero_Pool = ?,
-          SotS_Damage_Ratio = ?,
-          SotS_Pct_of_Team_Damage = ?,
-          SotS_Pct_of_Team_Damage_Taken = ?,
-          SotS_Pct_of_Team_Damage_Healed = ?,
-          SotS_Pct_of_Time_Slow_CC = ?,
-          SotS_Pct_of_Time_Non_Slow_CC = ?,
-          SotS_Votes = ?,
-          SotS_Awards = ?,
-          SotS_Award_Pct = ?,
-          SotS_MVP = ?,
-          SotS_MVP_Pct = ?,
-          SotS_Sprays = ?,
-          SotS_Spray_TD = ?,
-          SotS_Spray_Deaths = ?,
-          SotS_Bsteps = ?,
-          SotS_Bstep_TD = ?,
-          SotS_Bstep_Deaths = ?,
-          SotS_Taunts = ?,
-          SotS_Taunt_TD = ?,
-          SotS_Taunt_Deaths = ?,
-          SotS_Dances = ?,
-          SotS_Dance_TD = ?,
-          SotS_Dance_Deaths = ?
-        WHERE id = ?
-      `
-      ).run(
-        stats.totalGames,
-        stats.winPct,
-        stats.avgKills,
-        stats.avgAssists,
-        stats.avgDeaths,
-        stats.avgTakedowns,
-        stats.avgHeroDamage,
-        stats.avgSiegeDamage,
-        stats.avgStructureDamage,
-        stats.avgMinionDamage,
-        stats.avgSummonDamage,
-        stats.avgCreepDamage,
-        stats.avgPhysicalDamage,
-        stats.avgAbilityDamage,
-        stats.avgHealing,
-        stats.avgSelfHealing,
-        stats.avgAlliedShields,
-        stats.avgClutchHeals,
-        stats.avgDamageTaken,
-        stats.avgDamageSoaked,
-        stats.avgXP,
-        stats.avgDPM,
-        stats.avgHPM,
-        stats.avgXPM,
-        stats.avgKDA,
-        stats.avgKillPart,
-        stats.maxKillStreak,
-        stats.avgVengeances,
-        stats.avgTimeDead,
-        stats.avgTimeDeadPct,
-        stats.avgOutnumberedDeaths,
-        stats.avgEscapes,
-        stats.avgTeamFightEscapes,
-        stats.avgDamagePerDeath,
-        stats.avgHealingPerDeath,
-        stats.avgDamageTakenPerDeath,
-        stats.avgTeamFightHeroDamage,
-        stats.avgTeamFightDamageTaken,
-        stats.avgTeamFightHealing,
-        stats.avgCCTime,
-        stats.avgRootTime,
-        stats.avgSilenceTime,
-        stats.avgStunTime,
-        stats.avgTimeOnFire,
-        stats.avgMercCaptures,
-        stats.avgWatchTowerCaptures,
-        stats.totalAces,
-        stats.totalWipes,
-        stats.avgLevelAdvPct,
-        stats.avgHeroAdvPct,
-        stats.avgPassiveXPRate,
-        stats.avgPassiveXPGain,
-        stats.avgAltarDamage,
-        stats.avgImmortalDamage,
-        stats.avgDragonCaptures,
-        stats.avgShrinesCaptured,
-        stats.avgDubloonsHeld,
-        stats.avgDubloonsTurnedIn,
-        stats.avgSkullsCollected,
-        stats.avgShrineMinionDamage,
-        stats.avgPlantDamage,
-        stats.avgSeedsCollected,
-        stats.avgGardenSeeds,
-        stats.avgGemsTurnedIn,
-        stats.avgNukeDamage,
-        stats.avgCurseDamage,
-        stats.avgTimeInTemple,
-        stats.avgDamageDoneToZerg,
-        stats.avgCageUnlocks,
-        stats.heroPool,
-        stats.avgDamageRatio,
-        stats.avgPctOfTeamDamage,
-        stats.avgPctOfTeamDamageTaken,
-        stats.avgPctOfTeamDamageHealed,
-        stats.avgPctOfTimeSlowCC,
-        stats.avgPctOfTimeNonSlowCC,
-        stats.totalVotes,
-        stats.totalAwards,
-        stats.totalGames > 0 ? (stats.totalAwards || 0) / stats.totalGames : 0,
-        stats.totalMVP,
-        stats.totalGames > 0 ? (stats.totalMVP || 0) / stats.totalGames : 0,
-        stats.totalSprays,
-        stats.totalSprayTD,
-        stats.totalSprayDeaths,
-        stats.totalBsteps,
-        stats.totalBstepTD,
-        stats.totalBstepDeaths,
-        stats.totalTaunts,
-        stats.totalTauntTD,
-        stats.totalTauntDeaths,
-        stats.totalDances,
-        stats.totalDanceTD,
-        stats.totalDanceDeaths,
-        acc.hotsAccountId
-      )
-    }
-  } catch (err) {
-    console.error(`Error updating SotS stats for account ${acc.battleTag}:`, err)
-  }
+export async function updateSotsStatsForAccount(_acc: ResolvedHotsAccount): Promise<void> {
+  // Stats are dynamically aggregated via `mv_replay_player_stats` in PostgreSQL
 }
 
 /**
- * Saves a parsed custom match into the database and returns its assigned replay ID.
+ * Saves a parsed custom match into the PostgreSQL `replays` table, refreshes `mv_replay_player_stats`,
+ * records any active account substitutions for the replay, and returns its assigned replay ID.
  */
-export function saveReplayToDb(parsedReplay: ParsedReplay, guildId: string): number {
-  const replay = parsedReplay.replayObj
+export async function saveReplayToDb(parsedReplay: ParsedReplay, guildId: string): Promise<number> {
+  const inserted = await insertReplays([parsedReplay])
+  const replayRow = inserted[0]
+  if (!replayRow) {
+    throw new Error('Failed to insert or retrieve replay match record')
+  }
+  const replayId = replayRow.id
 
-  const saveTransaction = db.transaction(() => {
-    // 1. Prepare match insert data
-    const matchData: Record<string, any> = { ...replay.match }
-    if (!matchData.filename && parsedReplay.file) {
-      matchData.filename = parsedReplay.file
-    }
+  const players = Object.values(parsedReplay.replayObj.players || {})
+  for (const player of players) {
+    const battleTag = `${player.name}#${player.tag}`
+    const resolvedAccount = await getAccountWithSubstitution(battleTag, guildId, replayId)
 
-    // Extract draft bans & picks
-    if (matchData.bans) {
-      for (let team = 0; team <= 1; team++) {
-        const teamBans = matchData.bans[String(team)] || []
-        for (let i = 0; i < 3; i++) {
-          matchData[`team${team}Ban${i + 1}`] = teamBans[i]?.hero || null
-        }
+    // If an active substitution applied to this player, record a historical substitution entry for this replayId
+    if (resolvedAccount.ownerDiscordId && resolvedAccount.discordId) {
+      const existingSub = await sql<Array<{ id: number }>>`
+        SELECT id
+        FROM account_substitutions
+        WHERE replay_id = ${replayId}
+          AND LOWER(hots_battle_tag) = LOWER(${battleTag})
+        LIMIT 1
+      `
+      if (existingSub[0]) {
+        await sql`
+          UPDATE account_substitutions
+          SET substitute_discord_id = ${resolvedAccount.discordId},
+              original_discord_id = ${resolvedAccount.ownerDiscordId}
+          WHERE id = ${existingSub[0].id}
+        `
+      } else {
+        await sql`
+          INSERT INTO account_substitutions (
+            guild_id, hots_battle_tag, original_discord_id, substitute_discord_id, replay_id, is_active
+          ) VALUES (
+            ${guildId}, ${battleTag}, ${resolvedAccount.ownerDiscordId}, ${resolvedAccount.discordId}, ${replayId}, FALSE
+          )
+        `
       }
     }
+  }
 
-    if (matchData.picks) {
-      matchData.firstPick = matchData.picks.first ?? null
-      for (let team = 0; team <= 1; team++) {
-        const teamPicks = matchData.picks[String(team)] || []
-        for (let i = 0; i < 5; i++) {
-          matchData[`team${team}Pick${i + 1}`] = teamPicks[i] || null
-        }
-      }
-    }
-
-    if (matchData.version && typeof matchData.version === 'object') {
-      matchData.build = matchData.version.m_build ?? null
-    }
-
-    const filteredMatchCols = HOTS_REPLAYS_MATCH_COLUMNS.filter(
-      col => !('skipImport' in col && Boolean(col.skipImport))
-    )
-    const matchColNames = filteredMatchCols.map(col => col.name)
-    const matchPlaceholders = filteredMatchCols.map(() => '?').join(', ')
-
-    const matchValues = filteredMatchCols.map(col => {
-      const rawValue = matchData[col.name]
-      if (rawValue === undefined || rawValue === null) return null
-      if (rawValue instanceof Date) return rawValue.toISOString()
-      if (typeof rawValue === 'boolean') return rawValue ? 1 : 0
-      if (
-        typeof rawValue === 'number' ||
-        typeof rawValue === 'string' ||
-        typeof rawValue === 'bigint' ||
-        Buffer.isBuffer(rawValue)
-      )
-        return rawValue
-      return String(rawValue)
-    })
-
-    const matchSql = `INSERT INTO hots_replays (${matchColNames.join(', ')}) VALUES (${matchPlaceholders}) ON CONFLICT(map, date, loopLength) DO UPDATE SET map=excluded.map RETURNING id`
-    const matchRow = db.prepare<unknown[], { id: number }>(matchSql).get(matchValues)
-    if (!matchRow) {
-      throw new Error('Failed to insert or retrieve replay match record')
-    }
-    const replayId = matchRow.id
-
-    // Delete existing player game stats for this replay if re-importing
-    db.prepare('DELETE FROM hots_replay_player_game_stats WHERE replay_id = ?').run(replayId)
-
-    // 2. Insert player game stats for all players
-    const filteredStatsCols = HOTS_REPLAY_GAME_STATS_COLUMNS.filter(col => col.name !== 'id')
-    const statsColNames = filteredStatsCols.map(col => col.name)
-    const statsPlaceholders = filteredStatsCols.map(() => '?').join(', ')
-    const statsSql = `INSERT INTO hots_replay_player_game_stats (${statsColNames.join(', ')}) VALUES (${statsPlaceholders})`
-    const insertStatsStmt = db.prepare(statsSql)
-
-    const players = Object.values(replay.players || {})
-    const updatedAccounts: ResolvedHotsAccount[] = []
-
-    for (const player of players) {
-      const battleTag = `${player.name}#${player.tag}`
-
-      const resolvedAccount = getAccountWithSubstitution(battleTag, guildId, replayId)
-
-      updatedAccounts.push(resolvedAccount)
-
-      const playerTalents = player.talents || {}
-      const gameStatsData = player.gameStats || {}
-
-      const playerValues = filteredStatsCols.map(col => {
-        if (col.name === 'replay_id') return replayId
-        if (col.name === 'hots_account_id') return resolvedAccount.hotsAccountId
-        if (col.name === 'discord_id') return resolvedAccount.discordId ?? null
-        if (col.name === 'owner_discord_id') return resolvedAccount.ownerDiscordId ?? null
-        if (col.name === 'hots_battle_tag') return battleTag
-        if (col.name === 'hero') return player.hero || null
-        if (col.name === 'sprays') return Array.isArray(player.sprays) ? player.sprays.length : player.sprays || 0
-        if (col.name === 'sprayTD')
-          return Array.isArray(player.sprays)
-            ? player.sprays.reduce((s: number, elem: any) => s + (elem.kills || 0), 0)
-            : 0
-        if (col.name === 'sprayDeaths')
-          return Array.isArray(player.sprays)
-            ? player.sprays.reduce((s: number, elem: any) => s + (elem.deaths || 0), 0)
-            : 0
-        if (col.name === 'bsteps') return Array.isArray(player.bsteps) ? player.bsteps.length : player.bsteps || 0
-        if (col.name === 'bstepTD')
-          return Array.isArray(player.bsteps)
-            ? player.bsteps.reduce((s: number, elem: any) => s + (elem.kills || 0), 0)
-            : 0
-        if (col.name === 'bstepDeaths')
-          return Array.isArray(player.bsteps)
-            ? player.bsteps.reduce((s: number, elem: any) => s + (elem.deaths || 0), 0)
-            : 0
-        if (col.name === 'taunts') return Array.isArray(player.taunts) ? player.taunts.length : player.taunts || 0
-        if (col.name === 'tauntTD')
-          return Array.isArray(player.taunts)
-            ? player.taunts.reduce((s: number, elem: any) => s + (elem.kills || 0), 0)
-            : 0
-        if (col.name === 'tauntDeaths')
-          return Array.isArray(player.taunts)
-            ? player.taunts.reduce((s: number, elem: any) => s + (elem.deaths || 0), 0)
-            : 0
-        if (col.name === 'dances') return Array.isArray(player.dances) ? player.dances.length : player.dances || 0
-        if (col.name === 'danceTD')
-          return Array.isArray(player.dances)
-            ? player.dances.reduce((s: number, elem: any) => s + (elem.kills || 0), 0)
-            : 0
-        if (col.name === 'danceDeaths')
-          return Array.isArray(player.dances)
-            ? player.dances.reduce((s: number, elem: any) => s + (elem.deaths || 0), 0)
-            : 0
-        if (col.name === 'voiceLines')
-          return Array.isArray(player.voiceLines) ? player.voiceLines.length : player.voiceLines || 0
-
-        const gameLength = replay.match.length || 1
-        const teamPlayers = players.filter(p => p.team === player.team)
-        const teamTotalHeroDamage = teamPlayers.reduce((acc, p) => acc + (p.gameStats?.HeroDamage || 0), 0) || 1
-        const teamTotalDamageTaken = teamPlayers.reduce((acc, p) => acc + (p.gameStats?.DamageTaken || 0), 0) || 1
-
-        if (col.name === 'DDRatio')
-          return (
-            (gameStatsData.HeroDamage || 0) /
-            (gameStatsData.DamageTaken === 0 || !gameStatsData.DamageTaken ? 1 : gameStatsData.DamageTaken)
-          )
-        if (col.name === 'DPct') return (gameStatsData.HeroDamage || 0) / teamTotalHeroDamage
-        if (col.name === 'DTPct') return (gameStatsData.DamageTaken || 0) / teamTotalDamageTaken
-        if (col.name === 'HPct')
-          return ((gameStatsData.Healing || 0) + (gameStatsData.ProtectionGivenToAllies || 0)) / teamTotalDamageTaken
-        if (col.name === 'SoftCCPct') return (gameStatsData.TimeCCdEnemyHeroes || 0) / gameLength
-        if (col.name === 'HardCCPct')
-          return (
-            ((gameStatsData.TimeRootingEnemyHeroes || 0) +
-              (gameStatsData.TimeSilencingEnemyHeroes || 0) +
-              (gameStatsData.TimeStunningEnemyHeroes || 0)) /
-            gameLength
-          )
-        if (col.name === 'timeDeadPct') return (gameStatsData.TimeSpentDead || 0) / gameLength
-        if (col.name === 'isMVP')
-          return Array.isArray(gameStatsData.awards) && gameStatsData.awards.includes('EndOfMatchAwardMVPBoolean')
-            ? 1
-            : 0
-        if (col.name === 'awardCount') return Array.isArray(gameStatsData.awards) ? gameStatsData.awards.length : 0
-
-        const rawValue =
-          col.name in player
-            ? player[col.name]
-            : col.name in playerTalents
-              ? playerTalents[col.name]
-              : gameStatsData[col.name]
-
-        if (rawValue === undefined || rawValue === null) return null
-        if (rawValue instanceof Date) return rawValue.toISOString()
-        if (typeof rawValue === 'boolean') return rawValue ? 1 : 0
-        if (typeof rawValue === 'object') return JSON.stringify(rawValue)
-        if (
-          typeof rawValue === 'number' ||
-          typeof rawValue === 'string' ||
-          typeof rawValue === 'bigint' ||
-          Buffer.isBuffer(rawValue)
-        )
-          return rawValue
-        return String(rawValue)
-      })
-
-      insertStatsStmt.run(playerValues)
-    }
-
-    // 3. Update SotS_* summary columns on hots_accounts for participating players
-    for (const acc of updatedAccounts) {
-      updateSotsStatsForAccount(acc)
-    }
-
-    return replayId
-  })
-
-  return saveTransaction()
+  return replayId
 }
 
 /**
  * Checks if a replay file (full path or filename) has already been imported into the database.
  */
-export function isReplayImported(file: string): boolean {
+export async function isReplayImported(file: string): Promise<boolean> {
   const baseName = path.basename(file)
-  const existing = db
-    .prepare<[string, string], { id: number }>(
-      'SELECT id FROM hots_replays WHERE filename = ? OR filename LIKE ? LIMIT 1'
-    )
-    .get(file, `%${baseName}`)
-  return Boolean(existing)
+  const suffixPattern = `%${baseName}`
+  const rows = await sql<Array<{ id: number }>>`
+    SELECT id
+    FROM replays
+    WHERE file = ${file}
+       OR filename = ${file}
+       OR file LIKE ${suffixPattern}
+       OR filename LIKE ${suffixPattern}
+    LIMIT 1
+  `
+  return rows.length > 0
 }
 
-export interface PlayerMatchStats {
+export type PlayerMatchStats = {
   totalGames: number
   wins: number
   losses: number
@@ -990,164 +239,245 @@ export interface PlayerMatchStats {
   }
 }
 
-export function getPlayerMatchStats(
+export async function getPlayerMatchStats(
   discordId: string,
   limit: number = 13,
   minBestHeroGames: number = 5,
   numHeroesLimit: number = 3
-): PlayerMatchStats {
-  type BmRow = {
+): Promise<PlayerMatchStats> {
+  type OverallAndBmRow = {
+    total_games: number
+    wins: number
+    win_rate: number
     bsteps: number
-    bstepTd: number
-    bstepDeaths: number
+    bstep_td: number
+    bstep_deaths: number
     taunts: number
-    tauntTd: number
-    tauntDeaths: number
+    taunt_td: number
+    taunt_deaths: number
     sprays: number
-    sprayTd: number
-    sprayDeaths: number
+    spray_td: number
+    spray_deaths: number
     dances: number
-    danceTd: number
-    danceDeaths: number
-  }
-  const bmStats = db
-    .prepare<[string], BmRow>(
-      `
-    SELECT 
-      COALESCE(SUM(SotS_Bsteps), 0) as bsteps,
-      COALESCE(SUM(SotS_Bstep_TD), 0) as bstepTd,
-      COALESCE(SUM(SotS_Bstep_Deaths), 0) as bstepDeaths,
-      COALESCE(SUM(SotS_Taunts), 0) as taunts,
-      COALESCE(SUM(SotS_Taunt_TD), 0) as tauntTd,
-      COALESCE(SUM(SotS_Taunt_Deaths), 0) as tauntDeaths,
-      COALESCE(SUM(SotS_Sprays), 0) as sprays,
-      COALESCE(SUM(SotS_Spray_TD), 0) as sprayTd,
-      COALESCE(SUM(SotS_Spray_Deaths), 0) as sprayDeaths,
-      COALESCE(SUM(SotS_Dances), 0) as dances,
-      COALESCE(SUM(SotS_Dance_TD), 0) as danceTd,
-      COALESCE(SUM(SotS_Dance_Deaths), 0) as danceDeaths
-    FROM hots_accounts
-    WHERE discord_id = ?
-  `
-    )
-    .get(discordId) || {
-    bsteps: 0,
-    bstepTd: 0,
-    bstepDeaths: 0,
-    taunts: 0,
-    tauntTd: 0,
-    tauntDeaths: 0,
-    sprays: 0,
-    sprayTd: 0,
-    sprayDeaths: 0,
-    dances: 0,
-    danceTd: 0,
-    danceDeaths: 0,
+    dance_td: number
+    dance_deaths: number
   }
 
-  const matchFilter = 's.discord_id = ?'
-
-  type OverallRow = { totalGames: number; wins: number; winRate: number }
-  const overall = db
-    .prepare<[string], OverallRow>(
-      `
-    SELECT 
-      COUNT(*) as totalGames,
-      SUM(CASE WHEN s.win = 1 THEN 1 ELSE 0 END) as wins,
-      ROUND(AVG(s.win) * 100, 1) as winRate
-    FROM hots_replay_player_game_stats s
-    WHERE ${matchFilter}
-  `
+  const overallRows = await sql<OverallAndBmRow[]>`
+    WITH player_matches AS (
+      SELECT
+        s.*,
+        COALESCE(sub.substitute_discord_id, owner_ha.discord_id) AS effective_discord_id,
+        COALESCE(sub.original_discord_id, owner_ha.discord_id) AS owner_discord_id
+      FROM mv_replay_player_stats s
+      LEFT JOIN LATERAL (
+        SELECT original_discord_id, substitute_discord_id
+        FROM account_substitutions a
+        WHERE a.replay_id = s.replay_id
+          AND LOWER(a.hots_battle_tag) = LOWER(s.hots_battle_tag)
+        LIMIT 1
+      ) sub ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT discord_id
+        FROM hots_accounts ha
+        WHERE LOWER(ha.hots_battle_tag) = LOWER(s.hots_battle_tag)
+          AND ha.owner_discord_id IS NULL
+        LIMIT 1
+      ) owner_ha ON TRUE
     )
-    .get(discordId) || { totalGames: 0, wins: 0, winRate: 0 }
+    SELECT
+      COUNT(*)::int AS total_games,
+      COALESCE(SUM(CASE WHEN win THEN 1 ELSE 0 END), 0)::int AS wins,
+      COALESCE(ROUND(AVG(CASE WHEN win THEN 100.0 ELSE 0.0 END)::numeric, 1)::double precision, 0) AS win_rate,
+      COALESCE(SUM(bsteps_count), 0)::int AS bsteps,
+      COALESCE(SUM(bstep_td), 0)::int AS bstep_td,
+      COALESCE(SUM(bstep_deaths), 0)::int AS bstep_deaths,
+      COALESCE(SUM(taunts_count), 0)::int AS taunts,
+      COALESCE(SUM(taunt_td), 0)::int AS taunt_td,
+      COALESCE(SUM(taunt_deaths), 0)::int AS taunt_deaths,
+      COALESCE(SUM(sprays_count), 0)::int AS sprays,
+      COALESCE(SUM(spray_td), 0)::int AS spray_td,
+      COALESCE(SUM(spray_deaths), 0)::int AS spray_deaths,
+      COALESCE(SUM(dances_count), 0)::int AS dances,
+      COALESCE(SUM(dance_td), 0)::int AS dance_td,
+      COALESCE(SUM(dance_deaths), 0)::int AS dance_deaths
+    FROM player_matches
+    WHERE effective_discord_id = ${discordId}
+  `
 
-  const totalGames = overall.totalGames || 0
-  const wins = overall.wins || 0
+  const summary = overallRows[0]
+  const totalGames = summary?.total_games ?? 0
+  const wins = summary?.wins ?? 0
   const losses = totalGames - wins
-  const winRate = totalGames > 0 ? overall.winRate || 0 : 0
+  const winRate = totalGames > 0 ? (summary?.win_rate ?? 0) : 0
+
+  const bmStats = {
+    bsteps: summary?.bsteps ?? 0,
+    bstepTd: summary?.bstep_td ?? 0,
+    bstepDeaths: summary?.bstep_deaths ?? 0,
+    taunts: summary?.taunts ?? 0,
+    tauntTd: summary?.taunt_td ?? 0,
+    tauntDeaths: summary?.taunt_deaths ?? 0,
+    sprays: summary?.sprays ?? 0,
+    sprayTd: summary?.spray_td ?? 0,
+    sprayDeaths: summary?.spray_deaths ?? 0,
+    dances: summary?.dances ?? 0,
+    danceTd: summary?.dance_td ?? 0,
+    danceDeaths: summary?.dance_deaths ?? 0,
+  }
+
+  if (totalGames === 0) {
+    return {
+      totalGames: 0,
+      wins: 0,
+      losses: 0,
+      winRate: 0,
+      recentMatches: [],
+      topHeroes: [],
+      bestHeroes: [],
+      bmStats,
+    }
+  }
 
   type RecentMatchRow = {
     replay_id: number
-    date: string
+    date: Date | string
     map: string
     hero: string
     hots_battle_tag: string
     owner_discord_id: string | null
-    discord_id: string | null
-    win: number
+    effective_discord_id: string | null
+    win: boolean
     kills: number
     assists: number
     deaths: number
   }
-  const recentMatchesRaw = db
-    .prepare<[string, number], RecentMatchRow>(
-      `
-    SELECT 
-      s.replay_id,
-      r.date, 
-      r.map, 
-      s.hero, 
-      s.hots_battle_tag, 
-      s.owner_discord_id, 
-      s.discord_id, 
-      s.win, 
-      s.SoloKill as kills, 
-      s.Assists as assists, 
-      s.Deaths as deaths
-    FROM hots_replay_player_game_stats s
-    JOIN hots_replays r ON s.replay_id = r.id
-    WHERE ${matchFilter}
-    ORDER BY r.date DESC
-    LIMIT ?
-  `
+
+  const recentMatchesRaw = await sql<RecentMatchRow[]>`
+    WITH player_matches AS (
+      SELECT
+        s.replay_id,
+        s.date,
+        s.map,
+        s.hero,
+        s.hots_battle_tag,
+        s.win,
+        s.solo_kills AS kills,
+        s.assists,
+        s.deaths,
+        COALESCE(sub.substitute_discord_id, owner_ha.discord_id) AS effective_discord_id,
+        COALESCE(sub.original_discord_id, owner_ha.discord_id) AS owner_discord_id
+      FROM mv_replay_player_stats s
+      LEFT JOIN LATERAL (
+        SELECT original_discord_id, substitute_discord_id
+        FROM account_substitutions a
+        WHERE a.replay_id = s.replay_id
+          AND LOWER(a.hots_battle_tag) = LOWER(s.hots_battle_tag)
+        LIMIT 1
+      ) sub ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT discord_id
+        FROM hots_accounts ha
+        WHERE LOWER(ha.hots_battle_tag) = LOWER(s.hots_battle_tag)
+          AND ha.owner_discord_id IS NULL
+        LIMIT 1
+      ) owner_ha ON TRUE
     )
-    .all(discordId, limit)
+    SELECT *
+    FROM player_matches
+    WHERE effective_discord_id = ${discordId}
+    ORDER BY date DESC
+    LIMIT ${limit}
+  `
 
   const recentMatches = recentMatchesRaw.map(m => ({
     replayId: m.replay_id,
-    date: m.date,
+    date: m.date instanceof Date ? m.date.toISOString() : m.date,
     map: m.map,
     hero: m.hero,
     battleTag: m.hots_battle_tag,
-    isSubstitute: Boolean(m.owner_discord_id && m.owner_discord_id !== m.discord_id),
-    win: m.win === 1,
+    isSubstitute: Boolean(m.owner_discord_id && m.owner_discord_id !== m.effective_discord_id),
+    win: Boolean(m.win),
     kills: m.kills,
     assists: m.assists,
     deaths: m.deaths,
   }))
 
-  type TopHeroRow = {
+  type HeroStatRow = {
     hero: string
     games: number
     wins: number
     winRate: number
   }
-  const topHeroes = db
-    .prepare<[string, number], TopHeroRow>(
-      `
-    SELECT s.hero, COUNT(*) as games, SUM(CASE WHEN s.win = 1 THEN 1 ELSE 0 END) as wins, ROUND(AVG(s.win) * 100, 1) as winRate
-    FROM hots_replay_player_game_stats s
-    WHERE ${matchFilter}
-    GROUP BY s.hero
-    ORDER BY games DESC
-    LIMIT ?
-  `
-    )
-    .all(discordId, numHeroesLimit)
 
-  const bestHeroes = db
-    .prepare<[string, number, number], TopHeroRow>(
-      `
-    SELECT s.hero, COUNT(*) as games, SUM(CASE WHEN s.win = 1 THEN 1 ELSE 0 END) as wins, ROUND(AVG(s.win) * 100, 1) as winRate
-    FROM hots_replay_player_game_stats s
-    WHERE ${matchFilter}
-    GROUP BY s.hero
-    HAVING COUNT(*) >= ?
-    ORDER BY AVG(s.win) DESC, COUNT(*) DESC
-    LIMIT ?
-  `
+  const topHeroes = await sql<HeroStatRow[]>`
+    WITH player_matches AS (
+      SELECT
+        s.hero,
+        s.win,
+        COALESCE(sub.substitute_discord_id, owner_ha.discord_id) AS effective_discord_id
+      FROM mv_replay_player_stats s
+      LEFT JOIN LATERAL (
+        SELECT substitute_discord_id
+        FROM account_substitutions a
+        WHERE a.replay_id = s.replay_id
+          AND LOWER(a.hots_battle_tag) = LOWER(s.hots_battle_tag)
+        LIMIT 1
+      ) sub ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT discord_id
+        FROM hots_accounts ha
+        WHERE LOWER(ha.hots_battle_tag) = LOWER(s.hots_battle_tag)
+          AND ha.owner_discord_id IS NULL
+        LIMIT 1
+      ) owner_ha ON TRUE
     )
-    .all(discordId, minBestHeroGames, numHeroesLimit)
+    SELECT
+      hero,
+      COUNT(*)::int AS games,
+      SUM(CASE WHEN win THEN 1 ELSE 0 END)::int AS wins,
+      ROUND(AVG(CASE WHEN win THEN 100.0 ELSE 0.0 END)::numeric, 1)::double precision AS "winRate"
+    FROM player_matches
+    WHERE effective_discord_id = ${discordId}
+    GROUP BY hero
+    ORDER BY games DESC
+    LIMIT ${numHeroesLimit}
+  `
+
+  const bestHeroes = await sql<HeroStatRow[]>`
+    WITH player_matches AS (
+      SELECT
+        s.hero,
+        s.win,
+        COALESCE(sub.substitute_discord_id, owner_ha.discord_id) AS effective_discord_id
+      FROM mv_replay_player_stats s
+      LEFT JOIN LATERAL (
+        SELECT substitute_discord_id
+        FROM account_substitutions a
+        WHERE a.replay_id = s.replay_id
+          AND LOWER(a.hots_battle_tag) = LOWER(s.hots_battle_tag)
+        LIMIT 1
+      ) sub ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT discord_id
+        FROM hots_accounts ha
+        WHERE LOWER(ha.hots_battle_tag) = LOWER(s.hots_battle_tag)
+          AND ha.owner_discord_id IS NULL
+        LIMIT 1
+      ) owner_ha ON TRUE
+    )
+    SELECT
+      hero,
+      COUNT(*)::int AS games,
+      SUM(CASE WHEN win THEN 1 ELSE 0 END)::int AS wins,
+      ROUND(AVG(CASE WHEN win THEN 100.0 ELSE 0.0 END)::numeric, 1)::double precision AS "winRate"
+    FROM player_matches
+    WHERE effective_discord_id = ${discordId}
+    GROUP BY hero
+    HAVING COUNT(*) >= ${minBestHeroGames}
+    ORDER BY AVG(CASE WHEN win THEN 1.0 ELSE 0.0 END) DESC, COUNT(*) DESC
+    LIMIT ${numHeroesLimit}
+  `
 
   return {
     totalGames,
@@ -1161,18 +491,18 @@ export function getPlayerMatchStats(
   }
 }
 
-export function optimizeDb(): void {
+export async function optimizeDb(): Promise<void> {
   try {
-    console.log('Optimizing SQLite database (WAL checkpoint & VACUUM)...')
-    db.exec('PRAGMA wal_checkpoint(TRUNCATE);')
-    db.exec('VACUUM;')
+    console.log('Refreshing mv_replay_player_stats and analyzing replays table...')
+    await refreshPlayerStatsView()
+    await sql`ANALYZE replays`
     console.log('Database optimization complete!')
   } catch (error) {
     console.error('Error optimizing database:', error)
   }
 }
 
-export interface UnlinkedReplayAccount {
+export type UnlinkedReplayAccount = {
   hotsBattleTag: string
   name: string
   tag: number
@@ -1181,7 +511,7 @@ export interface UnlinkedReplayAccount {
   heroesPlayed: string
 }
 
-export interface GetUnlinkedAccountsOptions {
+export type GetUnlinkedAccountsOptions = {
   search?: string
   minGames?: number
   sortBy?: 'recent' | 'games'
@@ -1189,129 +519,172 @@ export interface GetUnlinkedAccountsOptions {
   offset?: number
 }
 
-export function getUnlinkedReplayAccounts(
+export async function getUnlinkedReplayAccounts(
   options: GetUnlinkedAccountsOptions = {}
-): { accounts: UnlinkedReplayAccount[]; totalCount: number } {
+): Promise<{ accounts: UnlinkedReplayAccount[]; totalCount: number }> {
   const clean = options.search?.trim() ?? ''
+  const searchPattern = `%${clean}%`
   const minGames = Math.max(1, options.minGames ?? 1)
   const sortBy = options.sortBy ?? 'recent'
   const limit = Math.max(1, options.limit ?? 10)
   const offset = Math.max(0, options.offset ?? 0)
-  const orderClause = sortBy === 'recent' ? 'lastSeenDate DESC' : 'gameCount DESC, lastSeenDate DESC'
 
-  const whereSql = `
-    s.discord_id IS NULL
-    AND s.hots_account_id IS NULL
-    AND s.hots_battle_tag IS NOT NULL
-    AND s.hots_battle_tag != ''
-    AND (? = '' OR s.hots_battle_tag LIKE '%' || ? || '%' COLLATE NOCASE OR s.name LIKE '%' || ? || '%' COLLATE NOCASE)
-    AND NOT EXISTS (
-      SELECT 1 FROM hots_accounts ha
-      WHERE ha.hots_battle_tag = s.hots_battle_tag COLLATE NOCASE
-        AND ha.discord_id IS NOT NULL
-    )
+  const countRows = await sql<Array<{ total: number }>>`
+    SELECT COUNT(*)::int AS total
+    FROM (
+      SELECT s.hots_battle_tag
+      FROM mv_replay_player_stats s
+      WHERE s.hots_battle_tag IS NOT NULL
+        AND s.hots_battle_tag != ''
+        AND (${clean} = '' OR s.hots_battle_tag ILIKE ${searchPattern} OR s.player_name ILIKE ${searchPattern})
+        AND NOT EXISTS (
+          SELECT 1
+          FROM hots_accounts ha
+          WHERE LOWER(ha.hots_battle_tag) = LOWER(s.hots_battle_tag)
+            AND ha.discord_id IS NOT NULL
+        )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM account_substitutions sub
+          WHERE sub.replay_id = s.replay_id
+            AND LOWER(sub.hots_battle_tag) = LOWER(s.hots_battle_tag)
+        )
+      GROUP BY s.hots_battle_tag
+      HAVING COUNT(DISTINCT s.replay_id) >= ${minGames}
+    ) grouped
   `
 
-  interface CountRow {
-    total: number
-  }
-
-  const countRow = db
-    .prepare<[string, string, string, number], CountRow>(`
-      SELECT COUNT(*) AS total FROM (
-        SELECT s.hots_battle_tag
-        FROM hots_replay_player_game_stats s
-        JOIN hots_replays r ON s.replay_id = r.id
-        WHERE ${whereSql}
-        GROUP BY s.hots_battle_tag
-        HAVING COUNT(DISTINCT s.replay_id) >= ?
-      )
-    `)
-    .get(clean, clean, clean, minGames)
-
-  const totalCount = countRow?.total ?? 0
+  const totalCount = countRows[0]?.total ?? 0
   if (totalCount === 0) {
     return { accounts: [], totalCount: 0 }
   }
 
-  interface DataRow {
+  type DataRow = {
     hots_battle_tag: string
     name: string
     tag: number
-    gameCount: number
-    lastSeenDate: string
-    heroesPlayed: string | null
+    game_count: number
+    last_seen_date: Date | string
+    heroes_played: string | null
   }
 
-  const rows = db
-    .prepare<[string, string, string, number, number, number], DataRow>(`
-      SELECT 
-        s.hots_battle_tag,
-        s.name,
-        s.tag,
-        COUNT(DISTINCT s.replay_id) AS gameCount,
-        MAX(r.date) AS lastSeenDate,
-        GROUP_CONCAT(DISTINCT s.hero) AS heroesPlayed
-      FROM hots_replay_player_game_stats s
-      JOIN hots_replays r ON s.replay_id = r.id
-      WHERE ${whereSql}
-      GROUP BY s.hots_battle_tag
-      HAVING COUNT(DISTINCT s.replay_id) >= ?
-      ORDER BY ${orderClause}
-      LIMIT ? OFFSET ?
-    `)
-    .all(clean, clean, clean, minGames, limit, offset)
+  const rows =
+    sortBy === 'recent'
+      ? await sql<DataRow[]>`
+          SELECT
+            s.hots_battle_tag,
+            MAX(s.player_name) AS name,
+            MAX(s.tag)::int AS tag,
+            COUNT(DISTINCT s.replay_id)::int AS game_count,
+            MAX(s.date) AS last_seen_date,
+            STRING_AGG(DISTINCT s.hero, ',') AS heroes_played
+          FROM mv_replay_player_stats s
+          WHERE s.hots_battle_tag IS NOT NULL
+            AND s.hots_battle_tag != ''
+            AND (${clean} = '' OR s.hots_battle_tag ILIKE ${searchPattern} OR s.player_name ILIKE ${searchPattern})
+            AND NOT EXISTS (
+              SELECT 1
+              FROM hots_accounts ha
+              WHERE LOWER(ha.hots_battle_tag) = LOWER(s.hots_battle_tag)
+                AND ha.discord_id IS NOT NULL
+            )
+            AND NOT EXISTS (
+              SELECT 1
+              FROM account_substitutions sub
+              WHERE sub.replay_id = s.replay_id
+                AND LOWER(sub.hots_battle_tag) = LOWER(s.hots_battle_tag)
+            )
+          GROUP BY s.hots_battle_tag
+          HAVING COUNT(DISTINCT s.replay_id) >= ${minGames}
+          ORDER BY last_seen_date DESC
+          LIMIT ${limit} OFFSET ${offset}
+        `
+      : await sql<DataRow[]>`
+          SELECT
+            s.hots_battle_tag,
+            MAX(s.player_name) AS name,
+            MAX(s.tag)::int AS tag,
+            COUNT(DISTINCT s.replay_id)::int AS game_count,
+            MAX(s.date) AS last_seen_date,
+            STRING_AGG(DISTINCT s.hero, ',') AS heroes_played
+          FROM mv_replay_player_stats s
+          WHERE s.hots_battle_tag IS NOT NULL
+            AND s.hots_battle_tag != ''
+            AND (${clean} = '' OR s.hots_battle_tag ILIKE ${searchPattern} OR s.player_name ILIKE ${searchPattern})
+            AND NOT EXISTS (
+              SELECT 1
+              FROM hots_accounts ha
+              WHERE LOWER(ha.hots_battle_tag) = LOWER(s.hots_battle_tag)
+                AND ha.discord_id IS NOT NULL
+            )
+            AND NOT EXISTS (
+              SELECT 1
+              FROM account_substitutions sub
+              WHERE sub.replay_id = s.replay_id
+                AND LOWER(sub.hots_battle_tag) = LOWER(s.hots_battle_tag)
+            )
+          GROUP BY s.hots_battle_tag
+          HAVING COUNT(DISTINCT s.replay_id) >= ${minGames}
+          ORDER BY game_count DESC, last_seen_date DESC
+          LIMIT ${limit} OFFSET ${offset}
+        `
 
   const accounts: UnlinkedReplayAccount[] = rows.map(r => ({
     hotsBattleTag: r.hots_battle_tag,
     name: r.name,
     tag: r.tag,
-    gameCount: r.gameCount,
-    lastSeenDate: r.lastSeenDate,
-    heroesPlayed: r.heroesPlayed ?? '',
+    gameCount: r.game_count,
+    lastSeenDate: r.last_seen_date instanceof Date ? r.last_seen_date.toISOString() : r.last_seen_date,
+    heroesPlayed: r.heroes_played ?? '',
   }))
 
   return { accounts, totalCount }
 }
 
-export function getUnlinkedReplayAccountsForAutocomplete(
+export async function getUnlinkedReplayAccountsForAutocomplete(
   query: string,
   limit = 10
-): Array<{ hotsBattleTag: string; gameCount: number }> {
+): Promise<Array<{ hotsBattleTag: string; gameCount: number }>> {
   const clean = query.trim()
-  interface AutoRow {
+  const searchPattern = `%${clean}%`
+
+  type AutoRow = {
     hots_battle_tag: string
-    gameCount: number
+    game_count: number
   }
 
-  const rows = db
-    .prepare<[string, string, string, number], AutoRow>(`
-      SELECT 
-        s.hots_battle_tag,
-        COUNT(DISTINCT s.replay_id) AS gameCount
-      FROM hots_replay_player_game_stats s
-      WHERE s.discord_id IS NULL
-        AND s.hots_battle_tag IS NOT NULL
-        AND s.hots_battle_tag != ''
-        AND (? = '' OR s.hots_battle_tag LIKE '%' || ? || '%' COLLATE NOCASE OR s.name LIKE '%' || ? || '%' COLLATE NOCASE)
-        AND NOT EXISTS (
-          SELECT 1 FROM hots_accounts ha
-          WHERE ha.hots_battle_tag = s.hots_battle_tag COLLATE NOCASE
-            AND ha.discord_id IS NOT NULL
-        )
-      GROUP BY s.hots_battle_tag
-      ORDER BY gameCount DESC, MAX(s.replay_id) DESC
-      LIMIT ?
-    `)
-    .all(clean, clean, clean, limit)
+  const rows = await sql<AutoRow[]>`
+    SELECT
+      s.hots_battle_tag,
+      COUNT(DISTINCT s.replay_id)::int AS game_count
+    FROM mv_replay_player_stats s
+    WHERE s.hots_battle_tag IS NOT NULL
+      AND s.hots_battle_tag != ''
+      AND (${clean} = '' OR s.hots_battle_tag ILIKE ${searchPattern} OR s.player_name ILIKE ${searchPattern})
+      AND NOT EXISTS (
+        SELECT 1
+        FROM hots_accounts ha
+        WHERE LOWER(ha.hots_battle_tag) = LOWER(s.hots_battle_tag)
+          AND ha.discord_id IS NOT NULL
+      )
+      AND NOT EXISTS (
+        SELECT 1
+        FROM account_substitutions sub
+        WHERE sub.replay_id = s.replay_id
+          AND LOWER(sub.hots_battle_tag) = LOWER(s.hots_battle_tag)
+      )
+    GROUP BY s.hots_battle_tag
+    ORDER BY game_count DESC, MAX(s.replay_id) DESC
+    LIMIT ${limit}
+  `
 
   return rows.map(r => ({
     hotsBattleTag: r.hots_battle_tag,
-    gameCount: r.gameCount,
+    gameCount: r.game_count,
   }))
 }
 
-export interface RecentReplaySummary {
+export type RecentReplaySummary = {
   id: number
   map: string
   date: string
@@ -1321,7 +694,7 @@ export interface RecentReplaySummary {
   team1Takedowns: number | null
 }
 
-export interface ReplayPlayerInfo {
+export type ReplayPlayerInfo = {
   id: number
   replay_id: number
   hots_battle_tag: string
@@ -1335,7 +708,7 @@ export interface ReplayPlayerInfo {
   owner_display_name?: string | null
 }
 
-export interface ReassignReplayResult {
+export type ReassignReplayResult = {
   success: boolean
   message: string
   replayId?: number
@@ -1347,84 +720,154 @@ export interface ReassignReplayResult {
   substituteDiscordId?: string
 }
 
+type RawReplaySummaryRow = {
+  id: number
+  map: string
+  date: Date | string
+  length: number | null
+  winner: number | null
+  team0Takedowns: number | null
+  team1Takedowns: number | null
+}
+
+function normalizeReplaySummary(row: RawReplaySummaryRow): RecentReplaySummary {
+  return {
+    id: row.id,
+    map: row.map,
+    date: row.date instanceof Date ? row.date.toISOString() : row.date,
+    length: row.length,
+    winner: row.winner,
+    team0Takedowns: row.team0Takedowns,
+    team1Takedowns: row.team1Takedowns,
+  }
+}
+
 /**
  * Returns the most recent imported replays, ordered by newest ID first.
  */
-export function getRecentReplays(limit = 20): RecentReplaySummary[] {
-  return db
-    .prepare<[number], RecentReplaySummary>(
-      'SELECT id, map, date, length, winner, team0Takedowns, team1Takedowns FROM hots_replays ORDER BY id DESC LIMIT ?'
-    )
-    .all(limit)
+export async function getRecentReplays(limit = 20): Promise<RecentReplaySummary[]> {
+  const rows = await sql<RawReplaySummaryRow[]>`
+    SELECT
+      id,
+      map,
+      date,
+      length,
+      winner,
+      team0_takedowns AS "team0Takedowns",
+      team1_takedowns AS "team1Takedowns"
+    FROM replays
+    ORDER BY id DESC
+    LIMIT ${limit}
+  `
+  return rows.map(normalizeReplaySummary)
 }
 
 /**
  * Returns a single replay summary by its ID.
  */
-export function getReplaySummary(replayId: number): RecentReplaySummary | undefined {
-  return db
-    .prepare<[number], RecentReplaySummary>(
-      'SELECT id, map, date, length, winner, team0Takedowns, team1Takedowns FROM hots_replays WHERE id = ?'
-    )
-    .get(replayId)
+export async function getReplaySummary(replayId: number): Promise<RecentReplaySummary | undefined> {
+  const rows = await sql<RawReplaySummaryRow[]>`
+    SELECT
+      id,
+      map,
+      date,
+      length,
+      winner,
+      team0_takedowns AS "team0Takedowns",
+      team1_takedowns AS "team1Takedowns"
+    FROM replays
+    WHERE id = ${replayId}
+    LIMIT 1
+  `
+  return rows[0] ? normalizeReplaySummary(rows[0]) : undefined
 }
 
 /**
  * Returns the player roster and stats for a given replay ID.
  */
-export function getReplayPlayers(replayId: number): ReplayPlayerInfo[] {
-  return db
-    .prepare<[number], ReplayPlayerInfo>(
-      `SELECT 
-        s.id, 
-        s.replay_id, 
-        s.hots_battle_tag, 
-        s.hero, 
-        s.team, 
-        s.win, 
-        s.discord_id, 
-        s.owner_discord_id, 
-        s.hots_account_id,
-        sub_p.discord_display_name AS substitute_display_name,
-        owner_p.discord_display_name AS owner_display_name
-       FROM hots_replay_player_game_stats s
-       LEFT JOIN players sub_p ON s.discord_id = sub_p.discord_id
-       LEFT JOIN players owner_p ON s.owner_discord_id = owner_p.discord_id
-       WHERE s.replay_id = ? 
-       ORDER BY s.team ASC, s.hero ASC`
-    )
-    .all(replayId)
+export async function getReplayPlayers(replayId: number): Promise<ReplayPlayerInfo[]> {
+  type RawReplayPlayerRow = {
+    id: number
+    replay_id: number
+    hots_battle_tag: string
+    hero: string
+    team: number
+    win: number
+    discord_id: string | null
+    owner_discord_id: string | null
+    hots_account_id: number
+    substitute_display_name: string | null
+    owner_display_name: string | null
+  }
+
+  return await sql<RawReplayPlayerRow[]>`
+    SELECT
+      ROW_NUMBER() OVER (ORDER BY s.team ASC, s.hero ASC)::int AS id,
+      s.replay_id,
+      s.hots_battle_tag,
+      s.hero,
+      s.team,
+      (CASE WHEN s.win THEN 1 ELSE 0 END)::int AS win,
+      COALESCE(sub.substitute_discord_id, owner_ha.discord_id) AS discord_id,
+      CASE
+        WHEN sub.substitute_discord_id IS NOT NULL THEN COALESCE(sub.original_discord_id, owner_ha.discord_id)
+        ELSE NULL
+      END AS owner_discord_id,
+      COALESCE(sub_ha.id, owner_ha.id, 0)::int AS hots_account_id,
+      sub_p.discord_display_name AS substitute_display_name,
+      owner_p.discord_display_name AS owner_display_name
+    FROM mv_replay_player_stats s
+    LEFT JOIN LATERAL (
+      SELECT original_discord_id, substitute_discord_id
+      FROM account_substitutions a
+      WHERE a.replay_id = s.replay_id
+        AND LOWER(a.hots_battle_tag) = LOWER(s.hots_battle_tag)
+      LIMIT 1
+    ) sub ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT id, discord_id
+      FROM hots_accounts ha
+      WHERE LOWER(ha.hots_battle_tag) = LOWER(s.hots_battle_tag)
+        AND ha.owner_discord_id IS NULL
+      LIMIT 1
+    ) owner_ha ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT id
+      FROM hots_accounts ha2
+      WHERE sub.substitute_discord_id IS NOT NULL
+        AND ha2.discord_id = sub.substitute_discord_id
+        AND LOWER(ha2.hots_battle_tag) = LOWER(s.hots_battle_tag)
+      LIMIT 1
+    ) sub_ha ON TRUE
+    LEFT JOIN players sub_p ON COALESCE(sub.substitute_discord_id, owner_ha.discord_id) = sub_p.discord_id
+    LEFT JOIN players owner_p ON COALESCE(sub.original_discord_id, owner_ha.discord_id) = owner_p.discord_id
+    WHERE s.replay_id = ${replayId}
+    ORDER BY s.team ASC, s.hero ASC
+  `
 }
 
 /**
  * Reassigns a player in a historical replay match to a substitute user.
- * Updates hots_replay_player_game_stats, stores historical substitution,
- * and recalculates SotS summary stats for both accounts.
+ * Stores the historical substitution in `account_substitutions` and ensures the substitute account row exists.
  */
-export function reassignReplayPlayer(
+export async function reassignReplayPlayer(
   guildId: string,
   replayId: number,
   battleTagInput: string,
   substituteDiscordId: string
-): ReassignReplayResult {
-  const replay = db
-    .prepare<[number], { id: number; map: string; date: string }>(
-      'SELECT id, map, date FROM hots_replays WHERE id = ?'
-    )
-    .get(replayId)
-
+): Promise<ReassignReplayResult> {
+  const replay = await getReplaySummary(replayId)
   if (!replay) {
     return { success: false, message: `Replay ID ${replayId} was not found in the database.` }
   }
 
-  const playerStat = db
-    .prepare<[number, string, string], ReplayPlayerInfo>(
-      `SELECT id, replay_id, hots_battle_tag, hero, team, win, discord_id, owner_discord_id, hots_account_id 
-       FROM hots_replay_player_game_stats 
-       WHERE replay_id = ? AND (hots_battle_tag = ? COLLATE NOCASE OR hots_battle_tag LIKE ? COLLATE NOCASE)
-       LIMIT 1`
-    )
-    .get(replayId, battleTagInput, battleTagInput + '#%')
+  const players = await getReplayPlayers(replayId)
+  const lowerInput = battleTagInput.toLowerCase()
+  const playerStat = players.find(
+    p =>
+      p.hots_battle_tag.toLowerCase() === lowerInput ||
+      p.hots_battle_tag.toLowerCase().startsWith(`${lowerInput}#`)
+  )
 
   if (!playerStat) {
     return {
@@ -1436,72 +879,49 @@ export function reassignReplayPlayer(
   let originalDiscordId: string | null = playerStat.owner_discord_id ?? playerStat.discord_id
 
   if (!originalDiscordId) {
-    const origAccount = db
-      .prepare<[string], { discord_id: string | null }>(
-        'SELECT discord_id FROM hots_accounts WHERE hots_battle_tag = ? COLLATE NOCASE AND owner_discord_id IS NULL LIMIT 1'
-      )
-      .get(playerStat.hots_battle_tag)
-    if (origAccount?.discord_id) {
-      originalDiscordId = origAccount.discord_id
+    const origRows = await sql<Array<{ discord_id: string | null }>>`
+      SELECT discord_id
+      FROM hots_accounts
+      WHERE LOWER(hots_battle_tag) = LOWER(${playerStat.hots_battle_tag})
+        AND owner_discord_id IS NULL
+      LIMIT 1
+    `
+    if (origRows[0]?.discord_id) {
+      originalDiscordId = origRows[0].discord_id
     }
   }
 
   const effectiveOwnerId = originalDiscordId ?? substituteDiscordId
 
-  const runReassignTx = db.transaction(() => {
-    const newHotsAccountId = getOrCreateSubstituteAccount(
-      substituteDiscordId,
-      playerStat.hots_battle_tag,
-      effectiveOwnerId
-    )
+  await getOrCreateSubstituteAccount(substituteDiscordId, playerStat.hots_battle_tag, effectiveOwnerId)
 
-    // Check if historical substitution for this replay already exists
-    const existingSub = db
-      .prepare<[number, string], { id: number }>(
-        'SELECT id FROM account_substitutions WHERE replay_id = ? AND hots_battle_tag = ? COLLATE NOCASE'
+  const existingSubRows = await sql<Array<{ id: number }>>`
+    SELECT id
+    FROM account_substitutions
+    WHERE replay_id = ${replayId}
+      AND LOWER(hots_battle_tag) = LOWER(${playerStat.hots_battle_tag})
+    LIMIT 1
+  `
+  const existingSub = existingSubRows[0]
+
+  if (existingSub) {
+    await sql`
+      UPDATE account_substitutions
+      SET substitute_discord_id = ${substituteDiscordId},
+          original_discord_id = ${effectiveOwnerId}
+      WHERE id = ${existingSub.id}
+    `
+  } else {
+    await sql`
+      INSERT INTO account_substitutions (
+        guild_id, hots_battle_tag, original_discord_id, substitute_discord_id, replay_id, is_active
+      ) VALUES (
+        ${guildId}, ${playerStat.hots_battle_tag}, ${effectiveOwnerId}, ${substituteDiscordId}, ${replayId}, FALSE
       )
-      .get(replayId, playerStat.hots_battle_tag)
+    `
+  }
 
-    if (existingSub) {
-      db.prepare(
-        'UPDATE account_substitutions SET substitute_discord_id = ?, original_discord_id = ? WHERE id = ?'
-      ).run(substituteDiscordId, effectiveOwnerId, existingSub.id)
-    } else {
-      db.prepare(
-        `INSERT INTO account_substitutions (guild_id, hots_battle_tag, original_discord_id, substitute_discord_id, replay_id, is_active)
-         VALUES (?, ?, ?, ?, ?, 0)`
-      ).run(guildId, playerStat.hots_battle_tag, effectiveOwnerId, substituteDiscordId, replayId)
-    }
-
-    // Update player game stats row
-    db.prepare(
-      `UPDATE hots_replay_player_game_stats 
-       SET hots_account_id = ?, discord_id = ?, owner_discord_id = ?
-       WHERE id = ?`
-    ).run(newHotsAccountId, substituteDiscordId, originalDiscordId, playerStat.id)
-
-    // Recalculate SotS stats for original account
-    updateSotsStatsForAccount({
-      hotsAccountId: playerStat.hots_account_id,
-      ownerDiscordId: playerStat.owner_discord_id,
-      discordId: playerStat.discord_id,
-      battleTag: playerStat.hots_battle_tag,
-    })
-
-    // Recalculate SotS stats for new substitute account
-    updateSotsStatsForAccount({
-      hotsAccountId: newHotsAccountId,
-      ownerDiscordId: originalDiscordId,
-      discordId: substituteDiscordId,
-      battleTag: playerStat.hots_battle_tag,
-    })
-
-    clearActivePlayersCache(guildId)
-
-    return newHotsAccountId
-  })
-
-  runReassignTx()
+  clearActivePlayersCache(guildId)
 
   return {
     success: true,
@@ -1515,5 +935,3 @@ export function reassignReplayPlayer(
     substituteDiscordId,
   }
 }
-
-

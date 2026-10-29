@@ -1,6 +1,4 @@
 import { writeFile, rename } from 'fs/promises'
-import { db } from './db'
-import { AccountSubstitution, AccountSubstitutionRow, DiscordUserNames, FlatPlayer, HotsAccount, HotsAccountRow, Player } from '../types/player'
 import {
   ActionRowBuilder,
   ButtonBuilder,
@@ -12,256 +10,200 @@ import {
   MessageFlags,
   ModalSubmitInteraction,
 } from 'discord.js'
+import { sql } from './db'
+import {
+  AccountSubstitution,
+  AccountSubstitutionRow,
+  DiscordUserNames,
+  FlatPlayer,
+  FormatPlayerDisplayOptions,
+  HotsAccount,
+  HotSAccountMatch,
+  HotsAccountRow,
+  PLAYER_STATS_VIEW_SCHEMA_SQL,
+  Player,
+  PlayerAggregatedStats,
+  PlayerIdPrefix,
+  PLAYERS_TABLES_SCHEMA_SQL,
+  PlayerStatsFilter,
+  RegisteredPlayerAccount,
+  ReplayPlayerStatRow,
+  ResolvedHotsAccount,
+} from '../types/player'
 import { updateLobbyMessage } from '../commands'
 import { CommandIds, roleMap } from '../constants'
 import { getHeroesProfileData } from './heroesProfile'
 import { requireGuildId, safeReply, safeDeferUpdate } from '../utils/interaction'
 import { validateBattleTag } from '../utils/heroesOfTheStorm'
 
+export {
+  PlayerIdPrefix,
+  type FormatPlayerDisplayOptions,
+  type HotSAccountMatch,
+  type RegisteredPlayerAccount,
+  type ResolvedHotsAccount,
+}
+
 export const interactionStore = new Map<string, ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>>()
+const playerDisplayNameCache = new Map<string, string>()
 
-const initSchema = db.transaction(() => {
-  const playerCols = db.prepare<[], { name: string }>('PRAGMA table_info(players)').all()
-  if (playerCols.length > 0 && playerCols.some(c => c.name === 'active')) {
-    // migrate old players table to new players table without the columns: active, team, lobby_rank, draft_order
-    db.exec('ALTER TABLE players RENAME TO players_old')
-    db.exec(`
-      CREATE TABLE players (
-        discord_id TEXT PRIMARY KEY,
-        discord_name TEXT NOT NULL,
-        discord_global_name TEXT NOT NULL,
-        discord_display_name TEXT NOT NULL,
-        role TEXT,
-        adjustment INTEGER,
-        last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `)
-    db.exec(`
-      INSERT INTO players (discord_id, discord_name, discord_global_name, discord_display_name, role, adjustment, last_active)
-      SELECT discord_id, discord_name, discord_global_name, discord_display_name, role, adjustment, last_active FROM players_old
-    `)
-    db.exec('DROP TABLE players_old')
-  } else {
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS players (
-        discord_id TEXT PRIMARY KEY,
-        discord_name TEXT NOT NULL,
-        discord_global_name TEXT NOT NULL,
-        discord_display_name TEXT NOT NULL,
-        role TEXT,
-        adjustment INTEGER,
-        last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `)
+function cachePlayerDisplayName(
+  discordId: string | null | undefined,
+  displayName?: string | null,
+  globalName?: string | null,
+  name?: string | null
+): void {
+  if (!discordId) return
+  const resolved = displayName || globalName || name
+  if (resolved) {
+    playerDisplayNameCache.set(discordId, resolved)
   }
+}
 
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS lobby_players (
-      guild_id TEXT NOT NULL DEFAULT 'global',
-      discord_id TEXT NOT NULL,
-      active INTEGER NOT NULL DEFAULT 0,
-      team INTEGER CHECK(team IN (1, 2, NULL)),
-      lobby_rank INTEGER,
-      draft_order INTEGER,
-      PRIMARY KEY (guild_id, discord_id),
-      FOREIGN KEY (discord_id) REFERENCES players(discord_id) ON DELETE CASCADE
-    )
-  `)
+/**
+ * Initializes the Discord player, HotS account, lobby, and account substitution tables in PostgreSQL.
+ */
+export async function initPlayersTables(): Promise<void> {
+  await sql.unsafe(PLAYERS_TABLES_SCHEMA_SQL)
+}
 
-  interface TableInfoCol {
-    cid: number
-    name: string
-    type: string
-    notnull: number
-    dflt_value: string | null
-    pk: number
-  }
-
-  const hotsAccountCols = db.prepare<[], TableInfoCol>('PRAGMA table_info(hots_accounts)').all()
-  if (hotsAccountCols.length > 0 && !hotsAccountCols.some(c => c.name === 'real_id_name')) {
-    db.exec('ALTER TABLE hots_accounts ADD COLUMN real_id_name TEXT')
-  }
-  if (hotsAccountCols.length > 0 && !hotsAccountCols.some(c => c.name === 'owner_discord_id')) {
-    db.exec('ALTER TABLE hots_accounts ADD COLUMN owner_discord_id TEXT')
-  }
-
-  // Check if discord_id in hots_accounts has NOT NULL constraint and migrate if needed
-  const discordIdCol = hotsAccountCols.find(c => c.name === 'discord_id')
-  if (discordIdCol && discordIdCol.notnull === 1) {
-    db.exec('PRAGMA foreign_keys = OFF')
-    db.exec('ALTER TABLE hots_accounts RENAME TO hots_accounts_old')
-    interface SqlRow {
-      sql: string
+/**
+ * Initializes the `mv_replay_player_stats` materialized view and its indexes in PostgreSQL.
+ */
+export async function initPlayerStatsView(): Promise<void> {
+  const viewExists = await sql<Array<{ oid: number }>>`
+    SELECT oid FROM pg_class WHERE relname = 'mv_replay_player_stats' AND relkind = 'm'
+  `
+  if (viewExists.length > 0) {
+    const existingCols = await sql<Array<{ attname: string }>>`
+      SELECT a.attname
+      FROM pg_attribute a
+      JOIN pg_class c ON a.attrelid = c.oid
+      WHERE c.relname = 'mv_replay_player_stats'
+        AND a.attname = 'hots_battle_tag'
+        AND a.attnum > 0
+        AND NOT a.attisdropped
+    `
+    if (existingCols.length === 0) {
+      await sql`DROP MATERIALIZED VIEW IF EXISTS mv_replay_player_stats`
     }
-    const oldSqlRow = db
-      .prepare<[string], SqlRow>("SELECT sql FROM sqlite_master WHERE type='table' AND name = ?")
-      .get('hots_accounts_old')
-    if (oldSqlRow) {
-      let newSql = oldSqlRow.sql.replace('hots_accounts_old', 'hots_accounts')
-      newSql = newSql.replace('discord_id TEXT NOT NULL', 'discord_id TEXT')
-      db.exec(newSql)
-      const currentCols = db.prepare<[], TableInfoCol>('PRAGMA table_info(hots_accounts_old)').all()
-      const colNames = currentCols.map(c => c.name).join(', ')
-      db.exec(`INSERT INTO hots_accounts (${colNames}) SELECT ${colNames} FROM hots_accounts_old`)
-      db.exec('DROP TABLE hots_accounts_old')
-    }
-    db.exec('PRAGMA foreign_keys = ON')
   }
+  await sql.unsafe(PLAYER_STATS_VIEW_SCHEMA_SQL)
+}
 
-  // Check if lobby_players needs migration to support non-Discord players and roles
-  const lobbyPlayerCols = db.prepare<[], TableInfoCol>('PRAGMA table_info(lobby_players)').all()
-  const lobbyNeedsMigration =
-    lobbyPlayerCols.length > 0 &&
-    (!lobbyPlayerCols.some(c => c.name === 'hots_account_id') ||
-      !lobbyPlayerCols.some(c => c.name === 'role') ||
-      lobbyPlayerCols.find(c => c.name === 'discord_id')?.notnull === 1)
-
-  if (lobbyNeedsMigration) {
-    db.exec('PRAGMA foreign_keys = OFF')
-    db.exec('ALTER TABLE lobby_players RENAME TO lobby_players_old')
-    db.exec(`
-      CREATE TABLE lobby_players (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        guild_id TEXT NOT NULL DEFAULT 'global',
-        discord_id TEXT,
-        hots_account_id INTEGER,
-        active INTEGER NOT NULL DEFAULT 0,
-        team INTEGER CHECK(team IN (1, 2, NULL)),
-        lobby_rank INTEGER,
-        draft_order INTEGER,
-        role TEXT
-      )
-    `)
-    const oldCols = lobbyPlayerCols.map(c => c.name)
-    const colsToCopy = ['guild_id', 'discord_id', 'active', 'team', 'lobby_rank', 'draft_order']
-    if (oldCols.includes('hots_account_id')) colsToCopy.push('hots_account_id')
-    if (oldCols.includes('role')) colsToCopy.push('role')
-    const colList = colsToCopy.join(', ')
-    db.exec(`
-      INSERT INTO lobby_players (${colList})
-      SELECT ${colList} FROM lobby_players_old
-    `)
-    db.exec('DROP TABLE lobby_players_old')
-    db.exec(`
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_lobby_players_guild_discord 
-      ON lobby_players(guild_id, discord_id);
-    `)
-    db.exec(`
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_lobby_players_guild_account 
-      ON lobby_players(guild_id, hots_account_id);
-    `)
-    // Backfill hots_account_id for existing rows
-    db.exec(`
-      UPDATE lobby_players 
-      SET hots_account_id = (
-        SELECT id FROM hots_accounts 
-        WHERE discord_id = lobby_players.discord_id 
-        ORDER BY is_primary DESC, id ASC 
-        LIMIT 1
-      )
-      WHERE hots_account_id IS NULL AND discord_id IS NOT NULL;
-    `)
-    // Backfill role for existing rows
-    db.exec(`
-      UPDATE lobby_players 
-      SET role = (
-        SELECT role FROM players 
-        WHERE discord_id = lobby_players.discord_id 
-        LIMIT 1
-      )
-      WHERE role IS NULL AND discord_id IS NOT NULL;
-    `)
-    db.exec('PRAGMA foreign_keys = ON')
-  }
-
-  // Ensure lobby_players has clean unique indexes for upserts
-  db.exec('DROP INDEX IF EXISTS idx_lobby_players_guild_discord;')
-  db.exec('DROP INDEX IF EXISTS idx_lobby_players_guild_account;')
-  db.exec(`
-    DELETE FROM lobby_players 
-    WHERE id NOT IN (
-      SELECT MAX(id) FROM lobby_players WHERE discord_id IS NOT NULL GROUP BY guild_id, discord_id
-    ) AND discord_id IS NOT NULL;
-  `)
-  db.exec(`
-    DELETE FROM lobby_players 
-    WHERE id NOT IN (
-      SELECT MAX(id) FROM lobby_players WHERE hots_account_id IS NOT NULL GROUP BY guild_id, hots_account_id
-    ) AND hots_account_id IS NOT NULL;
-  `)
-  db.exec(`
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_lobby_players_guild_discord 
-    ON lobby_players(guild_id, discord_id);
-  `)
-  db.exec(`
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_lobby_players_guild_account 
-    ON lobby_players(guild_id, hots_account_id);
-  `)
-
-  // Create an index for better performance
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_hots_accounts_discord_id 
-    ON hots_accounts(discord_id)
-  `)
-
-  db.exec('DROP INDEX IF EXISTS idx_unique_hots_battle_tag;')
-
-  db.exec(`
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_discord_hots_battle_tag 
-    ON hots_accounts(discord_id, hots_battle_tag COLLATE NOCASE)
-  `)
-
-  db.exec(`
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_owner_battle_tag 
-    ON hots_accounts(hots_battle_tag COLLATE NOCASE) WHERE owner_discord_id IS NULL
-  `)
-
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS account_substitutions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      guild_id TEXT NOT NULL,
-      hots_battle_tag TEXT NOT NULL,
-      original_discord_id TEXT NOT NULL,
-      substitute_discord_id TEXT NOT NULL,
-      replay_id INTEGER,
-      date TEXT NOT NULL DEFAULT (datetime('now')),
-      is_active INTEGER NOT NULL DEFAULT 1
-    )
-  `)
-
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_account_substitutions_lookup 
-    ON account_substitutions(guild_id, hots_battle_tag COLLATE NOCASE, is_active)
-  `)
+initPlayersTables().catch(err => {
+  console.error('Error initializing players tables in PostgreSQL:', err)
 })
 
-// Execute the transaction
-try {
-  initSchema()
-} catch (error) {
-  console.error('Error initializing database schema:', error)
+/**
+ * Refreshes the `mv_replay_player_stats` materialized view concurrently so reads are never blocked.
+ */
+export async function refreshPlayerStatsView(): Promise<void> {
+  await sql`REFRESH MATERIALIZED VIEW CONCURRENTLY mv_replay_player_stats`
+}
+
+/**
+ * Quickly aggregates stats per player from the indexed `mv_replay_player_stats` materialized view,
+ * using a CTE + Window Function (`ROW_NUMBER() OVER (...)`) to include both all-time stats
+ * and recent 10-game rolling form in a single query.
+ */
+export async function getPlayerAggregatedStats(filter: PlayerStatsFilter = {}): Promise<PlayerAggregatedStats[]> {
+  const toonHandle = filter.toonHandle ?? null
+  const playerName = filter.playerName ?? null
+  const hero = filter.hero ?? null
+  const map = filter.map ?? null
+
+  return await sql<PlayerAggregatedStats[]>`
+    WITH ranked_games AS (
+      SELECT
+        *,
+        ROW_NUMBER() OVER (
+          PARTITION BY toon_handle
+          ORDER BY date DESC
+        ) AS recency_rank,
+        FIRST_VALUE(player_name) OVER (
+          PARTITION BY toon_handle
+          ORDER BY date DESC
+        ) AS latest_player_name
+      FROM mv_replay_player_stats
+      WHERE (${toonHandle}::text IS NULL OR toon_handle = ${toonHandle})
+        AND (${playerName}::text IS NULL OR player_name ILIKE ${playerName})
+        AND (${hero}::text IS NULL OR hero = ${hero})
+        AND (${map}::text IS NULL OR map = ${map})
+    )
+    SELECT
+      toon_handle,
+      MAX(latest_player_name) AS player_name,
+      COUNT(*)::int AS games_played,
+      COUNT(*) FILTER (WHERE win)::int AS wins,
+      COUNT(*) FILTER (WHERE NOT win)::int AS losses,
+      ROUND(100.0 * AVG(CASE WHEN win THEN 1.0 ELSE 0.0 END)::numeric, 2)::double precision AS win_rate_pct,
+      SUM(takedowns)::int AS total_takedowns,
+      SUM(solo_kills)::int AS total_solo_kills,
+      SUM(assists)::int AS total_assists,
+      SUM(deaths)::int AS total_deaths,
+      ROUND((SUM(takedowns)::numeric / GREATEST(SUM(deaths), 1)), 2)::double precision AS overall_kda,
+      ROUND(AVG(takedowns)::numeric, 2)::double precision AS avg_takedowns,
+      ROUND(AVG(deaths)::numeric, 2)::double precision AS avg_deaths,
+      ROUND(AVG(assists)::numeric, 2)::double precision AS avg_assists,
+      ROUND(AVG(hero_damage)::numeric, 1)::double precision AS avg_hero_damage,
+      ROUND(AVG(siege_damage)::numeric, 1)::double precision AS avg_siege_damage,
+      ROUND(AVG(healing)::numeric, 1)::double precision AS avg_healing,
+      ROUND(AVG(damage_taken)::numeric, 1)::double precision AS avg_damage_taken,
+      ROUND(AVG(damage_soaked)::numeric, 1)::double precision AS avg_damage_soaked,
+      ROUND(AVG(xp_contribution)::numeric, 1)::double precision AS avg_xp_contribution,
+      ROUND(AVG(dpm)::numeric, 1)::double precision AS avg_dpm,
+      ROUND(AVG(hpm)::numeric, 1)::double precision AS avg_hpm,
+      ROUND(AVG(xpm)::numeric, 1)::double precision AS avg_xpm,
+      ROUND(100.0 * AVG(kill_participation)::numeric, 1)::double precision AS avg_kill_participation_pct,
+      ROUND(AVG(time_spent_dead)::numeric, 1)::double precision AS avg_time_spent_dead,
+      SUM(votes)::int AS total_votes,
+      SUM(bsteps_count)::int AS total_bsteps,
+      SUM(sprays_count)::int AS total_sprays,
+      SUM(taunts_count)::int AS total_taunts,
+      SUM(dances_count)::int AS total_dances,
+      SUM(voice_lines_count)::int AS total_voice_lines,
+      ROUND(
+        100.0 * (AVG(CASE WHEN win THEN 1.0 ELSE 0.0 END) FILTER (WHERE recency_rank <= 10))::numeric,
+        2
+      )::double precision AS recent_10_win_rate_pct,
+      ROUND(
+        (AVG(dpm) FILTER (WHERE recency_rank <= 10))::numeric,
+        1
+      )::double precision AS recent_10_avg_dpm
+    FROM ranked_games
+    GROUP BY toon_handle
+    ORDER BY games_played DESC, win_rate_pct DESC
+  `
+}
+
+/**
+ * Retrieves individual per-match player stat rows from `mv_replay_player_stats`.
+ */
+export async function getPlayerMatchHistory(toonHandle: string, limit = 50): Promise<ReplayPlayerStatRow[]> {
+  return await sql<ReplayPlayerStatRow[]>`
+    SELECT *
+    FROM mv_replay_player_stats
+    WHERE toon_handle = ${toonHandle}
+    ORDER BY date DESC
+    LIMIT ${limit}
+  `
 }
 
 /**
  * Stores an interaction in the interaction store.
- * @param messageId The ID of the message associated with the interaction.
- * @param channelId The ID of the channel where the interaction occurred.
- * @param interaction The interaction object to store.
  */
 export function storeInteraction(
   messageId: string,
   channelId: string,
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
-) {
+): void {
   const key = getInteractionKey(messageId, channelId)
   interactionStore.set(key, interaction)
 }
 
 /**
  * Removes a stored interaction from the interaction store.
- * @param messageId The ID of the message associated with the interaction.
- * @param channelId The ID of the channel where the interaction occurred.
- * @return {void}
  */
 export function removeInteraction(messageId: string, channelId: string): void {
   const key = getInteractionKey(messageId, channelId)
@@ -270,9 +212,6 @@ export function removeInteraction(messageId: string, channelId: string): void {
 
 /**
  * Retrieves a stored interaction from the interaction store.
- * @param messageId The ID of the message associated with the interaction.
- * @param channelId The ID of the channel where the interaction occurred.
- * @returns The stored interaction object, or undefined if not found.
  */
 export function getStoredInteraction(
   messageId: string,
@@ -287,12 +226,8 @@ function getInteractionKey(messageId: string, channelId: string): string {
 }
 
 /**
- * Saves a player to the local store.
- * If the player already exists, it updates their information.
- * @param discordId The Discord ID of the player.
- * @param player The Player object containing player information.
- * @param hotsBattleTag The Heroes of the Storm battle tag of the player.
- * @returns {void}
+ * Saves a player to PostgreSQL.
+ * If the player already exists, updates their information.
  */
 export async function savePlayer(
   interaction:
@@ -304,27 +239,31 @@ export async function savePlayer(
   player: Player,
   hotsBattleTag?: string
 ): Promise<void> {
-  const stmt = db.prepare(`
-    INSERT INTO players (discord_id, discord_name, discord_global_name, discord_display_name, role)
-    VALUES (?, ?, ?, ?, ?)
-    ON CONFLICT(discord_id) DO UPDATE SET
-      discord_name=excluded.discord_name,
-      discord_global_name=excluded.discord_global_name,
-      discord_display_name=excluded.discord_display_name,
-      role=excluded.role,
-      last_active=CURRENT_TIMESTAMP
-  `)
-  stmt.run(
+  cachePlayerDisplayName(
     discordId,
-    player.usernames.discordName,
-    player.usernames.discordGlobalName,
     player.usernames.discordDisplayName,
-    player.role
+    player.usernames.discordGlobalName,
+    player.usernames.discordName
   )
+  await sql`
+    INSERT INTO players (discord_id, discord_name, discord_global_name, discord_display_name, role)
+    VALUES (
+      ${discordId},
+      ${player.usernames.discordName},
+      ${player.usernames.discordGlobalName},
+      ${player.usernames.discordDisplayName},
+      ${player.role ?? null}
+    )
+    ON CONFLICT (discord_id) DO UPDATE SET
+      discord_name = EXCLUDED.discord_name,
+      discord_global_name = EXCLUDED.discord_global_name,
+      discord_display_name = EXCLUDED.discord_display_name,
+      role = EXCLUDED.role,
+      last_active = NOW()
+  `
   if (!hotsBattleTag) {
     return
   }
-  // handle adding the hots account for this player
   await handleAddHotsAccount(interaction, discordId, hotsBattleTag)
 }
 
@@ -338,13 +277,14 @@ export async function savePlayerData(players: Map<string, Player>): Promise<void
   }
 }
 
-/**
- * Converts a database row into a Player object
- * @param flatPlayer The database row
- * @param hotsAccountsRow The database rows for the player's HotS accounts
- * @returns The Player object
- */
 function getPlayerFromRow(flatPlayer: FlatPlayer, hotsAccountsRow: HotsAccountRow[]): Player {
+  cachePlayerDisplayName(
+    flatPlayer.discord_id,
+    flatPlayer.discord_display_name,
+    flatPlayer.discord_global_name,
+    flatPlayer.discord_name
+  )
+
   const accountsNew = hotsAccountsRow
     .filter(account => {
       if (flatPlayer.discord_id) {
@@ -357,6 +297,8 @@ function getPlayerFromRow(flatPlayer: FlatPlayer, hotsAccountsRow: HotsAccountRo
     })
     .map(account => getAccountFromAccountRow(account))
 
+  const isActive = typeof flatPlayer.active === 'boolean' ? flatPlayer.active : flatPlayer.active === 1
+
   return {
     discordId: flatPlayer.discord_id,
     usernames: {
@@ -366,19 +308,18 @@ function getPlayerFromRow(flatPlayer: FlatPlayer, hotsAccountsRow: HotsAccountRo
       discordDisplayName: flatPlayer.discord_display_name,
     },
     role: flatPlayer.role,
-    active: flatPlayer.active === 1,
-    team: flatPlayer.team ?? null, // team can be null
+    active: isActive,
+    team: flatPlayer.team ?? null,
     lobbyRank: flatPlayer.lobby_rank ?? NaN,
     draftOrder: flatPlayer.draft_order ?? NaN,
     adjustment: flatPlayer.adjustment,
     mmr:
       (accountsNew.reduce(
         (max: number | null, account) =>
-          // find the highest MMR including QM, SL, and AR
           Math.max(max ?? 0, account.hpQmMMR ?? 0, account.hpSlMMR ?? 0, account.hpArMMR ?? 0),
         0
       ) ?? 0) + (flatPlayer.adjustment ?? 0),
-    lastActive: new Date(flatPlayer.last_active),
+    lastActive: flatPlayer.last_active instanceof Date ? flatPlayer.last_active : new Date(flatPlayer.last_active),
   }
 }
 
@@ -386,25 +327,24 @@ function getAccountFromAccountRow(account: HotsAccountRow): HotsAccount {
   return {
     id: account.id,
     hotsBattleTag: account.hots_battle_tag,
-    isPrimary: !!account.is_primary,
+    isPrimary: Boolean(account.is_primary),
     realIdName: account.real_id_name ?? null,
     ownerDiscordId: account.owner_discord_id ?? null,
-    hpQmMMR: account.HP_QM_MMR,
-    hpSlMMR: account.HP_SL_MMR,
-    hpArMMR: account.HP_AR_MMR,
-    hpQmGames: account.HP_QM_Games,
-    hpSlGames: account.HP_SL_Games,
-    hpArGames: account.HP_AR_Games,
+    hpQmMMR: account.hp_qm_mmr ?? account.HP_QM_MMR ?? null,
+    hpSlMMR: account.hp_sl_mmr ?? account.HP_SL_MMR ?? null,
+    hpArMMR: account.hp_ar_mmr ?? account.HP_AR_MMR ?? null,
+    hpQmGames: account.hp_qm_games ?? account.HP_QM_Games ?? null,
+    hpSlGames: account.hp_sl_games ?? account.HP_SL_Games ?? null,
+    hpArGames: account.hp_ar_games ?? account.HP_AR_Games ?? null,
   }
 }
 
 /**
- * Retrieves all active players from the database, with their hots accounts
- * @returns Map<string, Player> a Map of active players, where the key is the Discord ID and the value is the Player object.
+ * Retrieves all active players from the database, with their HotS accounts.
  */
-export function getActivePlayers(guildId: string): Player[] {
-  const stmt = db.prepare<[string], FlatPlayer>(`
-    SELECT 
+export async function getActivePlayers(guildId: string): Promise<Player[]> {
+  const rows = await sql<FlatPlayer[]>`
+    SELECT
       lp.discord_id,
       COALESCE(ha.hots_battle_tag, '') AS hots_battle_tag,
       COALESCE(p.discord_name, ha.hots_battle_tag, 'Guest') AS discord_name,
@@ -416,26 +356,59 @@ export function getActivePlayers(guildId: string): Player[] {
       p.adjustment,
       lp.lobby_rank,
       lp.draft_order,
-      COALESCE(p.last_active, CURRENT_TIMESTAMP) AS last_active
+      COALESCE(p.last_active, NOW()) AS last_active
     FROM lobby_players lp
     LEFT JOIN players p ON lp.discord_id = p.discord_id
     LEFT JOIN hots_accounts ha ON ha.id = COALESCE(
       lp.hots_account_id,
       (SELECT id FROM hots_accounts WHERE discord_id = lp.discord_id ORDER BY is_primary DESC, id ASC LIMIT 1)
     )
-    WHERE lp.guild_id = ? AND lp.active = 1
-    ORDER BY lp.lobby_rank, lp.active, lp.team;
-  `)
-  const rows: FlatPlayer[] = stmt.all(guildId)
-  const accountsStmt = db.prepare<[], HotsAccountRow>(
-    'SELECT id, discord_id, hots_battle_tag, is_primary, HP_QM_MMR, HP_SL_MMR, HP_AR_MMR, HP_QM_Games, HP_SL_Games, HP_AR_Games, real_id_name, owner_discord_id FROM hots_accounts;'
-  )
-  const allAccounts = accountsStmt.all()
-  const validAccounts = filterActiveSubstitutedAccounts(allAccounts, guildId)
+    WHERE lp.guild_id = ${guildId} AND lp.active = TRUE
+    ORDER BY lp.lobby_rank, lp.active, lp.team
+  `
+
+  const allAccounts = await sql<
+    Array<
+      HotsAccountRow & {
+        owner_display_name?: string | null
+        owner_global_name?: string | null
+        owner_name?: string | null
+      }
+    >
+  >`
+    SELECT
+      ha.id,
+      ha.discord_id,
+      ha.hots_battle_tag,
+      ha.is_primary,
+      ha.hp_qm_mmr,
+      ha.hp_sl_mmr,
+      ha.hp_ar_mmr,
+      ha.hp_qm_games,
+      ha.hp_sl_games,
+      ha.hp_ar_games,
+      ha.real_id_name,
+      ha.owner_discord_id,
+      op.discord_display_name AS owner_display_name,
+      op.discord_global_name AS owner_global_name,
+      op.discord_name AS owner_name
+    FROM hots_accounts ha
+    LEFT JOIN players op ON ha.owner_discord_id = op.discord_id
+  `
+
+  for (const acc of allAccounts) {
+    if (acc.owner_discord_id) {
+      cachePlayerDisplayName(acc.owner_discord_id, acc.owner_display_name, acc.owner_global_name, acc.owner_name)
+    }
+  }
+
+  const validAccounts = await filterActiveSubstitutedAccounts(allAccounts, guildId)
   const seenPlayerKeys = new Set<string>()
   const uniquePlayers: Player[] = []
   for (const row of rows) {
-    const key = row.discord_id ?? (row.hots_battle_tag ? `tag:${row.hots_battle_tag.toLowerCase()}` : `guest:${uniquePlayers.length}`)
+    const key =
+      row.discord_id ??
+      (row.hots_battle_tag ? `tag:${row.hots_battle_tag.toLowerCase()}` : `guest:${uniquePlayers.length}`)
     if (seenPlayerKeys.has(key)) {
       continue
     }
@@ -448,32 +421,31 @@ export function getActivePlayers(guildId: string): Player[] {
 /**
  * Retrieves autocomplete choices for clearing active account substitutions in a guild.
  */
-export function getAssignAccountClearChoices(
+export async function getAssignAccountClearChoices(
   guildId: string,
   query: string
-): Array<{ name: string; value: string }> {
-  interface ClearRow {
+): Promise<Array<{ name: string; value: string }>> {
+  type ClearRow = {
     hots_battle_tag: string
     lender_name: string
     borrower_name: string
   }
 
   const trimmed = query.trim()
-  const rows = db
-    .prepare<[string, string, string], ClearRow>(
-      `SELECT 
-        s.hots_battle_tag,
-        COALESCE(p1.discord_display_name, p1.discord_global_name, p1.discord_name, 'owner') AS lender_name,
-        COALESCE(p2.discord_display_name, p2.discord_global_name, p2.discord_name, 'borrower') AS borrower_name
-      FROM account_substitutions s
-      LEFT JOIN players p1 ON s.original_discord_id = p1.discord_id
-      LEFT JOIN players p2 ON s.substitute_discord_id = p2.discord_id
-      WHERE s.guild_id = ? AND s.is_active = 1
-        AND (? = '' OR s.hots_battle_tag LIKE '%' || ? || '%' COLLATE NOCASE)
-      ORDER BY s.date DESC
-      LIMIT 25`
-    )
-    .all(guildId, trimmed, trimmed)
+  const pattern = `%${trimmed}%`
+  const rows = await sql<ClearRow[]>`
+    SELECT
+      s.hots_battle_tag,
+      COALESCE(p1.discord_display_name, p1.discord_global_name, p1.discord_name, 'owner') AS lender_name,
+      COALESCE(p2.discord_display_name, p2.discord_global_name, p2.discord_name, 'borrower') AS borrower_name
+    FROM account_substitutions s
+    LEFT JOIN players p1 ON s.original_discord_id = p1.discord_id
+    LEFT JOIN players p2 ON s.substitute_discord_id = p2.discord_id
+    WHERE s.guild_id = ${guildId} AND s.is_active = TRUE
+      AND (${trimmed} = '' OR s.hots_battle_tag ILIKE ${pattern})
+    ORDER BY s.date DESC
+    LIMIT 25
+  `
 
   return rows.map(r => ({
     name: `${r.hots_battle_tag} (loaned from ${r.lender_name} to ${r.borrower_name})`.slice(0, 100),
@@ -484,37 +456,36 @@ export function getAssignAccountClearChoices(
 /**
  * Retrieves autocomplete choices for assigning HotS accounts, prioritizing players active in the lobby.
  */
-export function getAssignAccountChoices(
+export async function getAssignAccountChoices(
   guildId: string,
   query: string
-): Array<{ name: string; value: string }> {
-  interface AssignRow {
+): Promise<Array<{ name: string; value: string }>> {
+  type AssignRow = {
     hots_battle_tag: string
     display_name: string
     in_lobby: number
   }
 
   const trimmed = query.trim()
-  const rows = db
-    .prepare<[string, string, string, string, string], AssignRow>(
-      `SELECT 
-        ha.hots_battle_tag,
-        COALESCE(p.discord_display_name, p.discord_global_name, p.discord_name, 'Unknown') AS display_name,
-        CASE WHEN lp.discord_id IS NOT NULL THEN 1 ELSE 0 END AS in_lobby
-      FROM hots_accounts ha
-      JOIN players p ON ha.discord_id = p.discord_id
-      LEFT JOIN lobby_players lp ON lp.discord_id = ha.discord_id AND lp.guild_id = ? AND lp.active = 1
-      WHERE ha.owner_discord_id IS NULL
-        AND (
-          ? = ''
-          OR ha.hots_battle_tag LIKE '%' || ? || '%' COLLATE NOCASE
-          OR COALESCE(p.discord_display_name, p.discord_global_name, p.discord_name, '') LIKE '%' || ? || '%' COLLATE NOCASE
-          OR COALESCE(ha.real_id_name, '') LIKE '%' || ? || '%' COLLATE NOCASE
-        )
-      ORDER BY in_lobby DESC, ha.hots_battle_tag COLLATE NOCASE ASC
-      LIMIT 25`
-    )
-    .all(guildId, trimmed, trimmed, trimmed, trimmed)
+  const pattern = `%${trimmed}%`
+  const rows = await sql<AssignRow[]>`
+    SELECT
+      ha.hots_battle_tag,
+      COALESCE(p.discord_display_name, p.discord_global_name, p.discord_name, 'Unknown') AS display_name,
+      CASE WHEN lp.discord_id IS NOT NULL THEN 1 ELSE 0 END AS in_lobby
+    FROM hots_accounts ha
+    JOIN players p ON ha.discord_id = p.discord_id
+    LEFT JOIN lobby_players lp ON lp.discord_id = ha.discord_id AND lp.guild_id = ${guildId} AND lp.active = TRUE
+    WHERE ha.owner_discord_id IS NULL
+      AND (
+        ${trimmed} = ''
+        OR ha.hots_battle_tag ILIKE ${pattern}
+        OR COALESCE(p.discord_display_name, p.discord_global_name, p.discord_name, '') ILIKE ${pattern}
+        OR COALESCE(ha.real_id_name, '') ILIKE ${pattern}
+      )
+    ORDER BY in_lobby DESC, LOWER(ha.hots_battle_tag) ASC
+    LIMIT 25
+  `
 
   return rows.map(r => {
     const prefix = r.in_lobby ? '🎮 ' : ''
@@ -525,19 +496,8 @@ export function getAssignAccountChoices(
   })
 }
 
-export interface RegisteredPlayerAccount {
-  id: number
-  discordId: string | null
-  hotsBattleTag: string
-  discordDisplayName: string
-  discordName?: string
-  discordGlobalName?: string
-  realIdName: string | null
-  ownerDiscordId?: string | null
-}
-
-export function getAllRegisteredHotSAccounts(guildId: string): RegisteredPlayerAccount[] {
-  interface QueryRow {
+export async function getAllRegisteredHotSAccounts(guildId: string): Promise<RegisteredPlayerAccount[]> {
+  type QueryRow = {
     id: number
     discord_id: string | null
     hots_battle_tag: string
@@ -547,19 +507,27 @@ export function getAllRegisteredHotSAccounts(guildId: string): RegisteredPlayerA
     real_id_name: string | null
     owner_discord_id: string | null
   }
-  const stmt = db.prepare<[], QueryRow>(`
-    SELECT ha.id, ha.discord_id, ha.hots_battle_tag, ha.real_id_name, ha.owner_discord_id, 
-           COALESCE(p.discord_display_name, ha.hots_battle_tag) AS discord_display_name, 
-           COALESCE(p.discord_name, ha.hots_battle_tag) AS discord_name, 
-           COALESCE(p.discord_global_name, ha.hots_battle_tag) AS discord_global_name
+
+  const rows = await sql<QueryRow[]>`
+    SELECT
+      ha.id,
+      ha.discord_id,
+      ha.hots_battle_tag,
+      ha.real_id_name,
+      ha.owner_discord_id,
+      COALESCE(p.discord_display_name, ha.hots_battle_tag) AS discord_display_name,
+      COALESCE(p.discord_name, ha.hots_battle_tag) AS discord_name,
+      COALESCE(p.discord_global_name, ha.hots_battle_tag) AS discord_global_name
     FROM hots_accounts ha
     LEFT JOIN players p ON ha.discord_id = p.discord_id
-  `)
-  const rows: QueryRow[] = stmt.all()
+  `
 
-  // If guildId is provided, check active substitutions
-  const activeSubs = guildId ? getActiveSubstitutions(guildId) : []
-  const subMap = new Map<string, string>() // lowerBattleTag -> substituteDiscordId
+  for (const r of rows) {
+    cachePlayerDisplayName(r.discord_id, r.discord_display_name, r.discord_global_name, r.discord_name)
+  }
+
+  const activeSubs = guildId ? await getActiveSubstitutions(guildId) : []
+  const subMap = new Map<string, string>()
   for (const s of activeSubs) {
     subMap.set(s.hotsBattleTag.toLowerCase(), s.substituteDiscordId)
     const prefix = s.hotsBattleTag.split('#')[0].toLowerCase()
@@ -590,70 +558,60 @@ export function getAllRegisteredHotSAccounts(guildId: string): RegisteredPlayerA
   return result
 }
 
-export interface HotSAccountMatch {
-  player: Player
-  matchedAccounts: HotsAccount[]
-}
-
-export function findPlayersByHotSAccount(query: string, guildId: string): HotSAccountMatch[] {
+export async function findPlayersByHotSAccount(query: string, guildId: string): Promise<HotSAccountMatch[]> {
   const trimmed = query.trim()
   if (!trimmed) {
     return []
   }
 
   let accounts: HotsAccountRow[] = []
+  const prefixPattern = `${trimmed}%`
+  const hashPrefixPattern = `${trimmed}#%`
+  const substringPattern = `%${trimmed}%`
 
   if (trimmed.includes('#')) {
-    const exactStmt = db.prepare<[string], HotsAccountRow>(`
+    accounts = await sql<HotsAccountRow[]>`
       SELECT *
       FROM hots_accounts
-      WHERE hots_battle_tag = ? COLLATE NOCASE
-    `)
-    accounts = exactStmt.all(trimmed)
+      WHERE LOWER(hots_battle_tag) = LOWER(${trimmed})
+    `
 
     if (accounts.length === 0) {
-      const prefixStmt = db.prepare<[string], HotsAccountRow>(`
+      accounts = await sql<HotsAccountRow[]>`
         SELECT *
         FROM hots_accounts
-        WHERE hots_battle_tag LIKE ? || '%' COLLATE NOCASE
-      `)
-      accounts = prefixStmt.all(trimmed)
+        WHERE hots_battle_tag ILIKE ${prefixPattern}
+      `
     }
   } else {
-    // 1. Exact match on BattleTag prefix (before #), exact tag without #, or exact Real ID name
-    const exactPrefixStmt = db.prepare<[string, string, string], HotsAccountRow>(`
+    accounts = await sql<HotsAccountRow[]>`
       SELECT *
       FROM hots_accounts
-      WHERE hots_battle_tag LIKE ? || '#%' COLLATE NOCASE
-         OR hots_battle_tag = ? COLLATE NOCASE
-         OR real_id_name = ? COLLATE NOCASE
-    `)
-    accounts = exactPrefixStmt.all(trimmed, trimmed, trimmed)
+      WHERE hots_battle_tag ILIKE ${hashPrefixPattern}
+         OR LOWER(hots_battle_tag) = LOWER(${trimmed})
+         OR LOWER(real_id_name) = LOWER(${trimmed})
+    `
 
-    // 2. If no exact match, try prefix match on BattleTag or Real ID
     if (accounts.length === 0) {
-      const prefixStmt = db.prepare<[string, string], HotsAccountRow>(`
+      accounts = await sql<HotsAccountRow[]>`
         SELECT *
         FROM hots_accounts
-        WHERE hots_battle_tag LIKE ? || '%' COLLATE NOCASE
-           OR real_id_name LIKE ? || '%' COLLATE NOCASE
-      `)
-      accounts = prefixStmt.all(trimmed, trimmed)
+        WHERE hots_battle_tag ILIKE ${prefixPattern}
+           OR real_id_name ILIKE ${prefixPattern}
+      `
     }
 
-    // 3. If still no match, try substring match
     if (accounts.length === 0) {
-      const partialStmt = db.prepare<[string, string], HotsAccountRow>(`
+      accounts = await sql<HotsAccountRow[]>`
         SELECT *
         FROM hots_accounts
-        WHERE hots_battle_tag LIKE '%' || ? || '%' COLLATE NOCASE
-           OR real_id_name LIKE '%' || ? || '%' COLLATE NOCASE
-      `)
-      accounts = partialStmt.all(trimmed, trimmed)
+        WHERE hots_battle_tag ILIKE ${substringPattern}
+           OR real_id_name ILIKE ${substringPattern}
+      `
     }
   }
 
-  accounts = filterActiveSubstitutedAccounts(accounts, guildId)
+  accounts = await filterActiveSubstitutedAccounts(accounts, guildId)
 
   const results: HotSAccountMatch[] = []
   const seenDiscordIds = new Set<string>()
@@ -665,7 +623,7 @@ export function findPlayersByHotSAccount(query: string, guildId: string): HotSAc
       if (seenDiscordIds.has(accRow.discord_id)) continue
       seenDiscordIds.add(accRow.discord_id)
 
-      const player = getPlayerByDiscordId(accRow.discord_id, guildId)
+      const player = await getPlayerByDiscordId(accRow.discord_id, guildId)
       if (!player) continue
 
       const matchedAccounts = (player.usernames.accounts || []).filter(acc => {
@@ -695,7 +653,7 @@ export function findPlayersByHotSAccount(query: string, guildId: string): HotSAc
       seenAccountIds.add(accRow.id)
 
       const hotsAcc = getAccountFromAccountRow(accRow)
-      const guestPlayer = getPlayerByIdentifier(`${PlayerIdPrefix.HOTS_ROW_ID}${accRow.id}`, guildId)
+      const guestPlayer = await getPlayerByIdentifier(`${PlayerIdPrefix.HOTS_ROW_ID}${accRow.id}`, guildId)
       if (guestPlayer) {
         results.push({
           player: guestPlayer,
@@ -708,43 +666,101 @@ export function findPlayersByHotSAccount(query: string, guildId: string): HotSAc
   return results
 }
 
-export function getAllPlayers(page: number, sort: 'mmr' | 'alphabetical', ascending: boolean): Player[] {
-  let stmt
+export async function getAllPlayers(
+  page: number,
+  sort: 'mmr' | 'alphabetical',
+  ascending: boolean
+): Promise<Player[]> {
+  const offset = (page ?? 0) * 20
+  let rows: FlatPlayer[]
   if (sort === 'mmr') {
-    stmt = db.prepare<[number], FlatPlayer>(
-      `SELECT p.* 
-       FROM players p
-       LEFT JOIN (
-         SELECT 
-           discord_id,
-           MAX(
-             CASE 
-               WHEN COALESCE(HP_QM_MMR, 0) >= COALESCE(HP_SL_MMR, 0) AND COALESCE(HP_QM_MMR, 0) >= COALESCE(HP_AR_MMR, 0) 
-                 THEN COALESCE(HP_QM_MMR, 0)
-               WHEN COALESCE(HP_SL_MMR, 0) >= COALESCE(HP_AR_MMR, 0) 
-                 THEN COALESCE(HP_SL_MMR, 0)
-               ELSE COALESCE(HP_AR_MMR, 0)
-             END
-           ) as mmr
-         FROM hots_accounts
-         GROUP BY discord_id
-       ) h ON p.discord_id = h.discord_id
-       ORDER BY (COALESCE(h.mmr, 0) + COALESCE(p.adjustment, 0)) ${ascending ? 'DESC' : 'ASC'
-      }, p.discord_display_name ASC
-       LIMIT 20 OFFSET ?`
-    )
+    if (ascending) {
+      rows = await sql<FlatPlayer[]>`
+        SELECT
+          p.*,
+          '' AS hots_battle_tag,
+          FALSE AS active,
+          NULL::int AS team,
+          NULL::int AS lobby_rank,
+          NULL::int AS draft_order
+        FROM players p
+        LEFT JOIN (
+          SELECT
+            discord_id,
+            MAX(GREATEST(COALESCE(hp_qm_mmr, 0), COALESCE(hp_sl_mmr, 0), COALESCE(hp_ar_mmr, 0))) AS mmr
+          FROM hots_accounts
+          GROUP BY discord_id
+        ) h ON p.discord_id = h.discord_id
+        ORDER BY (COALESCE(h.mmr, 0) + COALESCE(p.adjustment, 0)) DESC, p.discord_display_name ASC
+        LIMIT 20 OFFSET ${offset}
+      `
+    } else {
+      rows = await sql<FlatPlayer[]>`
+        SELECT
+          p.*,
+          '' AS hots_battle_tag,
+          FALSE AS active,
+          NULL::int AS team,
+          NULL::int AS lobby_rank,
+          NULL::int AS draft_order
+        FROM players p
+        LEFT JOIN (
+          SELECT
+            discord_id,
+            MAX(GREATEST(COALESCE(hp_qm_mmr, 0), COALESCE(hp_sl_mmr, 0), COALESCE(hp_ar_mmr, 0))) AS mmr
+          FROM hots_accounts
+          GROUP BY discord_id
+        ) h ON p.discord_id = h.discord_id
+        ORDER BY (COALESCE(h.mmr, 0) + COALESCE(p.adjustment, 0)) ASC, p.discord_display_name ASC
+        LIMIT 20 OFFSET ${offset}
+      `
+    }
   } else {
-    stmt = db.prepare<[number], FlatPlayer>(
-      `SELECT * FROM players ORDER BY discord_display_name ${ascending ? ' ASC' : ' DESC'} LIMIT 20 OFFSET ?;`
-    )
+    if (ascending) {
+      rows = await sql<FlatPlayer[]>`
+        SELECT
+          p.*,
+          '' AS hots_battle_tag,
+          FALSE AS active,
+          NULL::int AS team,
+          NULL::int AS lobby_rank,
+          NULL::int AS draft_order
+        FROM players p
+        ORDER BY p.discord_display_name ASC
+        LIMIT 20 OFFSET ${offset}
+      `
+    } else {
+      rows = await sql<FlatPlayer[]>`
+        SELECT
+          p.*,
+          '' AS hots_battle_tag,
+          FALSE AS active,
+          NULL::int AS team,
+          NULL::int AS lobby_rank,
+          NULL::int AS draft_order
+        FROM players p
+        ORDER BY p.discord_display_name DESC
+        LIMIT 20 OFFSET ${offset}
+      `
+    }
   }
 
-  // const stmt2 = db.prepare<[number], FlatPlayer>('SELECT * FROM players ORDER BY MMR LIMIT 20 OFFSET ?;');
-  const rows: FlatPlayer[] = stmt.all((page ?? 0) * 20)
-  const accountsStmt = db.prepare<[], HotsAccountRow>(
-    'SELECT discord_id, hots_battle_tag, is_primary, HP_QM_MMR, HP_SL_MMR, HP_AR_MMR, HP_QM_Games, HP_SL_Games, HP_AR_Games, real_id_name FROM hots_accounts;'
-  )
-  const accounts = accountsStmt.all()
+  const accounts = await sql<HotsAccountRow[]>`
+    SELECT
+      id,
+      discord_id,
+      hots_battle_tag,
+      is_primary,
+      hp_qm_mmr,
+      hp_sl_mmr,
+      hp_ar_mmr,
+      hp_qm_games,
+      hp_sl_games,
+      hp_ar_games,
+      real_id_name,
+      owner_discord_id
+    FROM hots_accounts
+  `
   return rows.map<Player>(row => getPlayerFromRow(row, accounts))
 }
 
@@ -769,53 +785,44 @@ export async function triggerAccountMmrFetch(battleTag: string, guildId?: string
   try {
     const profileData = await getHeroesProfileData(battleTag)
     if (profileData && !(profileData.qmGames === -1 && profileData.slGames === -1 && profileData.arGames === -1)) {
-      db.prepare(`
+      await sql`
         UPDATE hots_accounts SET
-          HP_Region = ?,
-          HP_Blizz_ID = ?,
-          HP_QM_MMR = ?,
-          HP_SL_MMR = ?,
-          HP_AR_MMR = ?,
-          HP_QM_Games = ?,
-          HP_SL_Games = ?,
-          HP_AR_Games = ?,
-          updated_at = CURRENT_TIMESTAMP
-        WHERE hots_battle_tag = ? COLLATE NOCASE
-      `).run(
-        profileData.region,
-        profileData.blizz_id,
-        profileData.qmMmr,
-        profileData.slMmr,
-        profileData.arMmr,
-        profileData.qmGames,
-        profileData.slGames,
-        profileData.arGames,
-        battleTag
-      )
+          hp_region = ${profileData.region},
+          hp_blizz_id = ${String(profileData.blizz_id)},
+          hp_qm_mmr = ${Number.isNaN(profileData.qmMmr) ? null : profileData.qmMmr},
+          hp_sl_mmr = ${Number.isNaN(profileData.slMmr) ? null : profileData.slMmr},
+          hp_ar_mmr = ${Number.isNaN(profileData.arMmr) ? null : profileData.arMmr},
+          hp_qm_games = ${profileData.qmGames},
+          hp_sl_games = ${profileData.slGames},
+          hp_ar_games = ${profileData.arGames},
+          updated_at = NOW()
+        WHERE LOWER(hots_battle_tag) = LOWER(${battleTag})
+      `
     } else {
-      db.prepare(`
+      await sql`
         UPDATE hots_accounts SET
-          HP_QM_Games = -1,
-          HP_SL_Games = -1,
-          HP_AR_Games = -1,
-          updated_at = CURRENT_TIMESTAMP
-        WHERE hots_battle_tag = ? COLLATE NOCASE
-      `).run(battleTag)
+          hp_qm_games = -1,
+          hp_sl_games = -1,
+          hp_ar_games = -1,
+          updated_at = NOW()
+        WHERE LOWER(hots_battle_tag) = LOWER(${battleTag})
+      `
     }
   } catch (err) {
     console.error(`Error fetching HP MMR for ${battleTag}:`, err)
-    db.prepare(`
+    await sql`
       UPDATE hots_accounts SET
-        HP_QM_Games = -1,
-        HP_SL_Games = -1,
-        HP_AR_Games = -1,
-        updated_at = CURRENT_TIMESTAMP
-      WHERE hots_battle_tag = ? COLLATE NOCASE
-    `).run(battleTag)
+        hp_qm_games = -1,
+        hp_sl_games = -1,
+        hp_ar_games = -1,
+        updated_at = NOW()
+      WHERE LOWER(hots_battle_tag) = LOWER(${battleTag})
+    `
   } finally {
     activeMmrLoadingTags.delete(lowerTag)
     if (guildId) {
       try {
+        clearActivePlayersCache(guildId)
         await updateLobbyMessage(guildId)
       } catch (e) {
         console.error('Error updating lobby message after MMR fetch:', e)
@@ -834,7 +841,6 @@ export async function handleAddHotsAccount(
   hotsBattleTag: string
 ): Promise<false | Player> {
   let hotsAccountAlreadyExists = false
-  let hasAccount = false
   let userIsSelf = false
   const validationResult = validateBattleTag(hotsBattleTag)
   if (!validationResult.isValid) {
@@ -848,15 +854,20 @@ ${validationResult.rules}
     return false
   }
 
-  //check if the hots account is already in use by another player
-  const existingAccountStmt = db.prepare<string[], HotsAccount & { discord_id: string }>(
-    'SELECT discord_id, hots_battle_tag FROM hots_accounts WHERE hots_battle_tag = ? COLLATE NOCASE AND discord_id IS NOT NULL AND discord_id != ?'
-  )
-  const existingAccount = existingAccountStmt.get(hotsBattleTag, discordId)
+  const existingAccounts = await sql<Array<{ discord_id: string; hots_battle_tag: string }>>`
+    SELECT discord_id, hots_battle_tag
+    FROM hots_accounts
+    WHERE LOWER(hots_battle_tag) = LOWER(${hotsBattleTag})
+      AND discord_id IS NOT NULL
+      AND discord_id != ${discordId}
+    LIMIT 1
+  `
+  const existingAccount = existingAccounts[0]
   if (existingAccount) {
     await safeReply(interaction, {
-      content: `This HotS account is already in use by another player: <@${existingAccount.discord_id
-        }>\nare you sure this is ${discordId === interaction?.user.id ? 'your' : '<@' + discordId + ">'s"} account...`,
+      content: `This HotS account is already in use by another player: <@${
+        existingAccount.discord_id
+      }>\nare you sure this is ${discordId === interaction?.user.id ? 'your' : '<@' + discordId + ">'s"} account...`,
       files: [
         {
           attachment: 'https://i.giphy.com/media/hPkJ9Q7dh6itMoMIMC/giphy.gif',
@@ -870,13 +881,13 @@ ${validationResult.rules}
   const guildId = await requireGuildId(interaction)
   if (!guildId) return false
 
-  const player = getPlayerByDiscordId(discordId, guildId)
+  const player = await getPlayerByDiscordId(discordId, guildId)
   if (!player) {
     await safeReply(interaction, {
       content: 'Player not found in database',
       flags: MessageFlags.Ephemeral,
     })
-    return false // Player not found
+    return false
   }
 
   try {
@@ -889,11 +900,7 @@ ${validationResult.rules}
       console.error('Error deferring reply:', error)
     }
   }
-  // await interaction?.editReply({
-  //   content:
-  //     '🔍 Fetching Heroes Profile data... This may take 30-60 seconds.\n<a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004><a:Dance:1058282988422570004>',
-  // });
-  // get their heroes profile data
+
   activeMmrLoadingTags.add(hotsBattleTag.toLowerCase())
   let profileData
   try {
@@ -901,7 +908,7 @@ ${validationResult.rules}
   } finally {
     activeMmrLoadingTags.delete(hotsBattleTag.toLowerCase())
   }
-  // const profileData = await getHeroesProfileDataPuppeteer(hotsBattleTag);
+
   if (!profileData) {
     await safeReply(interaction, {
       content: `Failed to retrieve Heroes profile data for \`${hotsBattleTag}\`.\nAre you sure you typed it right?`,
@@ -917,17 +924,19 @@ ${validationResult.rules}
 
   userIsSelf = discordId === interaction?.user.id
 
-  interface ExistingAccountRow {
+  type ExistingAccountRow = {
     id: number
     discord_id: string | null
-    is_primary: number
+    is_primary: boolean
   }
 
-  const currentAccount = db
-    .prepare<[string], ExistingAccountRow>(
-      'SELECT id, discord_id, is_primary FROM hots_accounts WHERE hots_battle_tag = ? COLLATE NOCASE AND owner_discord_id IS NULL LIMIT 1'
-    )
-    .get(hotsBattleTag)
+  const currentAccounts = await sql<ExistingAccountRow[]>`
+    SELECT id, discord_id, is_primary
+    FROM hots_accounts
+    WHERE LOWER(hots_battle_tag) = LOWER(${hotsBattleTag}) AND owner_discord_id IS NULL
+    LIMIT 1
+  `
+  const currentAccount = currentAccounts[0]
 
   if (currentAccount && currentAccount.discord_id === discordId) {
     hotsAccountAlreadyExists = true
@@ -936,99 +945,72 @@ ${validationResult.rules}
   try {
     const isPrimary =
       currentAccount && currentAccount.discord_id === discordId
-        ? currentAccount.is_primary
+        ? Boolean(currentAccount.is_primary)
         : !player.usernames.accounts || player.usernames.accounts.length <= 1
-          ? 1
-          : 0
 
-    const syncAccountTransaction = db.transaction(() => {
+    const qmMmr = Number.isNaN(profileData.qmMmr) ? null : profileData.qmMmr
+    const slMmr = Number.isNaN(profileData.slMmr) ? null : profileData.slMmr
+    const arMmr = Number.isNaN(profileData.arMmr) ? null : profileData.arMmr
+
+    await sql.begin(async tx => {
       let accountId: number
 
       if (currentAccount) {
-        db.prepare(`
+        await tx`
           UPDATE hots_accounts SET
-            discord_id = ?,
-            hots_battle_tag = ?,
-            is_primary = ?,
-            HP_Region = ?,
-            HP_Blizz_ID = ?,
-            HP_QM_MMR = ?,
-            HP_SL_MMR = ?,
-            HP_AR_MMR = ?,
-            HP_QM_Games = ?,
-            HP_SL_Games = ?,
-            HP_AR_Games = ?,
-            updated_at = CURRENT_TIMESTAMP
-          WHERE id = ?
-        `).run(
-          discordId,
-          hotsBattleTag,
-          isPrimary,
-          profileData.region,
-          profileData.blizz_id,
-          profileData.qmMmr,
-          profileData.slMmr,
-          profileData.arMmr,
-          profileData.qmGames,
-          profileData.slGames,
-          profileData.arGames,
-          currentAccount.id
-        )
+            discord_id = ${discordId},
+            hots_battle_tag = ${hotsBattleTag},
+            is_primary = ${isPrimary},
+            hp_region = ${profileData.region},
+            hp_blizz_id = ${String(profileData.blizz_id)},
+            hp_qm_mmr = ${qmMmr},
+            hp_sl_mmr = ${slMmr},
+            hp_ar_mmr = ${arMmr},
+            hp_qm_games = ${profileData.qmGames},
+            hp_sl_games = ${profileData.slGames},
+            hp_ar_games = ${profileData.arGames},
+            updated_at = NOW()
+          WHERE id = ${currentAccount.id}
+        `
         accountId = currentAccount.id
       } else {
-        const info = db.prepare(`
+        const inserted = await tx<Array<{ id: number }>>`
           INSERT INTO hots_accounts (
-            discord_id, hots_battle_tag, is_primary, HP_Region, HP_Blizz_ID,
-            HP_QM_MMR, HP_SL_MMR, HP_AR_MMR, HP_QM_Games, HP_SL_Games, HP_AR_Games
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(
-          discordId,
-          hotsBattleTag,
-          isPrimary,
-          profileData.region,
-          profileData.blizz_id,
-          profileData.qmMmr,
-          profileData.slMmr,
-          profileData.arMmr,
-          profileData.qmGames,
-          profileData.slGames,
-          profileData.arGames
-        )
-        accountId = Number(info.lastInsertRowid)
+            discord_id, hots_battle_tag, is_primary, hp_region, hp_blizz_id,
+            hp_qm_mmr, hp_sl_mmr, hp_ar_mmr, hp_qm_games, hp_sl_games, hp_ar_games
+          ) VALUES (
+            ${discordId}, ${hotsBattleTag}, ${isPrimary}, ${profileData.region}, ${String(profileData.blizz_id)},
+            ${qmMmr}, ${slMmr}, ${arMmr}, ${profileData.qmGames}, ${profileData.slGames}, ${profileData.arGames}
+          )
+          RETURNING id
+        `
+        accountId = inserted[0].id
       }
 
-      // Link lobby player entry if this account was in the lobby as a guest
-      db.prepare(`
+      await tx`
         UPDATE lobby_players
-        SET hots_account_id = ?
-        WHERE discord_id = ? AND (hots_account_id IS NULL OR hots_account_id = ?)
-      `).run(accountId, discordId, accountId)
+        SET hots_account_id = ${accountId}
+        WHERE discord_id = ${discordId} AND (hots_account_id IS NULL OR hots_account_id = ${accountId})
+      `
 
-      db.prepare(`
+      await tx`
         DELETE FROM lobby_players
-        WHERE hots_account_id = ? AND discord_id IS NULL
-          AND guild_id IN (SELECT guild_id FROM lobby_players WHERE discord_id = ?)
-      `).run(accountId, discordId)
+        WHERE hots_account_id = ${accountId} AND discord_id IS NULL
+          AND guild_id IN (SELECT guild_id FROM lobby_players WHERE discord_id = ${discordId})
+      `
 
-      db.prepare(`
+      await tx`
         UPDATE lobby_players
-        SET discord_id = ?
-        WHERE hots_account_id = ? AND discord_id IS NULL
-      `).run(accountId, discordId)
-
-      // Link replay game stats
-      db.prepare(`
-        UPDATE hots_replay_player_game_stats
-        SET hots_account_id = ?, discord_id = ?
-        WHERE hots_account_id = ? OR (hots_account_id IS NULL AND hots_battle_tag = ? COLLATE NOCASE)
-      `).run(accountId, discordId, accountId, hotsBattleTag)
+        SET discord_id = ${discordId}
+        WHERE hots_account_id = ${accountId} AND discord_id IS NULL
+      `
     })
 
-    syncAccountTransaction()
     if (profileData.detectedRoles && !player.role) {
-      setPlayerRole(discordId, guildId, profileData.detectedRoles)
+      await setPlayerRole(discordId, guildId, profileData.detectedRoles)
       player.role = profileData.detectedRoles
     }
+    clearActivePlayersCache(guildId)
     if (interaction) {
       await updateLobbyMessage(guildId, interaction)
     }
@@ -1038,14 +1020,16 @@ ${validationResult.rules}
         profileData.detectedRoles && player.role === profileData.detectedRoles
           ? `\nAuto-populated role: ${getPlayerRolesFormatted(player.role)}${reasonText}`
           : ''
-      const content = `${userIsSelf ? 'You' : '<@' + discordId + '>'} already ${userIsSelf ? 'have' : 'has'
-        } this HotS account linked: \`${hotsBattleTag}\`\n\nHowever, ${userIsSelf ? 'your' : '<@' + discordId + '>' + "'s"
-        } Heroes profile data and BattleTag formatting have been updated.${roleText}`
+      const content = `${userIsSelf ? 'You' : '<@' + discordId + '>'} already ${
+        userIsSelf ? 'have' : 'has'
+      } this HotS account linked: \`${hotsBattleTag}\`\n\nHowever, ${
+        userIsSelf ? 'your' : '<@' + discordId + '>' + "'s"
+      } Heroes profile data and BattleTag formatting have been updated.${roleText}`
       try {
         await interaction?.editReply({
           content,
         })
-      } catch (error) {
+      } catch {
         await safeReply(interaction, {
           content,
           flags: MessageFlags.Ephemeral,
@@ -1058,8 +1042,9 @@ ${validationResult.rules}
           ? `\nAuto-populated role: ${getPlayerRolesFormatted(player.role)}${reasonText}`
           : ''
       await safeReply(interaction, {
-        content: `${discordId === interaction?.user.id ? 'Your' : '<@' + discordId + ">'s"
-          } HotS account has been added: \`${hotsBattleTag}\`${roleText}`,
+        content: `${
+          discordId === interaction?.user.id ? 'Your' : '<@' + discordId + ">'s"
+        } HotS account has been added: \`${hotsBattleTag}\`${roleText}`,
         flags: MessageFlags.Ephemeral,
       })
     }
@@ -1081,19 +1066,16 @@ export async function handleDeleteHotsAccount(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
   discordId: string,
   hotsBattleTag: string | null
-) {
+): Promise<void> {
   if (!hotsBattleTag) {
-    // delete all hots accounts associated with the discordId
-    deletePlayerHotsAccounts(discordId)
-    const hotsAccountStmt = db.prepare('DELETE FROM hots_accounts WHERE discord_id = ?')
-    hotsAccountStmt.run(discordId)
+    await deletePlayerHotsAccounts(discordId)
     await safeReply(interaction, {
       content: `ALL Heroes of the Storm accounts associated with <@${discordId}> have been deleted.`,
       flags: MessageFlags.Ephemeral,
     })
     return
   }
-  const deleted = deleteHotsAccount(hotsBattleTag)
+  const deleted = await deleteHotsAccount(hotsBattleTag)
   if (deleted > 0) {
     await safeReply(interaction, {
       content: `Heroes of the Storm account \`${hotsBattleTag}\` has been deleted.`,
@@ -1115,18 +1097,21 @@ async function handleAccountNotFound(
     | undefined,
   discordId: string,
   hotsBattleTag: string
-) {
+): Promise<void> {
   const guildId = interaction ? await requireGuildId(interaction) : null
   if (!guildId) return
-  deletePlayerHotsAccounts(discordId)
-  interaction && (await updateLobbyMessage(guildId, interaction))
+  await deletePlayerHotsAccounts(discordId)
+  if (interaction) {
+    await updateLobbyMessage(guildId, interaction)
+  }
   const joinBtn = new ButtonBuilder()
     .setCustomId(`${CommandIds.JOIN_WITH_BATTLE_TAG}_${hotsBattleTag}`)
     .setLabel('Try Again')
     .setStyle(ButtonStyle.Primary)
   await safeReply(interaction, {
-    content: `heroesprofile could not find data for \`${hotsBattleTag}\`\nare you sure this is the right battle tag for ${discordId === interaction?.user.id ? 'your' : '<@' + discordId + ">'s"
-      } account?`,
+    content: `heroesprofile could not find data for \`${hotsBattleTag}\`\nare you sure this is the right battle tag for ${
+      discordId === interaction?.user.id ? 'your' : '<@' + discordId + ">'s"
+    } account?`,
     flags: MessageFlags.Ephemeral,
     components: [new ActionRowBuilder<ButtonBuilder>().addComponents(joinBtn)],
   })
@@ -1135,17 +1120,15 @@ async function handleAccountNotFound(
 export async function deletePlayer(
   discordId: string
 ): Promise<{ playersDeleted: number; hotsAccountsDeleted: number }> {
-  // first delete the player's hots accounts
   let deletedPlayer = 0
   let deletedAccounts = 0
 
-  const transaction = db.transaction(() => {
-    deletedAccounts = deletePlayerHotsAccounts(discordId)
-    // get the number of hots accounts deleted
-    const deletePlayerStmt = db.prepare('DELETE FROM players WHERE discord_id = ?')
-    deletedPlayer = deletePlayerStmt.run(discordId).changes
+  await sql.begin(async tx => {
+    const accResult = await tx`DELETE FROM hots_accounts WHERE discord_id = ${discordId}`
+    deletedAccounts = accResult.count
+    const playerResult = await tx`DELETE FROM players WHERE discord_id = ${discordId}`
+    deletedPlayer = playerResult.count
   })
-  transaction()
 
   return {
     playersDeleted: deletedPlayer,
@@ -1153,36 +1136,36 @@ export async function deletePlayer(
   }
 }
 
-export function deletePlayerHotsAccounts(discordId: string): number {
-  const stmt = db.prepare('DELETE FROM hots_accounts WHERE discord_id = ?')
-  const result = stmt.run(discordId)
-  return result.changes
+export async function deletePlayerHotsAccounts(discordId: string): Promise<number> {
+  const result = await sql`DELETE FROM hots_accounts WHERE discord_id = ${discordId}`
+  return result.count
 }
 
-export function deleteHotsAccount(hotsBattleTag: string) {
-  const stmt = db.prepare('DELETE FROM hots_accounts WHERE hots_battle_tag = ? COLLATE NOCASE')
-  const result = stmt.run(hotsBattleTag)
-  return result.changes
+export async function deleteHotsAccount(hotsBattleTag: string): Promise<number> {
+  const result = await sql`DELETE FROM hots_accounts WHERE LOWER(hots_battle_tag) = LOWER(${hotsBattleTag})`
+  return result.count
 }
 
-export function setHotsAccountRealIdName(hotsBattleTag: string, realIdName: string | null): boolean {
-  const stmt = db.prepare<[string | null, string]>(
-    'UPDATE hots_accounts SET real_id_name = ? WHERE hots_battle_tag = ? COLLATE NOCASE'
-  )
-  const result = stmt.run(realIdName, hotsBattleTag)
-  return result.changes > 0
+export async function setHotsAccountRealIdName(hotsBattleTag: string, realIdName: string | null): Promise<boolean> {
+  const result = await sql`
+    UPDATE hots_accounts
+    SET real_id_name = ${realIdName}
+    WHERE LOWER(hots_battle_tag) = LOWER(${hotsBattleTag})
+  `
+  return result.count > 0
 }
 
-export function getHotsAccountByBattleTag(
+export async function getHotsAccountByBattleTag(
   hotsBattleTag: string
-): (HotsAccountRow & { discord_display_name?: string }) | undefined {
-  const stmt = db.prepare<[string], HotsAccountRow & { discord_display_name?: string }>(`
+): Promise<(HotsAccountRow & { discord_display_name?: string }) | undefined> {
+  const rows = await sql<Array<HotsAccountRow & { discord_display_name?: string }>>`
     SELECT ha.*, p.discord_display_name
     FROM hots_accounts ha
     LEFT JOIN players p ON ha.discord_id = p.discord_id
-    WHERE ha.hots_battle_tag = ? COLLATE NOCASE
-  `)
-  return stmt.get(hotsBattleTag)
+    WHERE LOWER(ha.hots_battle_tag) = LOWER(${hotsBattleTag})
+    LIMIT 1
+  `
+  return rows[0]
 }
 
 export async function setPrimaryAccount(
@@ -1192,24 +1175,24 @@ export async function setPrimaryAccount(
   hotsBattleTag: string,
   messageId: string,
   channelId: string
-) {
+): Promise<boolean> {
   const { success, message, player } = await updatePrimaryAccountInDb(guildId, discordId, hotsBattleTag)
   if (!success || !player?.usernames.accounts) {
     await safeReply(interaction, {
       content: message,
       flags: MessageFlags.Ephemeral,
     })
-    return false // Failed to set primary account
+    return false
   }
 
-  // Handle non-button interactions (slash commands)
   if (!interaction.isButton()) {
     await safeReply(interaction, {
-      content: `${discordId === interaction?.user.id ? 'Your' : '<@' + discordId + ">'s"
-        } primary HotS account has been set to \`${hotsBattleTag}\`.`,
+      content: `${
+        discordId === interaction?.user.id ? 'Your' : '<@' + discordId + ">'s"
+      } primary HotS account has been set to \`${hotsBattleTag}\`.`,
       flags: MessageFlags.Ephemeral,
     })
-    return true // Primary account set successfully
+    return true
   }
   const buttonUpdateSuccess = await updateButtonInterface(interaction, player, discordId, messageId, channelId)
   if (!buttonUpdateSuccess.success) {
@@ -1217,7 +1200,7 @@ export async function setPrimaryAccount(
       ...buttonUpdateSuccess.messageOptions,
       flags: MessageFlags.Ephemeral,
     })
-    return false // Failed to update button interface
+    return false
   }
 
   return true
@@ -1237,7 +1220,6 @@ async function updateButtonInterface(
       messageOptions: { content: 'No accounts to update' },
     }
   }
-  // Try to delete the original message with proper error handling
   try {
     const prevInteraction = getStoredInteraction(messageId, channelId)
     if (!prevInteraction) {
@@ -1246,10 +1228,10 @@ async function updateButtonInterface(
     await prevInteraction.editReply({
       components: getAccountButtons(accounts, discordId, messageId, channelId),
     })
-    await safeDeferUpdate(interaction) // Acknowledge the button interaction without showing loading
+    await safeDeferUpdate(interaction)
     return { success: true, messageOptions: { content: '' } }
   } catch (error: unknown) {
-    removeInteraction(messageId, channelId) // if we can't find the interaction, remove it from the store
+    removeInteraction(messageId, channelId)
     console.error('Error updating button interface:', error)
     try {
       if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
@@ -1270,13 +1252,6 @@ async function updateButtonInterface(
   }
 }
 
-/**
- * get the account buttons for a player
- * @param player the player to get the buttons for
- * @param discordId the discord id of the player
- * @param messageId the message id where the buttons will be displayed
- * @param channelId the channel id where the buttons will be displayed
- */
 export function getAccountButtons(
   accounts: HotsAccount[],
   discordId: string,
@@ -1294,28 +1269,23 @@ export function getAccountButtons(
   return [new ActionRowBuilder<ButtonBuilder>().addComponents(...buttons)]
 }
 
-/**
- * Updates the primary Heroes of the Storm account for a player in the database.
- * @param discordId The Discord ID of the player.
- * @param hotsBattleTag The Heroes of the Storm battle tag to set as primary.
- * @returns An object containing the success status, optional error message, and updated player data.
- */
 async function updatePrimaryAccountInDb(
   guildId: string,
   discordId: string,
   hotsBattleTag: string
 ): Promise<{ success: boolean; message?: string; player?: Player }> {
-  const stmt = db.prepare(
-    'UPDATE hots_accounts SET is_primary = CASE WHEN hots_battle_tag = ? COLLATE NOCASE THEN 1 ELSE 0 END WHERE discord_id = ?'
-  )
-  const result = stmt.run(hotsBattleTag, discordId)
-  if (result.changes === 0) {
+  const result = await sql`
+    UPDATE hots_accounts
+    SET is_primary = CASE WHEN LOWER(hots_battle_tag) = LOWER(${hotsBattleTag}) THEN TRUE ELSE FALSE END
+    WHERE discord_id = ${discordId}
+  `
+  if (result.count === 0) {
     return {
       success: false,
       message: `The specified Heroes of the Storm account \`${hotsBattleTag}\` was not found for this player.`,
     }
   }
-  const player = getPlayerByDiscordId(discordId, guildId)
+  const player = await getPlayerByDiscordId(discordId, guildId)
   if (!player) {
     return {
       success: false,
@@ -1332,65 +1302,85 @@ async function updatePrimaryAccountInDb(
 }
 
 /**
- * Marks all players as inactive in the database.
- * @returns void
+ * Marks all players as inactive in the database for a guild.
  */
-export function markAllPlayersInactive(guildId: string): void {
-  const stmt = db.prepare('DELETE FROM lobby_players WHERE guild_id = ?')
-  stmt.run(guildId)
+export async function markAllPlayersInactive(guildId: string): Promise<void> {
+  await sql`DELETE FROM lobby_players WHERE guild_id = ${guildId}`
+  clearActivePlayersCache(guildId)
 }
 
 /**
  * Gets a player by their Discord ID, optionally joining lobby state for a guild.
- * @param discordId The Discord ID of the player to retrieve.
- * @param guildId Optional Discord guild ID to populate active/team/lobby_rank/draft_order.
- * @returns Player object if found, undefined otherwise.
  */
-export function getPlayerByDiscordId(discordId: string | null | undefined, guildId: string): Player | undefined {
+export async function getPlayerByDiscordId(
+  discordId: string | null | undefined,
+  guildId: string
+): Promise<Player | undefined> {
   if (!discordId) return undefined
-  const stmt = db.prepare<[string, string], FlatPlayer>(`
-    SELECT p.*,
-           COALESCE(lp.active, 0) as active,
-           lp.team,
-           lp.lobby_rank,
-           lp.draft_order
+  const rows = await sql<FlatPlayer[]>`
+    SELECT
+      p.*,
+      '' AS hots_battle_tag,
+      COALESCE(lp.active, FALSE) AS active,
+      lp.team,
+      lp.lobby_rank,
+      lp.draft_order
     FROM players p
-    LEFT JOIN lobby_players lp ON p.discord_id = lp.discord_id AND lp.guild_id = ?
-    WHERE p.discord_id = ?;
-  `)
+    LEFT JOIN lobby_players lp ON p.discord_id = lp.discord_id AND lp.guild_id = ${guildId}
+    WHERE p.discord_id = ${discordId}
+    LIMIT 1
+  `
 
-  const row = stmt.get(guildId, discordId)
+  const row = rows[0]
   if (!row) {
-    return undefined // Player not found
+    return undefined
   }
-  const accountsStmt = db.prepare<[string], HotsAccountRow>('SELECT * FROM hots_accounts WHERE discord_id = ?')
-  const accounts = accountsStmt.all(discordId)
-  const validAccounts = filterActiveSubstitutedAccounts(accounts, guildId)
+  const accounts = await sql<
+    Array<
+      HotsAccountRow & {
+        owner_display_name?: string | null
+        owner_global_name?: string | null
+        owner_name?: string | null
+      }
+    >
+  >`
+    SELECT
+      ha.*,
+      op.discord_display_name AS owner_display_name,
+      op.discord_global_name AS owner_global_name,
+      op.discord_name AS owner_name
+    FROM hots_accounts ha
+    LEFT JOIN players op ON ha.owner_discord_id = op.discord_id
+    WHERE ha.discord_id = ${discordId}
+  `
 
+  for (const acc of accounts) {
+    if (acc.owner_discord_id) {
+      cachePlayerDisplayName(acc.owner_discord_id, acc.owner_display_name, acc.owner_global_name, acc.owner_name)
+    }
+  }
+
+  const validAccounts = await filterActiveSubstitutedAccounts(accounts, guildId)
   return getPlayerFromRow(row, validAccounts)
-}
-
-export enum PlayerIdPrefix {
-  HOTS_ROW_ID = 'hotsRowId:',
-  TAG = 'tag:',
 }
 
 /**
  * Extracts numeric account ID from an identifier if it's 'hotsRowId:<id>' or 'tag:<tag>'.
  */
-function getAccountRowIdFromIdentifier(identifier: string): number | null {
+async function getAccountRowIdFromIdentifier(identifier: string): Promise<number | null> {
   if (identifier.startsWith(PlayerIdPrefix.HOTS_ROW_ID)) {
     const id = parseInt(identifier.slice(PlayerIdPrefix.HOTS_ROW_ID.length), 10)
     return isNaN(id) ? null : id
   }
   if (identifier.startsWith(PlayerIdPrefix.TAG)) {
     const cleanTag = identifier.slice(PlayerIdPrefix.TAG.length)
-    const accRow = db
-      .prepare<[string], { id: number }>(
-        'SELECT id FROM hots_accounts WHERE hots_battle_tag = ? COLLATE NOCASE AND owner_discord_id IS NULL LIMIT 1'
-      )
-      .get(cleanTag)
-    return accRow?.id ?? null
+    const rows = await sql<Array<{ id: number }>>`
+      SELECT id
+      FROM hots_accounts
+      WHERE LOWER(hots_battle_tag) = LOWER(${cleanTag}) AND owner_discord_id IS NULL
+      LIMIT 1
+    `
+    return rows[0]?.id ?? null
   }
   return null
 }
@@ -1406,23 +1396,25 @@ export function getPlayerIdentifier(player: Player): string {
   return tag ? `${PlayerIdPrefix.TAG}${tag}` : ''
 }
 
-interface GuestLobbyInfo {
+type GuestLobbyInfo = {
   role: string | null
-  active: number
+  active: boolean
   team: number | null
   lobby_rank: number | null
   draft_order: number | null
 }
 
-function buildGuestPlayer(account: HotsAccountRow, guildId: string): Player {
-  const lp = db
-    .prepare<[string, number], GuestLobbyInfo>(
-      'SELECT role, active, team, lobby_rank, draft_order FROM lobby_players WHERE guild_id = ? AND hots_account_id = ? LIMIT 1'
-    )
-    .get(guildId, account.id)
+async function buildGuestPlayer(account: HotsAccountRow, guildId: string): Promise<Player> {
+  const rows = await sql<GuestLobbyInfo[]>`
+    SELECT role, active, team, lobby_rank, draft_order
+    FROM lobby_players
+    WHERE guild_id = ${guildId} AND hots_account_id = ${account.id}
+    LIMIT 1
+  `
+  const lp = rows[0]
 
   const hotsAcc: HotsAccount = getAccountFromAccountRow(account)
-  const mmr = Math.max(account.HP_QM_MMR ?? 0, account.HP_SL_MMR ?? 0, account.HP_AR_MMR ?? 0)
+  const mmr = Math.max(hotsAcc.hpQmMMR ?? 0, hotsAcc.hpSlMMR ?? 0, hotsAcc.hpArMMR ?? 0)
 
   return {
     discordId: null,
@@ -1433,7 +1425,7 @@ function buildGuestPlayer(account: HotsAccountRow, guildId: string): Player {
       discordGlobalName: account.hots_battle_tag,
     },
     role: lp?.role ?? undefined,
-    active: lp?.active === 1,
+    active: Boolean(lp?.active),
     team: lp?.team ?? null,
     lobbyRank: lp?.lobby_rank ?? NaN,
     draftOrder: lp?.draft_order ?? NaN,
@@ -1446,60 +1438,64 @@ function buildGuestPlayer(account: HotsAccountRow, guildId: string): Player {
 /**
  * Gets a player by either hotsRowId ('hotsRowId:<id>'), BattleTag ('tag:<tag>'), or Discord ID.
  */
-export function getPlayerByIdentifier(identifier: string, guildId: string): Player | undefined {
+export async function getPlayerByIdentifier(identifier: string, guildId: string): Promise<Player | undefined> {
   if (!identifier) return undefined
 
-  // 1. Explicit hotsRowId (hotsRowId:<id>)
   if (identifier.startsWith(PlayerIdPrefix.HOTS_ROW_ID)) {
     const rowId = parseInt(identifier.slice(PlayerIdPrefix.HOTS_ROW_ID.length), 10)
     if (isNaN(rowId)) return undefined
 
-    const account = db
-      .prepare<[number], HotsAccountRow>('SELECT * FROM hots_accounts WHERE id = ? LIMIT 1')
-      .get(rowId)
+    const accounts = await sql<HotsAccountRow[]>`
+      SELECT *
+      FROM hots_accounts
+      WHERE id = ${rowId}
+      LIMIT 1
+    `
+    const account = accounts[0]
     if (!account) return undefined
-    return account.discord_id ? getPlayerByDiscordId(account.discord_id, guildId) : buildGuestPlayer(account, guildId)
+    return account.discord_id
+      ? await getPlayerByDiscordId(account.discord_id, guildId)
+      : await buildGuestPlayer(account, guildId)
   }
 
-  // 2. Explicit tag prefix (tag:<tag>)
   if (identifier.startsWith(PlayerIdPrefix.TAG)) {
-    return getPlayerByBattleTag(identifier.slice(PlayerIdPrefix.TAG.length), guildId)
+    return await getPlayerByBattleTag(identifier.slice(PlayerIdPrefix.TAG.length), guildId)
   }
 
-  // 3. Default: Discord ID
-  return getPlayerByDiscordId(identifier, guildId)
+  return await getPlayerByDiscordId(identifier, guildId)
 }
 
-/**
- * Gets a player by their BattleTag. This is used for guest players who are not logged into the bot.
- * @param battleTag The BattleTag of the player to retrieve.
- * @param guildId The guild ID to retrieve the player for.
- * @returns The player if found, undefined otherwise.
- */
-function getPlayerByBattleTag(battleTag: string, guildId: string): Player | undefined {
-  const account = db
-    .prepare<[string], { id: number; discord_id: string | null }>(
-      'SELECT id, discord_id FROM hots_accounts WHERE hots_battle_tag = ? COLLATE NOCASE AND owner_discord_id IS NULL LIMIT 1'
-    )
-    .get(battleTag)
+async function getPlayerByBattleTag(battleTag: string, guildId: string): Promise<Player | undefined> {
+  const accounts = await sql<Array<{ id: number; discord_id: string | null }>>`
+    SELECT id, discord_id
+    FROM hots_accounts
+    WHERE LOWER(hots_battle_tag) = LOWER(${battleTag}) AND owner_discord_id IS NULL
+    LIMIT 1
+  `
+  const account = accounts[0]
   if (!account) return undefined
   return account.discord_id
-    ? getPlayerByDiscordId(account.discord_id, guildId)
-    : getPlayerByIdentifier(`${PlayerIdPrefix.HOTS_ROW_ID}${account.id}`, guildId)
+    ? await getPlayerByDiscordId(account.discord_id, guildId)
+    : await getPlayerByIdentifier(`${PlayerIdPrefix.HOTS_ROW_ID}${account.id}`, guildId)
 }
 
 /**
  * Sets the player role in the database.
- * @param identifier The Discord ID or account:id of the player to set the role for.
- * @param role The role to set for the player.
- * @returns Player object if the player was found and the role was set, false otherwise.
  */
-export function setPlayerRole(identifier: string, guildId: string, role: string | null | undefined): false | Player {
+export async function setPlayerRole(
+  identifier: string,
+  guildId: string,
+  role: string | null | undefined
+): Promise<false | Player> {
   const roleToSet = role && role.trim() !== '' ? role : null
-  const accId = getAccountRowIdFromIdentifier(identifier)
+  const accId = await getAccountRowIdFromIdentifier(identifier)
   if (accId !== null) {
-    db.prepare('UPDATE lobby_players SET role = ? WHERE guild_id = ? AND hots_account_id = ?').run(roleToSet, guildId, accId)
-    const player = getPlayerByIdentifier(`${PlayerIdPrefix.HOTS_ROW_ID}${accId}`, guildId)
+    await sql`
+      UPDATE lobby_players
+      SET role = ${roleToSet}
+      WHERE guild_id = ${guildId} AND hots_account_id = ${accId}
+    `
+    const player = await getPlayerByIdentifier(`${PlayerIdPrefix.HOTS_ROW_ID}${accId}`, guildId)
     if (player) {
       player.role = roleToSet ?? undefined
       return player
@@ -1507,101 +1503,94 @@ export function setPlayerRole(identifier: string, guildId: string, role: string 
     return false
   }
 
-  const player = getPlayerByDiscordId(identifier, guildId)
+  const player = await getPlayerByDiscordId(identifier, guildId)
   if (!player) {
-    return false // Player not found
+    return false
   }
-  const stmt = db.prepare('UPDATE players SET role = ? WHERE discord_id = ?')
-  stmt.run(roleToSet, identifier)
-  db.prepare('UPDATE lobby_players SET role = ? WHERE guild_id = ? AND discord_id = ?').run(roleToSet, guildId, identifier)
+  await sql`UPDATE players SET role = ${roleToSet} WHERE discord_id = ${identifier}`
+  await sql`
+    UPDATE lobby_players
+    SET role = ${roleToSet}
+    WHERE guild_id = ${guildId} AND discord_id = ${identifier}
+  `
   player.role = roleToSet ?? undefined
   return player
 }
 
 /**
- * Changes the player's hots name in the database.
- * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
- * @param discordId The Discord ID of the player to change the name for.
- * @param hotsBattleTag The new Heroes of the Storm name for the player.
- * @returns Player object if the player was found and the name was changed, false otherwise.
+ * Changes the player's HotS name in the database.
  */
-export function setPlayerName(
-  interaction:
-    ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType> | ModalSubmitInteraction<CacheType>,
+export async function setPlayerName(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType> | ModalSubmitInteraction<CacheType>,
   guildId: string,
   discordId: string,
   hotsBattleTag: string
-): false | Player {
+): Promise<false | Player> {
   if (!hotsBattleTag) {
-    return false // Invalid name
+    return false
   }
-  const player = getPlayerByDiscordId(discordId, guildId)
+  const player = await getPlayerByDiscordId(discordId, guildId)
   if (!player) {
-    return false // Player not found
+    return false
   }
-  savePlayer(interaction, discordId, player, hotsBattleTag)
+  await savePlayer(interaction, discordId, player, hotsBattleTag)
   return player
 }
 
 /**
  * Sets the Discord user names for a player in the database.
- * @param discordId The Discord ID of the player to set Discord names for.
- * @param discordData The Discord user names data to set for the player.
- * @returns boolean true if the player was found and the names were set, false otherwise.
  */
-export function setPlayerDiscordNames(discordId: string, guildId: string, discordData: DiscordUserNames) {
+export async function setPlayerDiscordNames(
+  discordId: string,
+  guildId: string,
+  discordData: DiscordUserNames
+): Promise<boolean> {
   const { discordName, discordGlobalName, discordDisplayName } = discordData
-  const player = getPlayerByDiscordId(discordId, guildId)
+  const player = await getPlayerByDiscordId(discordId, guildId)
   if (!player) {
-    return false // Player not found
+    return false
   }
-  const stmt = db.prepare(`
+  cachePlayerDisplayName(discordId, discordDisplayName, discordGlobalName, discordName)
+  await sql`
     UPDATE players
-    SET discord_name = ?, discord_global_name = ?, discord_display_name = ?
-    WHERE discord_id = ?
-  `)
-  stmt.run(discordName, discordGlobalName, discordDisplayName, discordId)
+    SET discord_name = ${discordName},
+        discord_global_name = ${discordGlobalName},
+        discord_display_name = ${discordDisplayName}
+    WHERE discord_id = ${discordId}
+  `
   return true
 }
 
 /**
  * Sets the MMR adjustment for a player in the database.
- * @param discordId The Discord ID of the player to set adjustment for.
- * @param guildId The Discord guild ID.
- * @param adjustment The new MMR adjustment value (or 0 to clear).
- * @returns An object containing previousAdjustment and updatedPlayer, or false if player not found.
  */
-export function setPlayerAdjustment(
+export async function setPlayerAdjustment(
   discordId: string,
   guildId: string,
   adjustment: number
-): false | { previousAdjustment: number | null; updatedPlayer: Player } {
-  const existingPlayer = getPlayerByDiscordId(discordId, guildId)
+): Promise<false | { previousAdjustment: number | null; updatedPlayer: Player }> {
+  const existingPlayer = await getPlayerByDiscordId(discordId, guildId)
   if (!existingPlayer) {
     return false
   }
   const previousAdjustment = existingPlayer.adjustment
   const valueToStore = adjustment === 0 ? null : adjustment
-  const stmt = db.prepare<[number | null, string]>('UPDATE players SET adjustment = ? WHERE discord_id = ?')
-  stmt.run(valueToStore, discordId)
+  await sql`UPDATE players SET adjustment = ${valueToStore} WHERE discord_id = ${discordId}`
   activePlayersCache.delete(guildId)
-  const updatedPlayer = getPlayerByDiscordId(discordId, guildId)
+  const updatedPlayer = await getPlayerByDiscordId(discordId, guildId)
   if (!updatedPlayer) {
     return false
   }
   return { previousAdjustment, updatedPlayer }
 }
 
-/**
- * Resolves a Player by identifier or BattleTag, creating a new guest account if active and valid.
- */
-function resolvePlayerForActive(
+async function resolvePlayerForActive(
   identifier: string,
   guildId: string,
   active: boolean,
   hotsBattleTag?: string
-): Player | undefined {
-  let player = getPlayerByIdentifier(identifier, guildId)
+): Promise<Player | undefined> {
+  let player = await getPlayerByIdentifier(identifier, guildId)
   if (player) return player
 
   const tag =
@@ -1609,93 +1598,89 @@ function resolvePlayerForActive(
     (identifier.startsWith(PlayerIdPrefix.TAG) ? identifier.slice(PlayerIdPrefix.TAG.length) : undefined)
   if (!tag) return undefined
 
-  player = getPlayerByIdentifier(`${PlayerIdPrefix.TAG}${tag}`, guildId)
+  player = await getPlayerByIdentifier(`${PlayerIdPrefix.TAG}${tag}`, guildId)
   if (player || !active) return player
 
   if (validateBattleTag(tag).isValid) {
-    const insertStmt = db.prepare(`
+    const inserted = await sql<Array<{ id: number }>>`
       INSERT INTO hots_accounts (discord_id, hots_battle_tag, is_primary)
-      VALUES (NULL, ?, 1)
-    `)
-    const info = insertStmt.run(tag)
-    const newAccId = Number(info.lastInsertRowid)
+      VALUES (NULL, ${tag}, TRUE)
+      ON CONFLICT (LOWER(hots_battle_tag)) WHERE owner_discord_id IS NULL DO UPDATE SET
+        hots_battle_tag = EXCLUDED.hots_battle_tag
+      RETURNING id
+    `
+    const newAccId = inserted[0].id
     triggerAccountMmrFetch(tag, guildId).catch(err => {
       console.error(`Error in background MMR fetch for ${tag}:`, err)
     })
-    return getPlayerByIdentifier(`${PlayerIdPrefix.HOTS_ROW_ID}${newAccId}`, guildId)
+    return await getPlayerByIdentifier(`${PlayerIdPrefix.HOTS_ROW_ID}${newAccId}`, guildId)
   }
 
   return undefined
 }
 
-function activatePlayerInLobby(guildId: string, player: Player, accId: number | null): void {
+async function activatePlayerInLobby(guildId: string, player: Player, accId: number | null): Promise<void> {
   if (player.discordId) {
-    const stmt = db.prepare(`
+    await sql`
       INSERT INTO lobby_players (guild_id, discord_id, hots_account_id, active, lobby_rank, team, draft_order, role)
-      VALUES (?, ?, ?, 1, NULL, NULL, NULL, ?)
-      ON CONFLICT(guild_id, discord_id) DO UPDATE SET
-        active = 1,
-        hots_account_id = COALESCE(excluded.hots_account_id, lobby_players.hots_account_id),
-        role = COALESCE(excluded.role, lobby_players.role),
+      VALUES (${guildId}, ${player.discordId}, ${accId}, TRUE, NULL, NULL, NULL, ${player.role ?? null})
+      ON CONFLICT (guild_id, discord_id) DO UPDATE SET
+        active = TRUE,
+        hots_account_id = COALESCE(EXCLUDED.hots_account_id, lobby_players.hots_account_id),
+        role = COALESCE(EXCLUDED.role, lobby_players.role),
         lobby_rank = NULL,
         team = NULL,
         draft_order = NULL
-    `)
-    stmt.run(guildId, player.discordId, accId, player.role ?? null)
+    `
   } else if (accId) {
-    const stmt = db.prepare(`
+    await sql`
       INSERT INTO lobby_players (guild_id, discord_id, hots_account_id, active, lobby_rank, team, draft_order, role)
-      VALUES (?, NULL, ?, 1, NULL, NULL, NULL, ?)
-      ON CONFLICT(guild_id, hots_account_id) DO UPDATE SET
-        active = 1,
-        role = COALESCE(excluded.role, lobby_players.role),
+      VALUES (${guildId}, NULL, ${accId}, TRUE, NULL, NULL, NULL, ${player.role ?? null})
+      ON CONFLICT (guild_id, hots_account_id) DO UPDATE SET
+        active = TRUE,
+        role = COALESCE(EXCLUDED.role, lobby_players.role),
         lobby_rank = NULL,
         team = NULL,
         draft_order = NULL
-    `)
-    stmt.run(guildId, accId, player.role ?? null)
+    `
   }
 }
 
-function deactivatePlayerInLobby(guildId: string, player: Player, accId: number | null): void {
+async function deactivatePlayerInLobby(guildId: string, player: Player, accId: number | null): Promise<void> {
   if (player.lobbyRank > 0) {
-    const updateStmt = db.prepare(
-      'UPDATE lobby_players SET lobby_rank = lobby_rank - 1 WHERE guild_id = ? AND lobby_rank > ?'
-    )
-    updateStmt.run(guildId, player.lobbyRank)
+    await sql`
+      UPDATE lobby_players
+      SET lobby_rank = lobby_rank - 1
+      WHERE guild_id = ${guildId} AND lobby_rank > ${player.lobbyRank}
+    `
   }
   if (player.discordId) {
-    const deleteStmt = db.prepare('DELETE FROM lobby_players WHERE guild_id = ? AND discord_id = ?')
-    deleteStmt.run(guildId, player.discordId)
+    await sql`DELETE FROM lobby_players WHERE guild_id = ${guildId} AND discord_id = ${player.discordId}`
   } else if (accId) {
-    const deleteStmt = db.prepare('DELETE FROM lobby_players WHERE guild_id = ? AND hots_account_id = ?')
-    deleteStmt.run(guildId, accId)
+    await sql`DELETE FROM lobby_players WHERE guild_id = ${guildId} AND hots_account_id = ${accId}`
   }
 }
 
 /**
  * Sets the active status of a player in the database.
- * @param identifier The Discord ID, BattleTag, or account:id of the player to set active status for.
- * @param active Whether the player should be set as active (true) or inactive (false).
- * @returns ({ updated: boolean; player?: Player }) An object indicating whether the player was updated and the updated player object if applicable.
  */
-export function setPlayerActive(
+export async function setPlayerActive(
   identifier: string,
   active: boolean,
   guildId: string,
   hotsBattleTag?: string
-): { updated: boolean; player?: Player } {
-  const player = resolvePlayerForActive(identifier, guildId, active, hotsBattleTag)
+): Promise<{ updated: boolean; player?: Player }> {
+  const player = await resolvePlayerForActive(identifier, guildId, active, hotsBattleTag)
   if (!player) {
-    return { updated: false, player } // Player not found
+    return { updated: false, player }
   }
 
   if (player.discordId && player.usernames.accounts?.length === 0 && hotsBattleTag) {
-    addDummyHotsAccount(player.discordId, hotsBattleTag)
+    await addDummyHotsAccount(player.discordId, hotsBattleTag)
   }
 
   if (player.active === active) {
-    return { updated: false, player } // No change needed
+    return { updated: false, player }
   }
 
   const matchedAcc = hotsBattleTag
@@ -1707,21 +1692,17 @@ export function setPlayerActive(
     player.usernames.accounts?.[0]?.id ??
     null
 
-  const transaction = db.transaction(() => {
-    if (active) {
-      activatePlayerInLobby(guildId, player, accId)
-    } else {
-      deactivatePlayerInLobby(guildId, player, accId)
-    }
+  if (active) {
+    await activatePlayerInLobby(guildId, player, accId)
+  } else {
+    await deactivatePlayerInLobby(guildId, player, accId)
+  }
 
-    if (player.discordId) {
-      const lastActive = db.prepare('UPDATE players SET last_active = CURRENT_TIMESTAMP WHERE discord_id = ?')
-      lastActive.run(player.discordId)
-    }
+  if (player.discordId) {
+    await sql`UPDATE players SET last_active = NOW() WHERE discord_id = ${player.discordId}`
+  }
 
-    recalculateLobbyRanks(guildId)
-  })
-  transaction()
+  await recalculateLobbyRanks(guildId)
 
   player.active = active
   return { updated: true, player }
@@ -1729,12 +1710,10 @@ export function setPlayerActive(
 
 /**
  * Recalculates the lobby ranks for all players in a guild.
- * @param guildId The Discord guild ID
- * It should be called within a db.transaction.
- * @returns void
  */
-export function recalculateLobbyRanks(guildId: string) {
-  const allPlayers = getSortedActivePlayers(guildId, true)
+export async function recalculateLobbyRanks(guildId: string): Promise<void> {
+  const activePlayers = await getActivePlayers(guildId)
+  const allPlayers = activePlayers.sort((a, b) => getPlayerMMR(b) - getPlayerMMR(a))
 
   let currentRank = 1
   for (let i = 0; i < allPlayers.length; i++) {
@@ -1742,201 +1721,253 @@ export function recalculateLobbyRanks(guildId: string) {
     if (player.active) {
       const lobbyRank = currentRank++
       if (player.lobbyRank !== lobbyRank) {
-        player.lobbyRank = lobbyRank
         const accId = player.usernames.accounts?.[0]?.id
         if (player.discordId) {
-          const updateStmt = db.prepare('UPDATE lobby_players SET lobby_rank = ? WHERE guild_id = ? AND discord_id = ?')
-          updateStmt.run(lobbyRank, guildId, player.discordId)
+          await sql`
+            UPDATE lobby_players
+            SET lobby_rank = ${lobbyRank}
+            WHERE guild_id = ${guildId} AND discord_id = ${player.discordId}
+          `
         } else if (accId) {
-          const updateStmt = db.prepare('UPDATE lobby_players SET lobby_rank = ? WHERE guild_id = ? AND hots_account_id = ?')
-          updateStmt.run(lobbyRank, guildId, accId)
+          await sql`
+            UPDATE lobby_players
+            SET lobby_rank = ${lobbyRank}
+            WHERE guild_id = ${guildId} AND hots_account_id = ${accId}
+          `
         }
       }
+      player.lobbyRank = i
     }
+  }
+  activePlayersCache.set(guildId, { data: allPlayers, timestamp: Date.now() })
+}
+
+async function addDummyHotsAccount(discordId: string, hotsBattleTag: string): Promise<void> {
+  const existing = await sql<Array<{ id: number }>>`
+    SELECT id
+    FROM hots_accounts
+    WHERE LOWER(hots_battle_tag) = LOWER(${hotsBattleTag}) AND owner_discord_id IS NULL
+    LIMIT 1
+  `
+  if (existing.length > 0) {
+    await sql`
+      UPDATE hots_accounts
+      SET discord_id = ${discordId}, is_primary = TRUE
+      WHERE id = ${existing[0].id}
+    `
+  } else {
+    await sql`
+      INSERT INTO hots_accounts (discord_id, hots_battle_tag, is_primary)
+      VALUES (${discordId}, ${hotsBattleTag}, TRUE)
+      ON CONFLICT (LOWER(hots_battle_tag)) WHERE owner_discord_id IS NULL DO UPDATE SET
+        discord_id = EXCLUDED.discord_id,
+        is_primary = TRUE
+    `
   }
 }
 
-function addDummyHotsAccount(discordId: string, hotsBattleTag: string) {
-  const hotsAccountStmt = db.prepare(
-    'REPLACE INTO hots_accounts (discord_id, hots_battle_tag, is_primary) VALUES (?, ?, ?)'
-  )
-  hotsAccountStmt.run(discordId, hotsBattleTag, 1)
-}
-
 /**
- * clears the team assignments for all players in a specific guild.
- * @param guildId The Discord guild ID
- * @returns void
+ * Clears the team assignments for all players in a specific guild.
  */
-export function clearTeams(guildId: string): void {
-  const stmt = db.prepare('UPDATE lobby_players SET team = NULL, lobby_rank = NULL WHERE guild_id = ?')
-  stmt.run(guildId)
+export async function clearTeams(guildId: string): Promise<void> {
+  await sql`UPDATE lobby_players SET team = NULL, lobby_rank = NULL WHERE guild_id = ${guildId}`
+  clearActivePlayersCache(guildId)
 }
 
 /**
  * Sets the teams for the players in a specific guild.
- * @param guildId The Discord guild ID
- * @param team1 Array of Player objects for team 1.
- * @param team2 Array of Player objects for team 2.
- * @param spectators Array of Player objects for spectators.
- * @returns void
  */
-export function setTeamsFromPlayers(guildId: string, team1: Player[], team2: Player[], spectators: Player[]): void {
-  const transaction = db.transaction(() => {
-    const clearStmt = db.prepare(
-      'UPDATE lobby_players SET team = NULL, lobby_rank = NULL, draft_order = NULL WHERE guild_id = ?'
-    )
-    clearStmt.run(guildId)
+export async function setTeamsFromPlayers(
+  guildId: string,
+  team1: Player[],
+  team2: Player[],
+  spectators: Player[]
+): Promise<void> {
+  await sql.begin(async tx => {
+    await tx`
+      UPDATE lobby_players
+      SET team = NULL, lobby_rank = NULL, draft_order = NULL
+      WHERE guild_id = ${guildId}
+    `
 
-    const insertOrUpdatePlayer = (p: Player, teamVal: number | null) => {
+    const insertOrUpdatePlayer = async (p: Player, teamVal: number | null) => {
       const lRank = Number.isNaN(p.lobbyRank) || p.lobbyRank === undefined ? null : p.lobbyRank
       const dOrder = Number.isNaN(p.draftOrder) || p.draftOrder === undefined ? null : p.draftOrder
       const accId = p.usernames.accounts?.find(a => a.isPrimary)?.id ?? p.usernames.accounts?.[0]?.id ?? null
       if (p.discordId) {
-        db.prepare(`
+        await tx`
           INSERT INTO lobby_players (guild_id, discord_id, hots_account_id, active, team, lobby_rank, draft_order, role)
-          VALUES (?, ?, ?, 1, ?, ?, ?, ?)
-          ON CONFLICT(guild_id, discord_id) DO UPDATE SET
-            active = 1,
-            team = excluded.team,
-            lobby_rank = excluded.lobby_rank,
-            draft_order = excluded.draft_order,
-            role = COALESCE(excluded.role, lobby_players.role)
-        `).run(guildId, p.discordId, accId, teamVal, lRank, dOrder, p.role ?? null)
+          VALUES (${guildId}, ${p.discordId}, ${accId}, TRUE, ${teamVal}, ${lRank}, ${dOrder}, ${p.role ?? null})
+          ON CONFLICT (guild_id, discord_id) DO UPDATE SET
+            active = TRUE,
+            team = EXCLUDED.team,
+            lobby_rank = EXCLUDED.lobby_rank,
+            draft_order = EXCLUDED.draft_order,
+            role = COALESCE(EXCLUDED.role, lobby_players.role)
+        `
       } else if (accId) {
-        db.prepare(`
+        await tx`
           INSERT INTO lobby_players (guild_id, discord_id, hots_account_id, active, team, lobby_rank, draft_order, role)
-          VALUES (?, NULL, ?, 1, ?, ?, ?, ?)
-          ON CONFLICT(guild_id, hots_account_id) DO UPDATE SET
-            active = 1,
-            team = excluded.team,
-            lobby_rank = excluded.lobby_rank,
-            draft_order = excluded.draft_order,
-            role = COALESCE(excluded.role, lobby_players.role)
-        `).run(guildId, accId, teamVal, lRank, dOrder, p.role ?? null)
+          VALUES (${guildId}, NULL, ${accId}, TRUE, ${teamVal}, ${lRank}, ${dOrder}, ${p.role ?? null})
+          ON CONFLICT (guild_id, hots_account_id) DO UPDATE SET
+            active = TRUE,
+            team = EXCLUDED.team,
+            lobby_rank = EXCLUDED.lobby_rank,
+            draft_order = EXCLUDED.draft_order,
+            role = COALESCE(EXCLUDED.role, lobby_players.role)
+        `
       }
     }
 
-    team1.forEach(p => insertOrUpdatePlayer(p, 1))
-    team2.forEach(p => insertOrUpdatePlayer(p, 2))
-    spectators.forEach(p => insertOrUpdatePlayer(p, null))
+    for (const p of team1) {
+      await insertOrUpdatePlayer(p, 1)
+    }
+    for (const p of team2) {
+      await insertOrUpdatePlayer(p, 2)
+    }
+    for (const p of spectators) {
+      await insertOrUpdatePlayer(p, null)
+    }
   })
-  transaction()
   activePlayersCache.delete(guildId)
 }
 
-export function changeTeams(guildId: string, playerChanges: { discordId: string; newTeam: number | null }[]): boolean {
-  const transaction = db.transaction(() => {
-    playerChanges.forEach(({ discordId, newTeam }) => {
-      const accId = getAccountRowIdFromIdentifier(discordId)
-      if (accId !== null) {
-        db.prepare('UPDATE lobby_players SET team = ? WHERE guild_id = ? AND hots_account_id = ?').run(newTeam, guildId, accId)
-      } else {
-        const stmt = db.prepare(`
-          INSERT INTO lobby_players (guild_id, discord_id, active, team)
-          VALUES (?, ?, 1, ?)
-          ON CONFLICT(guild_id, discord_id) DO UPDATE SET team = excluded.team
-        `)
-        stmt.run(guildId, discordId, newTeam)
-      }
-    })
-  })
-  transaction()
+export async function changeTeams(
+  guildId: string,
+  playerChanges: { discordId: string; newTeam: number | null }[]
+): Promise<boolean> {
+  for (const { discordId, newTeam } of playerChanges) {
+    const accId = await getAccountRowIdFromIdentifier(discordId)
+    if (accId !== null) {
+      await sql`
+        UPDATE lobby_players
+        SET team = ${newTeam}
+        WHERE guild_id = ${guildId} AND hots_account_id = ${accId}
+      `
+    } else {
+      await sql`
+        INSERT INTO lobby_players (guild_id, discord_id, active, team)
+        VALUES (${guildId}, ${discordId}, TRUE, ${newTeam})
+        ON CONFLICT (guild_id, discord_id) DO UPDATE SET team = EXCLUDED.team
+      `
+    }
+  }
   activePlayersCache.delete(guildId)
   return true
 }
 
 /**
  * Assigns a specific player to a team (1, 2, or null) and draft_order in a specific guild.
- * If a non-null draftOrder is specified and another player already occupies it,
- * the previous occupant is bumped to the next available draft order.
  */
-export function assignPlayerToTeam(
+export async function assignPlayerToTeam(
   guildId: string,
   identifier: string,
   team: number | null,
   draftOrder: number | null = null
-): void {
-  const transaction = db.transaction(() => {
-    const accId = getAccountRowIdFromIdentifier(identifier)
+): Promise<void> {
+  const accId = await getAccountRowIdFromIdentifier(identifier)
 
-    if (draftOrder !== null) {
-      const existingStmt = db.prepare<[string, number], { discord_id: string | null; hots_account_id: number | null }>(
-        'SELECT discord_id, hots_account_id FROM lobby_players WHERE guild_id = ? AND active = 1 AND draft_order = ?'
-      )
-      const existingPlayer = existingStmt.get(guildId, draftOrder)
-      if (
-        existingPlayer &&
-        ((existingPlayer.discord_id && existingPlayer.discord_id !== identifier) ||
-          (existingPlayer.hots_account_id && (accId === null || existingPlayer.hots_account_id !== accId)))
-      ) {
-        const nextRank = getNextDraftOrder(guildId)
-        if (existingPlayer.discord_id) {
-          const bumpStmt = db.prepare('UPDATE lobby_players SET draft_order = ? WHERE guild_id = ? AND discord_id = ?')
-          bumpStmt.run(nextRank, guildId, existingPlayer.discord_id)
-        } else if (existingPlayer.hots_account_id) {
-          const bumpStmt = db.prepare('UPDATE lobby_players SET draft_order = ? WHERE guild_id = ? AND hots_account_id = ?')
-          bumpStmt.run(nextRank, guildId, existingPlayer.hots_account_id)
-        }
+  if (draftOrder !== null) {
+    const existingRows = await sql<Array<{ discord_id: string | null; hots_account_id: number | null }>>`
+      SELECT discord_id, hots_account_id
+      FROM lobby_players
+      WHERE guild_id = ${guildId} AND active = TRUE AND draft_order = ${draftOrder}
+      LIMIT 1
+    `
+    const existingPlayer = existingRows[0]
+    if (
+      existingPlayer &&
+      ((existingPlayer.discord_id && existingPlayer.discord_id !== identifier) ||
+        (existingPlayer.hots_account_id && (accId === null || existingPlayer.hots_account_id !== accId)))
+    ) {
+      const nextRank = await getNextDraftOrder(guildId)
+      if (existingPlayer.discord_id) {
+        await sql`
+          UPDATE lobby_players
+          SET draft_order = ${nextRank}
+          WHERE guild_id = ${guildId} AND discord_id = ${existingPlayer.discord_id}
+        `
+      } else if (existingPlayer.hots_account_id) {
+        await sql`
+          UPDATE lobby_players
+          SET draft_order = ${nextRank}
+          WHERE guild_id = ${guildId} AND hots_account_id = ${existingPlayer.hots_account_id}
+        `
       }
     }
+  }
 
-    if (accId !== null) {
-      const stmt = db.prepare(`
-        UPDATE lobby_players
-        SET team = ?, draft_order = ?
-        WHERE guild_id = ? AND hots_account_id = ?
-      `)
-      stmt.run(team, draftOrder, guildId, accId)
-    } else {
-      const stmt = db.prepare(`
-        INSERT INTO lobby_players (guild_id, discord_id, active, team, draft_order)
-        VALUES (?, ?, 1, ?, ?)
-        ON CONFLICT(guild_id, discord_id) DO UPDATE SET team = excluded.team, draft_order = excluded.draft_order
-      `)
-      stmt.run(guildId, identifier, team, draftOrder)
-    }
-  })
-  transaction()
+  if (accId !== null) {
+    await sql`
+      UPDATE lobby_players
+      SET team = ${team}, draft_order = ${draftOrder}
+      WHERE guild_id = ${guildId} AND hots_account_id = ${accId}
+    `
+  } else {
+    await sql`
+      INSERT INTO lobby_players (guild_id, discord_id, active, team, draft_order)
+      VALUES (${guildId}, ${identifier}, TRUE, ${team}, ${draftOrder})
+      ON CONFLICT (guild_id, discord_id) DO UPDATE SET
+        team = EXCLUDED.team,
+        draft_order = EXCLUDED.draft_order
+    `
+  }
+  activePlayersCache.delete(guildId)
 }
 
 /**
  * Resets team and draft_order for all active players in a specific guild.
  */
-export function resetActivePlayerTeams(guildId: string): void {
-  const stmt = db.prepare('UPDATE lobby_players SET team = NULL, draft_order = NULL WHERE guild_id = ? AND active = 1')
-  stmt.run(guildId)
+export async function resetActivePlayerTeams(guildId: string): Promise<void> {
+  await sql`
+    UPDATE lobby_players
+    SET team = NULL, draft_order = NULL
+    WHERE guild_id = ${guildId} AND active = TRUE
+  `
+  activePlayersCache.delete(guildId)
 }
 
 /**
  * Calculates the next available draft order number for a specific guild draft.
- * Captain 1 = 1, Captain 2 = 2, Picks start at 3.
  */
-export function getNextDraftOrder(guildId: string): number {
-  const stmt = db.prepare<[string], { maxOrder: number | null }>(
-    'SELECT MAX(draft_order) as maxOrder FROM lobby_players WHERE guild_id = ? AND active = 1 AND draft_order IS NOT NULL'
-  )
-  const row = stmt.get(guildId)
-  const maxOrder = row?.maxOrder ?? 0
+export async function getNextDraftOrder(guildId: string): Promise<number> {
+  const rows = await sql<Array<{ max_order: number | null }>>`
+    SELECT MAX(draft_order)::int AS max_order
+    FROM lobby_players
+    WHERE guild_id = ${guildId} AND active = TRUE AND draft_order IS NOT NULL
+  `
+  const maxOrder = rows[0]?.max_order ?? 0
   return Math.max(2, maxOrder) + 1
 }
 
 /**
  * Returns the count of non-captain picked players on Team 1 or Team 2 for a specific guild.
  */
-export function getDraftPickedCount(guildId: string, t1CaptainId?: string, t2CaptainId?: string): number {
+export async function getDraftPickedCount(
+  guildId: string,
+  t1CaptainId?: string,
+  t2CaptainId?: string
+): Promise<number> {
   if (t1CaptainId && t2CaptainId) {
-    const stmt = db.prepare<[string, string, string], { count: number }>(
-      'SELECT COUNT(*) as count FROM lobby_players WHERE guild_id = ? AND active = 1 AND (team = 1 OR team = 2) AND discord_id NOT IN (?, ?)'
-    )
-    const row = stmt.get(guildId, t1CaptainId, t2CaptainId)
-    return row?.count ?? 0
+    const rows = await sql<Array<{ count: number }>>`
+      SELECT COUNT(*)::int AS count
+      FROM lobby_players
+      WHERE guild_id = ${guildId}
+        AND active = TRUE
+        AND (team = 1 OR team = 2)
+        AND (discord_id IS NULL OR discord_id NOT IN (${t1CaptainId}, ${t2CaptainId}))
+    `
+    return rows[0]?.count ?? 0
   }
-  const stmt = db.prepare<[string], { count: number }>(
-    'SELECT COUNT(*) as count FROM lobby_players WHERE guild_id = ? AND active = 1 AND (team = 1 OR team = 2) AND (draft_order > 2 OR draft_order IS NULL)'
-  )
-  const row = stmt.get(guildId)
-  return row?.count ?? 0
+  const rows = await sql<Array<{ count: number }>>`
+    SELECT COUNT(*)::int AS count
+    FROM lobby_players
+    WHERE guild_id = ${guildId}
+      AND active = TRUE
+      AND (team = 1 OR team = 2)
+      AND (draft_order > 2 OR draft_order IS NULL)
+  `
+  return rows[0]?.count ?? 0
 }
 
 const activePlayersCache = new Map<string, { data: Player[]; timestamp: number }>()
@@ -1948,14 +1979,15 @@ export function clearActivePlayersCache(guildId?: string): void {
     activePlayersCache.clear()
   }
 }
+
 /**
  * Retrieves sorted active players for a specific guild, with per-guild caching.
- * @returns {Player[]}
  */
-export function getSortedActivePlayers(guildId: string, forceRefresh = false): Player[] {
+export async function getSortedActivePlayers(guildId: string, forceRefresh = false): Promise<Player[]> {
   const cacheEntry = activePlayersCache.get(guildId)
   if (forceRefresh || !cacheEntry || Date.now() - cacheEntry.timestamp >= 5000) {
-    const data = getActivePlayers(guildId).sort((a, b) => getPlayerMMR(b) - getPlayerMMR(a))
+    const active = await getActivePlayers(guildId)
+    const data = active.sort((a, b) => getPlayerMMR(b) - getPlayerMMR(a))
     data.forEach((p, index) => {
       p.lobbyRank = index
     })
@@ -1967,29 +1999,31 @@ export function getSortedActivePlayers(guildId: string, forceRefresh = false): P
 
 /**
  * Gets the teams from the active players for a specific guild.
- *
- * @param guildId The Discord guild ID
- * @param activePlayers - The array of active players to get teams from. If not provided, the sorted active players will be used.
- *
- * @returns ({ team1: Player[], team2: Player[], spectators: Player[], t1Captain: Player, t2Captain: Player })
- **/
-export function getTeams(guildId: string, activePlayers = getSortedActivePlayers(guildId)) {
-  const team1 = activePlayers.filter(p => p.team === 1)
-  const team2 = activePlayers.filter(p => p.team === 2)
-  const spectators = activePlayers.filter(p => p.team !== 1 && p.team !== 2)
-  const t1Captain = team1.find(p => p.draftOrder === 1) ?? team1[0] ?? activePlayers[0]
+ */
+export async function getTeams(
+  guildId: string,
+  activePlayers?: Player[]
+): Promise<{
+  team1: Player[]
+  team2: Player[]
+  spectators: Player[]
+  t1Captain: Player
+  t2Captain: Player
+}> {
+  const resolvedPlayers = activePlayers ?? (await getSortedActivePlayers(guildId))
+  const team1 = resolvedPlayers.filter(p => p.team === 1)
+  const team2 = resolvedPlayers.filter(p => p.team === 2)
+  const spectators = resolvedPlayers.filter(p => p.team !== 1 && p.team !== 2)
+  const t1Captain = team1.find(p => p.draftOrder === 1) ?? team1[0] ?? resolvedPlayers[0]
   const t2Captain =
     team2.find(p => p.draftOrder === 2) ??
     team2[0] ??
-    (t1Captain === activePlayers[0] ? activePlayers[1] : activePlayers[0])
+    (t1Captain === resolvedPlayers[0] ? resolvedPlayers[1] : resolvedPlayers[0])
   return { team1, team2, spectators, t1Captain, t2Captain }
 }
 
 /**
  * Calculates the MMR for a player (including any adjustments).
- *
- * @param player The player to calculate the MMR for.
- * @returns The MMR of the player.
  */
 export function getPlayerMMR(player: Player): number {
   return (
@@ -2001,9 +2035,7 @@ export function getPlayerMMR(player: Player): number {
 }
 
 /**
- * Gets the roles of the player as a pretty string
- * @param role The role string to format.
- * @returns A string of the player's roles, formatted as a list.
+ * Gets the roles of the player as a pretty string.
  */
 export function getPlayerRolesFormatted(role?: string): string {
   if (!role) {
@@ -2015,16 +2047,8 @@ export function getPlayerRolesFormatted(role?: string): string {
     .join(', ')
 }
 
-export interface FormatPlayerDisplayOptions {
-  includeBattleTag?: boolean
-  includeRole?: boolean
-}
-
 /**
  * Formats a player's display representation (e.g. `1: 3167` <@123456789> Battletag `Assassin, Flex`).
- * @param player The player to format.
- * @param options Display options: whether to include BattleTag and roles.
- * @returns The formatted string representation of the player.
  */
 export function formatPlayerDisplay(
   player: Player,
@@ -2058,12 +2082,13 @@ export function formatPlayerDisplay(
 /**
  * Retrieves all currently active account substitutions for a specific guild.
  */
-export function getActiveSubstitutions(guildId: string): AccountSubstitution[] {
-  const rows = db
-    .prepare<[string], AccountSubstitutionRow>(
-      `SELECT * FROM account_substitutions WHERE guild_id = ? AND is_active = 1 ORDER BY date DESC`
-    )
-    .all(guildId)
+export async function getActiveSubstitutions(guildId: string): Promise<AccountSubstitution[]> {
+  const rows = await sql<AccountSubstitutionRow[]>`
+    SELECT *
+    FROM account_substitutions
+    WHERE guild_id = ${guildId} AND is_active = TRUE
+    ORDER BY date DESC
+  `
 
   return rows.map<AccountSubstitution>(r => ({
     id: r.id,
@@ -2072,25 +2097,23 @@ export function getActiveSubstitutions(guildId: string): AccountSubstitution[] {
     originalDiscordId: r.original_discord_id,
     substituteDiscordId: r.substitute_discord_id,
     replayId: r.replay_id,
-    date: r.date,
-    isActive: r.is_active === 1,
+    date: r.date instanceof Date ? r.date.toISOString() : r.date,
+    isActive: Boolean(r.is_active),
   }))
 }
 
 /**
  * Filters out substituted/loaned accounts unless their substitution is currently active in the guild.
  */
-export function filterActiveSubstitutedAccounts(
+export async function filterActiveSubstitutedAccounts(
   accounts: HotsAccountRow[],
   guildId: string
-): HotsAccountRow[] {
-  const activeSubs = getActiveSubstitutions(guildId)
+): Promise<HotsAccountRow[]> {
+  const activeSubs = await getActiveSubstitutions(guildId)
   if (activeSubs.length === 0) {
     return accounts.filter(acc => !acc.owner_discord_id)
   }
-  const activeSubKeys = new Set(
-    activeSubs.map(s => `${s.substituteDiscordId}:${s.hotsBattleTag.toLowerCase()}`)
-  )
+  const activeSubKeys = new Set(activeSubs.map(s => `${s.substituteDiscordId}:${s.hotsBattleTag.toLowerCase()}`))
   const activeSubTagPrefixes = new Set(
     activeSubs.map(s => `${s.substituteDiscordId}:${s.hotsBattleTag.split('#')[0].toLowerCase()}`)
   )
@@ -2107,13 +2130,8 @@ export function filterActiveSubstitutedAccounts(
 /**
  * Formats the owner tag for a substituted/loaned account (e.g. " [not @OwnerName]").
  */
-export function getSubstitutedAccountOwnerTag(ownerDiscordId: string, guildId: string): string {
-  const owner = getPlayerByDiscordId(ownerDiscordId, guildId)
-  const ownerName =
-    owner?.usernames.discordDisplayName ??
-    owner?.usernames.discordGlobalName ??
-    owner?.usernames.discordName ??
-    'unknown'
+export function getSubstitutedAccountOwnerTag(ownerDiscordId: string, _guildId?: string): string {
+  const ownerName = playerDisplayNameCache.get(ownerDiscordId) ?? 'unknown'
   return ` [not @${ownerName}]`
 }
 
@@ -2122,18 +2140,19 @@ export function getSubstitutedAccountOwnerTag(ownerDiscordId: string, guildId: s
  */
 export function getAccountLoanStatusTag(
   account: HotsAccount,
-  guildId: string,
+  _guildId: string,
   playerDiscordId?: string | null,
-  activeSubs?: AccountSubstitution[]
+  activeSubs: AccountSubstitution[] = []
 ): string {
   if (account.ownerDiscordId) {
     return ` (owned by <@${account.ownerDiscordId}>)`
   }
 
   if (playerDiscordId) {
-    const subs = activeSubs ?? getActiveSubstitutions(guildId)
-    const activeSub = subs.find(
-      s => s.originalDiscordId === playerDiscordId && s.hotsBattleTag.toLowerCase() === account.hotsBattleTag.toLowerCase()
+    const activeSub = activeSubs.find(
+      s =>
+        s.originalDiscordId === playerDiscordId &&
+        s.hotsBattleTag.toLowerCase() === account.hotsBattleTag.toLowerCase()
     )
     if (activeSub) {
       return ` (loaned to <@${activeSub.substituteDiscordId}>)`
@@ -2143,58 +2162,58 @@ export function getAccountLoanStatusTag(
   return ''
 }
 
-
 /**
  * Retrieves a substitution for a specific battle tag (either historical for a replay or active).
  */
-export function getSubstitutionForAccount(
+export async function getSubstitutionForAccount(
   battleTag: string,
   guildId?: string,
   replayId?: number
-): AccountSubstitution | undefined {
+): Promise<AccountSubstitution | undefined> {
   let row: AccountSubstitutionRow | undefined
+  const hashPrefixPattern = `${battleTag}#%`
 
-  // 1. Check historical substitution if this replay was previously imported
   if (replayId !== undefined) {
-    row = db
-      .prepare<[number, string, string, string], AccountSubstitutionRow>(
-        `SELECT * FROM account_substitutions 
-         WHERE replay_id = ? AND (
-           hots_battle_tag = ? COLLATE NOCASE 
-           OR ? LIKE (hots_battle_tag || '#%')
-           OR hots_battle_tag LIKE (? || '#%')
-         )
-         LIMIT 1`
+    const rows = await sql<AccountSubstitutionRow[]>`
+      SELECT *
+      FROM account_substitutions
+      WHERE replay_id = ${replayId} AND (
+        LOWER(hots_battle_tag) = LOWER(${battleTag})
+        OR LOWER(${battleTag}) LIKE LOWER(hots_battle_tag || '#%')
+        OR hots_battle_tag ILIKE ${hashPrefixPattern}
       )
-      .get(replayId, battleTag, battleTag, battleTag)
+      LIMIT 1
+    `
+    row = rows[0]
   }
 
-  // 2. Otherwise check currently active substitution
   if (!row) {
     if (guildId) {
-      row = db
-        .prepare<[string, string, string, string], AccountSubstitutionRow>(
-          `SELECT * FROM account_substitutions 
-           WHERE guild_id = ? AND is_active = 1 AND (
-             hots_battle_tag = ? COLLATE NOCASE 
-             OR ? LIKE (hots_battle_tag || '#%')
-             OR hots_battle_tag LIKE (? || '#%')
-           )
-           ORDER BY date DESC LIMIT 1`
+      const rows = await sql<AccountSubstitutionRow[]>`
+        SELECT *
+        FROM account_substitutions
+        WHERE guild_id = ${guildId} AND is_active = TRUE AND (
+          LOWER(hots_battle_tag) = LOWER(${battleTag})
+          OR LOWER(${battleTag}) LIKE LOWER(hots_battle_tag || '#%')
+          OR hots_battle_tag ILIKE ${hashPrefixPattern}
         )
-        .get(guildId, battleTag, battleTag, battleTag)
+        ORDER BY date DESC
+        LIMIT 1
+      `
+      row = rows[0]
     } else {
-      row = db
-        .prepare<[string, string, string], AccountSubstitutionRow>(
-          `SELECT * FROM account_substitutions 
-           WHERE is_active = 1 AND (
-             hots_battle_tag = ? COLLATE NOCASE 
-             OR ? LIKE (hots_battle_tag || '#%')
-             OR hots_battle_tag LIKE (? || '#%')
-           )
-           ORDER BY date DESC LIMIT 1`
+      const rows = await sql<AccountSubstitutionRow[]>`
+        SELECT *
+        FROM account_substitutions
+        WHERE is_active = TRUE AND (
+          LOWER(hots_battle_tag) = LOWER(${battleTag})
+          OR LOWER(${battleTag}) LIKE LOWER(hots_battle_tag || '#%')
+          OR hots_battle_tag ILIKE ${hashPrefixPattern}
         )
-        .get(battleTag, battleTag, battleTag)
+        ORDER BY date DESC
+        LIMIT 1
+      `
+      row = rows[0]
     }
   }
 
@@ -2206,8 +2225,8 @@ export function getSubstitutionForAccount(
     originalDiscordId: row.original_discord_id,
     substituteDiscordId: row.substitute_discord_id,
     replayId: row.replay_id,
-    date: row.date,
-    isActive: row.is_active === 1,
+    date: row.date instanceof Date ? row.date.toISOString() : row.date,
+    isActive: Boolean(row.is_active),
   }
 }
 
@@ -2215,31 +2234,40 @@ export function getSubstitutionForAccount(
  * Sets a temporary account substitution: assigns an account normally owned by originalDiscordId to substituteDiscordId.
  * Creates a duplicate row in hots_accounts for the substitute user with owner_discord_id set.
  */
-export function setAccountSubstitution(
+export async function setAccountSubstitution(
   guildId: string,
   battleTag: string,
   substituteDiscordId: string,
   originalDiscordId?: string
-): { success: boolean; accountId: number; originalDiscordId: string; hotsBattleTag: string } {
+): Promise<{ success: boolean; accountId: number; originalDiscordId: string; hotsBattleTag: string }> {
   let ownerId = originalDiscordId
   let fullBattleTag = battleTag
+  const hashPrefixPattern = `${battleTag}#%`
 
   if (!ownerId) {
-    const existing = db
-      .prepare<[string], { discord_id: string; hots_battle_tag: string }>(
-        'SELECT discord_id, hots_battle_tag FROM hots_accounts WHERE hots_battle_tag = ? COLLATE NOCASE AND owner_discord_id IS NULL LIMIT 1'
-      )
-      .get(battleTag)
+    const existingRows = await sql<Array<{ discord_id: string; hots_battle_tag: string }>>`
+      SELECT discord_id, hots_battle_tag
+      FROM hots_accounts
+      WHERE LOWER(hots_battle_tag) = LOWER(${battleTag})
+        AND owner_discord_id IS NULL
+        AND discord_id IS NOT NULL
+      LIMIT 1
+    `
+    const existing = existingRows[0]
 
     if (existing) {
       ownerId = existing.discord_id
       fullBattleTag = existing.hots_battle_tag
     } else {
-      const prefixExisting = db
-        .prepare<[string], { discord_id: string; hots_battle_tag: string }>(
-          'SELECT discord_id, hots_battle_tag FROM hots_accounts WHERE hots_battle_tag LIKE ? COLLATE NOCASE AND owner_discord_id IS NULL LIMIT 1'
-        )
-        .get(battleTag + '#%')
+      const prefixRows = await sql<Array<{ discord_id: string; hots_battle_tag: string }>>`
+        SELECT discord_id, hots_battle_tag
+        FROM hots_accounts
+        WHERE hots_battle_tag ILIKE ${hashPrefixPattern}
+          AND owner_discord_id IS NULL
+          AND discord_id IS NOT NULL
+        LIMIT 1
+      `
+      const prefixExisting = prefixRows[0]
       if (prefixExisting) {
         ownerId = prefixExisting.discord_id
         fullBattleTag = prefixExisting.hots_battle_tag
@@ -2251,19 +2279,37 @@ export function setAccountSubstitution(
     return { success: false, accountId: 0, originalDiscordId: '', hotsBattleTag: '' }
   }
 
-  // Deactivate any existing active substitution for this battleTag in this guild
-  db.prepare(
-    `UPDATE account_substitutions SET is_active = 0 WHERE guild_id = ? AND hots_battle_tag = ? COLLATE NOCASE AND is_active = 1`
-  ).run(guildId, fullBattleTag)
+  const ownerPlayerRows = await sql<
+    Array<{ discord_display_name: string; discord_global_name: string; discord_name: string }>
+  >`
+    SELECT discord_display_name, discord_global_name, discord_name
+    FROM players
+    WHERE discord_id = ${ownerId}
+    LIMIT 1
+  `
+  if (ownerPlayerRows[0]) {
+    cachePlayerDisplayName(
+      ownerId,
+      ownerPlayerRows[0].discord_display_name,
+      ownerPlayerRows[0].discord_global_name,
+      ownerPlayerRows[0].discord_name
+    )
+  }
 
-  // Insert active substitution record
-  db.prepare(
-    `INSERT INTO account_substitutions (guild_id, hots_battle_tag, original_discord_id, substitute_discord_id, is_active)
-     VALUES (?, ?, ?, ?, 1)`
-  ).run(guildId, fullBattleTag, ownerId, substituteDiscordId)
+  await sql`
+    UPDATE account_substitutions
+    SET is_active = FALSE
+    WHERE guild_id = ${guildId}
+      AND LOWER(hots_battle_tag) = LOWER(${fullBattleTag})
+      AND is_active = TRUE
+  `
 
-  // Create or get the duplicate hots_accounts row for the substitute
-  const accountId = getOrCreateSubstituteAccount(substituteDiscordId, fullBattleTag, ownerId)
+  await sql`
+    INSERT INTO account_substitutions (guild_id, hots_battle_tag, original_discord_id, substitute_discord_id, is_active)
+    VALUES (${guildId}, ${fullBattleTag}, ${ownerId}, ${substituteDiscordId}, TRUE)
+  `
+
+  const accountId = await getOrCreateSubstituteAccount(substituteDiscordId, fullBattleTag, ownerId)
 
   activePlayersCache.delete(guildId)
 
@@ -2278,82 +2324,69 @@ export function setAccountSubstitution(
 /**
  * Retrieves existing or creates a new duplicate hots_accounts row for a substitute player.
  */
-export function getOrCreateSubstituteAccount(
+export async function getOrCreateSubstituteAccount(
   substituteDiscordId: string,
   fullBattleTag: string,
   ownerId: string
-): number {
-  const checkSubAccount = db
-    .prepare<[string, string], { id: number }>(
-      'SELECT id FROM hots_accounts WHERE discord_id = ? AND hots_battle_tag = ? COLLATE NOCASE'
-    )
-    .get(substituteDiscordId, fullBattleTag)
+): Promise<number> {
+  const existingRows = await sql<Array<{ id: number }>>`
+    SELECT id
+    FROM hots_accounts
+    WHERE discord_id = ${substituteDiscordId}
+      AND LOWER(hots_battle_tag) = LOWER(${fullBattleTag})
+    LIMIT 1
+  `
+  const checkSubAccount = existingRows[0]
 
   if (checkSubAccount) {
-    db.prepare('UPDATE hots_accounts SET owner_discord_id = ? WHERE id = ?').run(ownerId, checkSubAccount.id)
+    await sql`UPDATE hots_accounts SET owner_discord_id = ${ownerId} WHERE id = ${checkSubAccount.id}`
     return checkSubAccount.id
   }
 
-  const origAccount = db
-    .prepare<[string, string], HotsAccountRow>(
-      'SELECT * FROM hots_accounts WHERE discord_id = ? AND hots_battle_tag = ? COLLATE NOCASE LIMIT 1'
-    )
-    .get(ownerId, fullBattleTag)
+  const origRows = await sql<HotsAccountRow[]>`
+    SELECT *
+    FROM hots_accounts
+    WHERE discord_id = ${ownerId}
+      AND LOWER(hots_battle_tag) = LOWER(${fullBattleTag})
+    LIMIT 1
+  `
+  const origAccount = origRows[0]
 
-  const insertStmt = db.prepare(`
+  const inserted = await sql<Array<{ id: number }>>`
     INSERT INTO hots_accounts (
       discord_id, hots_battle_tag, is_primary, owner_discord_id,
-      HP_Region, HP_Blizz_ID, HP_QM_MMR, HP_SL_MMR, HP_AR_MMR, HP_QM_Games, HP_SL_Games, HP_AR_Games
-    ) VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `)
-  const info = insertStmt.run(
-    substituteDiscordId,
-    fullBattleTag,
-    ownerId,
-    origAccount?.HP_Region ?? null,
-    origAccount?.HP_Blizz_ID ?? null,
-    origAccount?.HP_QM_MMR ?? null,
-    origAccount?.HP_SL_MMR ?? null,
-    origAccount?.HP_AR_MMR ?? null,
-    origAccount?.HP_QM_Games ?? null,
-    origAccount?.HP_SL_Games ?? null,
-    origAccount?.HP_AR_Games ?? null
-  )
-  return Number(info.lastInsertRowid)
-}
-
-export interface ResolvedHotsAccount {
-  /** The ID of the hots_accounts row that this account refers to.
-   * This will be the substitute's row if there is an active substitution,
-   * or the original account's row if there is no active substitution.
-   */
-  hotsAccountId: number
-  /** The Discord ID of the user who owns this account (primary if null) */
-  ownerDiscordId: string | null
-  /** The Discord ID of the user who is currently using this account (the "substitute" if not null) */
-  discordId: string | null
-  /** The HotS battle tag */
-  battleTag: string
+      hp_region, hp_blizz_id, hp_qm_mmr, hp_sl_mmr, hp_ar_mmr, hp_qm_games, hp_sl_games, hp_ar_games
+    ) VALUES (
+      ${substituteDiscordId},
+      ${fullBattleTag},
+      FALSE,
+      ${ownerId},
+      ${origAccount?.hp_region ?? origAccount?.HP_Region ?? null},
+      ${origAccount?.hp_blizz_id !== undefined && origAccount?.hp_blizz_id !== null ? String(origAccount.hp_blizz_id) : origAccount?.HP_Blizz_ID !== undefined && origAccount?.HP_Blizz_ID !== null ? String(origAccount.HP_Blizz_ID) : null},
+      ${origAccount?.hp_qm_mmr ?? origAccount?.HP_QM_MMR ?? null},
+      ${origAccount?.hp_sl_mmr ?? origAccount?.HP_SL_MMR ?? null},
+      ${origAccount?.hp_ar_mmr ?? origAccount?.HP_AR_MMR ?? null},
+      ${origAccount?.hp_qm_games ?? origAccount?.HP_QM_Games ?? null},
+      ${origAccount?.hp_sl_games ?? origAccount?.HP_SL_Games ?? null},
+      ${origAccount?.hp_ar_games ?? origAccount?.HP_AR_Games ?? null}
+    )
+    RETURNING id
+  `
+  return inserted[0].id
 }
 
 /**
  * Retrieves the effective HotS account information for a BattleTag, taking any active
  * or historical substitution (for a specific replay) into account.
- * If the account does not exist in hots_accounts, a new row is inserted and returned.
  */
-export function getAccountWithSubstitution(
+export async function getAccountWithSubstitution(
   battleTag: string,
   guildId: string,
   replayId?: number
-): ResolvedHotsAccount {
-  // 1. Check if there is an active or historical substitution for this BattleTag
-  const sub = getSubstitutionForAccount(battleTag, guildId, replayId)
+): Promise<ResolvedHotsAccount> {
+  const sub = await getSubstitutionForAccount(battleTag, guildId, replayId)
   if (sub) {
-    const hotsAccountId = getOrCreateSubstituteAccount(
-      sub.substituteDiscordId,
-      battleTag,
-      sub.originalDiscordId
-    )
+    const hotsAccountId = await getOrCreateSubstituteAccount(sub.substituteDiscordId, battleTag, sub.originalDiscordId)
     return {
       hotsAccountId,
       discordId: sub.substituteDiscordId,
@@ -2362,23 +2395,23 @@ export function getAccountWithSubstitution(
     }
   }
 
-  // 2. Normal account lookup (permanent owner)
-  let accountRow = db
-    .prepare<[string], { id: number; discord_id: string | null }>(
-      'SELECT id, discord_id FROM hots_accounts WHERE hots_battle_tag = ? COLLATE NOCASE AND owner_discord_id IS NULL LIMIT 1'
-    )
-    .get(battleTag)
+  const accountRows = await sql<Array<{ id: number; discord_id: string | null }>>`
+    SELECT id, discord_id
+    FROM hots_accounts
+    WHERE LOWER(hots_battle_tag) = LOWER(${battleTag}) AND owner_discord_id IS NULL
+    LIMIT 1
+  `
+  let accountRow = accountRows[0]
 
   if (!accountRow) {
-    const insertStmt = db.prepare(`
+    const inserted = await sql<Array<{ id: number; discord_id: string | null }>>`
       INSERT INTO hots_accounts (discord_id, hots_battle_tag, is_primary)
-      VALUES (NULL, ?, 1)
-    `)
-    const info = insertStmt.run(battleTag)
-    accountRow = {
-      id: Number(info.lastInsertRowid),
-      discord_id: null,
-    }
+      VALUES (NULL, ${battleTag}, TRUE)
+      ON CONFLICT (LOWER(hots_battle_tag)) WHERE owner_discord_id IS NULL DO UPDATE SET
+        hots_battle_tag = EXCLUDED.hots_battle_tag
+      RETURNING id, discord_id
+    `
+    accountRow = inserted[0]
   }
 
   return {
@@ -2392,50 +2425,28 @@ export function getAccountWithSubstitution(
 /**
  * Clears active substitutions in a guild, either for a specific account or for all accounts.
  */
-export function clearAccountSubstitutions(guildId: string, battleTag?: string): number {
+export async function clearAccountSubstitutions(guildId: string, battleTag?: string): Promise<number> {
   activePlayersCache.delete(guildId)
   if (battleTag) {
-    const info = db
-      .prepare(
-        `UPDATE account_substitutions SET is_active = 0 
-         WHERE guild_id = ? AND is_active = 1 AND (hots_battle_tag = ? COLLATE NOCASE OR hots_battle_tag LIKE ? COLLATE NOCASE)`
-      )
-      .run(guildId, battleTag, battleTag + '#%')
-    return info.changes
+    const hashPrefixPattern = `${battleTag}#%`
+    const result = await sql`
+      UPDATE account_substitutions
+      SET is_active = FALSE
+      WHERE guild_id = ${guildId}
+        AND is_active = TRUE
+        AND (LOWER(hots_battle_tag) = LOWER(${battleTag}) OR hots_battle_tag ILIKE ${hashPrefixPattern})
+    `
+    return result.count
   }
 
-  const info = db
-    .prepare(`UPDATE account_substitutions SET is_active = 0 WHERE guild_id = ? AND is_active = 1`)
-    .run(guildId)
-  return info.changes
+  const result = await sql`
+    UPDATE account_substitutions
+    SET is_active = FALSE
+    WHERE guild_id = ${guildId} AND is_active = TRUE
+  `
+  return result.count
 }
 
-export async function loadPlayerDataIntoSqlite() {
-  //: Promise<Player[] | undefined> {
-  interface PlayerJSON extends Omit<Player, 'team'> {
-    team: number | null
-  }
-  // try {
-  //   const data = await import('./players.json');
-  //   const playersMap = new Map<string, PlayerJSON>(Object.entries(data.default ?? {}));
-  //   // transfer the loaded players to the sqlite database
-  //   // const adaptedPlayersMap = Array.from(playersMap).map((player, discordId) => {
-  //   const adaptedPlayersMap = Array.from(playersMap.entries()).map(([discordId, player]) => {
-  //     const playerData: Player = {
-  //       ...player,
-  //       usernames: {
-  //         ...player.usernames,
-  //       },
-  //       discordId,
-  //       team: player.team ?? null, // team can be null
-  //     };
-  //     const accounts = player.usernames.accounts ?? [];
-  //     savePlayer(undefined, discordId, playerData, accounts[0]?.hotsBattleTag ?? '');
-  //     return playerData;
-  //   });
-  //   return adaptedPlayersMap;
-  // } catch (error) {
-  //   console.error('Error loading player data:', error);
-  //   throw error; // Re-throw the error to handle it upstream
-  // }
+export async function loadPlayerDataIntoSqlite(): Promise<void> {
+  // Legacy no-op retained for compatibility
 }

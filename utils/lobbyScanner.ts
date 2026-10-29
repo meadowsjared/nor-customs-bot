@@ -269,7 +269,7 @@ export async function scanLobbyScreenshot(
   const slotCoords = calculateSlotCoordinates(width, height)
   const worker = await getWorker()
 
-  const registeredAccounts = getAllRegisteredHotSAccounts(guildId)
+  const registeredAccounts = await getAllRegisteredHotSAccounts(guildId)
   const detectedSlots: {
     slotIndex: number
     text: string
@@ -340,7 +340,7 @@ export async function scanLobbyScreenshot(
       }
       processedPlayerIds.add(playerId)
 
-      const { updated } = setPlayerActive(playerId, true, guildId, matched.hotsBattleTag)
+      const { updated } = await setPlayerActive(playerId, true, guildId, matched.hotsBattleTag)
       let displayTag = matched.hotsBattleTag
       if (matched.ownerDiscordId) {
         displayTag += getSubstitutedAccountOwnerTag(matched.ownerDiscordId, guildId)
@@ -374,7 +374,7 @@ export async function scanLobbyScreenshot(
     }
   }
 
-  const currentActive = getActivePlayers(guildId)
+  const currentActive = await getActivePlayers(guildId)
   const missingFromScreenshot: { discordId: string | null; name: string }[] = []
   const removed: { discordId: string | null; name: string }[] = []
 
@@ -392,7 +392,7 @@ export async function scanLobbyScreenshot(
       }
       missingFromScreenshot.push(missingInfo)
       if (sync) {
-        setPlayerActive(pId, false, guildId)
+        await setPlayerActive(pId, false, guildId)
         removed.push(missingInfo)
       }
     }

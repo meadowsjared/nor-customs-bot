@@ -136,7 +136,7 @@ client.on('guildCreate', async guild => {
           },
         ],
       })
-      setSetting('bot_channel_id', channel.id, guild.id)
+      await setSetting('bot_channel_id', channel.id, guild.id)
       console.log(`Joined new guild: ${guild.name} (ID: ${guild.id}) - Created bot channel.`)
     } catch (err) {
       console.error(`Could not create channel in guild ${guild.name}:`, err)

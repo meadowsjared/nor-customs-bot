@@ -1,12 +1,12 @@
-import { readFileSync } from 'fs'
 import { parse } from 'csv-parse/sync'
+import { readFileSync } from 'fs'
+import { sql } from '../store/db'
 import { CSVColumnDefinition, CSVRecord, HOTS_ACCOUNTS_COLUMNS } from '../types/csvSpreadsheet'
 import { HotsAccountRow } from '../types/player'
 import { SQLiteColumnType } from './sql'
-import { db } from '../store/db'
 
 class CSVImporter {
-  private readonly db = db
+  private readonly db = sql
 
   // Helper function to convert string values to appropriate types
   private parseValue(value: string | number): number | string | null {
@@ -45,23 +45,6 @@ class CSVImporter {
     return !isNaN(numericValue) ? numericValue / 100 : null
   }
 
-  // Helper function to parse time values (MM:SS format)
-  private parseTime(value: string): number | null {
-    if (value === '' || value === 'None' || value === undefined) {
-      return null
-    }
-
-    // Handle formats like "1:30", "00:45", etc.
-    const parts = value.split(':')
-    if (parts.length === 2) {
-      const minutes = parseInt(parts[0])
-      const seconds = parseInt(parts[1])
-      return minutes * 60 + seconds // Convert to total seconds
-    }
-
-    return null
-  }
-
   // Read and parse the CSV file
   private readCSV(): CSVRecord[] {
     try {
@@ -80,19 +63,30 @@ class CSVImporter {
   }
 
   // Get all hots_accounts from database
-  private getHotsAccounts(): HotsAccountRow[] {
-    const stmt = this.db.prepare<[], HotsAccountRow>(
-      'SELECT hots_battle_tag, discord_id, is_primary, HP_QM_MMR, HP_SL_MMR, HP_AR_MMR, HP_QM_Games, HP_SL_Games, HP_AR_Games FROM hots_accounts'
-    )
-    return stmt.all()
+  private async getHotsAccounts(): Promise<HotsAccountRow[]> {
+    return await this.db<HotsAccountRow[]>`
+      SELECT
+        id,
+        hots_battle_tag,
+        discord_id,
+        is_primary,
+        real_id_name,
+        hp_qm_mmr,
+        hp_sl_mmr,
+        hp_ar_mmr,
+        hp_qm_games,
+        hp_sl_games,
+        hp_ar_games
+      FROM hots_accounts
+    `
   }
 
   // Task 1: Find accounts in CSV but missing from database
-  public findMissingFromDatabase(): CSVRecord[] {
+  public async findMissingFromDatabase(): Promise<CSVRecord[]> {
     console.log('🔍 Task 1: Finding accounts in CSV but missing from database...\n')
 
     const csvRecords = this.readCSV()
-    const dbAccounts = this.getHotsAccounts()
+    const dbAccounts = await this.getHotsAccounts()
 
     const dbBattleTags = new Set(dbAccounts.map(account => account.hots_battle_tag))
 
@@ -106,11 +100,11 @@ class CSVImporter {
   }
 
   // Task 2: Find accounts in database but not in CSV
-  public findMissingFromCSV(): string[] {
+  public async findMissingFromCSV(): Promise<string[]> {
     console.log('🔍 Task 2: Finding accounts in database but not in CSV...\n')
 
     const csvRecords = this.readCSV()
-    const dbAccounts = this.getHotsAccounts()
+    const dbAccounts = await this.getHotsAccounts()
 
     const csvLookups = new Set(csvRecords.map(record => record.Lookup))
     const dbBattleTags = dbAccounts.map(account => account.hots_battle_tag)
@@ -124,11 +118,11 @@ class CSVImporter {
     return missingFromCsv
   }
 
-  public findMatchingRecords(): string[] {
+  public async findMatchingRecords(): Promise<string[]> {
     console.log('🔍 Task 3: Finding accounts with matching data...\n')
 
     const csvRecords = this.readCSV()
-    const dbAccounts = this.getHotsAccounts()
+    const dbAccounts = await this.getHotsAccounts()
 
     const matchingRecords = dbAccounts
       .filter(record => csvRecords.some(account => account.Lookup === record.hots_battle_tag))
@@ -141,11 +135,11 @@ class CSVImporter {
     return matchingRecords
   }
 
-  private parseBoolean(value: string | number) {
+  private parseBoolean(value: string | number): number {
     return value === 'TRUE' ? 1 : 0
   }
 
-  public parseValueForColumn(record: CSVRecord, column: CSVColumnDefinition) {
+  public parseValueForColumn(record: CSVRecord, column: CSVColumnDefinition): number | string | null {
     const csvColumnName = column.csvColumnName
     if (column.name !== 'updated_at' && !csvColumnName) {
       console.warn(`No CSV mapping found for DB column: ${column.name}`)
@@ -159,24 +153,21 @@ class CSVImporter {
       return null
     }
 
-    // Parse based on SQLite column type and special cases
+    // Parse based on column type and special cases
     switch (column.dbType) {
       case SQLiteColumnType.INTEGER:
-        // Check if this is actually a boolean stored as integer
         if (column.isBoolean) {
           return this.parseBoolean(rawValue)
         }
         return this.parseValue(rawValue)
 
       case SQLiteColumnType.REAL:
-        // Check if this is a percentage column
         if (column.isPercentage) {
           return this.parsePercentage(rawValue)
         }
         return this.parseValue(rawValue)
 
       case SQLiteColumnType.TEXT:
-        // Keep as string, but handle time formats if needed
         return rawValue
 
       default:
@@ -185,11 +176,11 @@ class CSVImporter {
   }
 
   // Task 4: Transfer data from CSV to database for matching accounts
-  public transferMatchingData(): number {
+  public async transferMatchingData(): Promise<number> {
     console.log('🔄 Task 4: Transferring data for matching accounts...\n')
 
     const csvRecords = this.readCSV()
-    const dbAccounts = this.getHotsAccounts()
+    const dbAccounts = await this.getHotsAccounts()
 
     const dbBattleTags = new Set(dbAccounts.map(account => account.hots_battle_tag))
 
@@ -203,41 +194,32 @@ class CSVImporter {
       return 0
     }
 
-    // Prepare update statement
-    const updatePlayerStmt = this.db.prepare(`
-      UPDATE players SET ${HOTS_ACCOUNTS_COLUMNS.filter(col => col.importToPlayer === true)
-        .map(col => `${col.name} = ?`)
-        .join(', ')} WHERE discord_id = ?
-    `)
-    // Prepare update statement
-    const updateHotsAccountStmt = this.db.prepare(`
-      UPDATE hots_accounts SET ${HOTS_ACCOUNTS_COLUMNS.filter(col => col.skipImport !== true)
-        .map(col => `${col.name} = ?`)
-        .join(', ')}, updated_at = '2025-09-13 11:56:00' WHERE hots_battle_tag = ?
-    `)
-
     let updatedCount = 0
 
     // Process each matching record
     for (const record of matchingRecords) {
       try {
-        const discordId = dbAccounts.find(acc => acc.hots_battle_tag === record.Lookup)?.discord_id
-        const columns = HOTS_ACCOUNTS_COLUMNS.filter(col => col.skipImport !== true)
-        let playerResult
-        if (discordId) {
-          playerResult = updatePlayerStmt.run(
-            ...HOTS_ACCOUNTS_COLUMNS.filter(col => col.importToPlayer === true).map(col =>
-              this.parseValueForColumn(record, col)
-            ),
-            discordId
-          )
-        }
-        const result = updateHotsAccountStmt.run(
-          ...columns.map(col => this.parseValueForColumn(record, col)),
-          record.Lookup
-        )
+        const qmMmr = this.parseValue(record['QM MMR'] ?? '')
+        const slMmr = this.parseValue(record['SL MMR'] ?? '')
+        const arMmr = this.parseValue(record['AR MMR'] ?? '')
+        const qmGames = this.parseValue(record['QM Games'] ?? '')
+        const slGames = this.parseValue(record['SL Games'] ?? '')
+        const arGames = this.parseValue(record['AR Games'] ?? '')
 
-        if (result.changes > 0) {
+        const result = await this.db`
+          UPDATE hots_accounts
+          SET
+            hp_qm_mmr = ${typeof qmMmr === 'number' ? Math.round(qmMmr) : null},
+            hp_sl_mmr = ${typeof slMmr === 'number' ? Math.round(slMmr) : null},
+            hp_ar_mmr = ${typeof arMmr === 'number' ? Math.round(arMmr) : null},
+            hp_qm_games = ${typeof qmGames === 'number' ? Math.round(qmGames) : null},
+            hp_sl_games = ${typeof slGames === 'number' ? Math.round(slGames) : null},
+            hp_ar_games = ${typeof arGames === 'number' ? Math.round(arGames) : null},
+            updated_at = NOW()
+          WHERE hots_battle_tag = ${record.Lookup}
+        `
+
+        if (result.count > 0) {
           updatedCount++
           console.log(`  ✅ Updated: ${record.Lookup}`)
         } else {
@@ -252,8 +234,8 @@ class CSVImporter {
     return updatedCount
   }
 
-  public close() {
-    this.db.close()
+  public async close(): Promise<void> {
+    await this.db.end()
   }
 }
 
@@ -271,7 +253,7 @@ function showUsage() {
 }
 
 // Main execution function with command-line argument handling
-function main() {
+async function main() {
   const args = process.argv.slice(2)
   const command = args[0]
 
@@ -284,27 +266,33 @@ function main() {
 
   try {
     switch (command) {
-      case 'missing-from-db':
+      case 'missing-from-db': {
         console.log('🚀 Running Task 1: Find Missing from Database...\n')
-        console.log(
-          `📊 Result: ${importer.findMissingFromDatabase().length} accounts found in CSV but missing from database.`
-        )
+        const missingDb = await importer.findMissingFromDatabase()
+        console.log(`📊 Result: ${missingDb.length} accounts found in CSV but missing from database.`)
         break
+      }
 
-      case 'missing-from-csv':
+      case 'missing-from-csv': {
         console.log('🚀 Running Task 2: Find Missing from CSV...\n')
-        console.log(`📊 Result: ${importer.findMissingFromCSV().length} accounts found in database but not in CSV.`)
+        const missingCsv = await importer.findMissingFromCSV()
+        console.log(`📊 Result: ${missingCsv.length} accounts found in database but not in CSV.`)
         break
+      }
 
-      case 'check-matches':
+      case 'check-matches': {
         console.log('🚀 Running Task 3: Check Matching Data...\n')
-        console.log(`📊 Result: ${importer.findMatchingRecords().length} accounts found with matching data.`)
+        const matches = await importer.findMatchingRecords()
+        console.log(`📊 Result: ${matches.length} accounts found with matching data.`)
         break
+      }
 
-      case 'import-csv':
+      case 'import-csv': {
         console.log('🚀 Running Task 4: Transfer Matching Data...\n')
-        console.log(`📊 Result: ${importer.transferMatchingData()} accounts updated with CSV data.`)
+        const count = await importer.transferMatchingData()
+        console.log(`📊 Result: ${count} accounts updated with CSV data.`)
         break
+      }
 
       default:
         console.error(`❌ Unknown command: ${command}`)
@@ -316,12 +304,11 @@ function main() {
     console.error('❌ Error during CSV import process:', error)
     process.exit(1)
   } finally {
-    importer.close()
+    await importer.close()
   }
 }
 
-// Export for use in other files
 export { CSVImporter }
+export { HOTS_ACCOUNTS_COLUMNS }
 
-// Run if this file is executed directly
 main()

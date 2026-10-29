@@ -1,94 +1,75 @@
-import { DraftCoinState } from '../types/player'
-import { db } from './db'
-
-// Ensure the settings table exists with guild_id support
-db.exec(`
-  CREATE TABLE IF NOT EXISTS settings (
-    guild_id TEXT NOT NULL DEFAULT 'global',
-    key TEXT NOT NULL,
-    value TEXT NOT NULL,
-    PRIMARY KEY (guild_id, key)
-  )
-`)
-
-// Check if existing table needs migration to include guild_id column
-const cols = db.prepare<[], { name: string }>('PRAGMA table_info(settings)').all()
-if (cols.length > 0 && !cols.some(c => c.name === 'guild_id')) {
-  db.exec('ALTER TABLE settings RENAME TO settings_old')
-  db.exec(`
-    CREATE TABLE settings (
-      guild_id TEXT NOT NULL DEFAULT 'global',
-      key TEXT NOT NULL,
-      value TEXT NOT NULL,
-      PRIMARY KEY (guild_id, key)
-    )
-  `)
-  db.exec("INSERT INTO settings (guild_id, key, value) SELECT 'global', key, value FROM settings_old")
-  db.exec('DROP TABLE settings_old')
-}
-
-db.exec(`
-  CREATE INDEX IF NOT EXISTS idx_settings_guild_key
-  ON settings(guild_id, key)
-`)
+import { DraftCoinState, SETTINGS_TABLE_SCHEMA_SQL, SettingRow } from '../types/settings'
+import { sql } from './db'
 
 /**
- * Retrieves a setting value by key and optional guild ID from the database settings table.
- * Defaults guildId to 'global' if not specified.
+ * Initializes the `settings` table in PostgreSQL.
+ */
+export async function initSettingsTable(): Promise<void> {
+  await sql.unsafe(SETTINGS_TABLE_SCHEMA_SQL)
+}
+
+initSettingsTable().catch(error => {
+  console.error('Error initializing settings table:', error)
+})
+
+/**
+ * Retrieves a setting value by key and guild ID from the PostgreSQL `settings` table.
  * @param key The setting key
  * @param guildId The Discord guild ID (server ID)
  * @returns The string value or undefined if not found
  */
-export function getSetting(key: string, guildId: string): string | undefined {
-  if (guildId === null) {
+export async function getSetting(key: string, guildId: string): Promise<string | undefined> {
+  if (!guildId) {
     console.log({ key, guildId }, 'guildId is required')
     return undefined
   }
 
-  const stmt = db.prepare<[string, string], { value: string }>(
-    'SELECT value FROM settings WHERE guild_id = ? AND key = ?'
-  )
-  const row = stmt.get(guildId, key)
-  return row?.value
+  const rows = await sql<Pick<SettingRow, 'value'>[]>`
+    SELECT value
+    FROM settings
+    WHERE guild_id = ${guildId} AND key = ${key}
+    LIMIT 1
+  `
+  return rows[0]?.value
 }
 
 /**
- * Saves or updates a setting in the database settings table for a specific guild ID.
- * Defaults guildId to 'global' if not specified.
+ * Saves or updates a setting in the PostgreSQL `settings` table for a specific guild ID.
  * @param key The setting key
  * @param value The string value
  * @param guildId The Discord guild ID (server ID)
  */
-export function setSetting(key: string, value: string, guildId: string): boolean {
-  if (guildId === null) {
+export async function setSetting(key: string, value: string, guildId: string): Promise<boolean> {
+  if (!guildId) {
     console.log({ key, guildId }, 'guildId is required')
     return false
   }
 
-  const stmt = db.prepare(`
-    INSERT INTO settings (guild_id, key, value)
-    VALUES (?, ?, ?)
-    ON CONFLICT(guild_id, key) DO UPDATE SET value = excluded.value
-  `)
-  stmt.run(guildId, key, value)
+  await sql`
+    INSERT INTO settings (guild_id, key, value, updated_at)
+    VALUES (${guildId}, ${key}, ${value}, CURRENT_TIMESTAMP)
+    ON CONFLICT (guild_id, key) DO UPDATE SET
+      value = EXCLUDED.value,
+      updated_at = CURRENT_TIMESTAMP
+  `
   return true
 }
 
 /**
- * Deletes a setting from the database settings table for a specific guild ID.
+ * Deletes a setting from the PostgreSQL `settings` table for a specific guild ID.
  * @param key The setting key
- * @param guildId The optional Discord guild ID (server ID)
+ * @param guildId The Discord guild ID (server ID)
  */
-export function deleteSetting(key: string, guildId: string | null): boolean {
-  if (guildId === null) {
+export async function deleteSetting(key: string, guildId: string | null): Promise<boolean> {
+  if (!guildId) {
     console.log({ key, guildId }, 'guildId is required')
     return false
   }
 
-  const stmt = db.prepare(`
-    DELETE FROM settings WHERE guild_id = ? AND key = ?
-  `)
-  stmt.run(guildId, key)
+  await sql`
+    DELETE FROM settings
+    WHERE guild_id = ${guildId} AND key = ${key}
+  `
   return true
 }
 
@@ -99,8 +80,8 @@ function isDraftCoinState(obj: unknown): obj is DraftCoinState {
 /**
  * Retrieves the draft coin toss state for a guild.
  */
-export function getDraftCoinState(guildId: string): DraftCoinState | null {
-  const raw = getSetting('draft_coin_state', guildId)
+export async function getDraftCoinState(guildId: string): Promise<DraftCoinState | null> {
+  const raw = await getSetting('draft_coin_state', guildId)
   if (!raw) return null
   try {
     const parsed: unknown = JSON.parse(raw)
@@ -116,13 +97,13 @@ export function getDraftCoinState(guildId: string): DraftCoinState | null {
 /**
  * Saves the draft coin toss state for a guild.
  */
-export function setDraftCoinState(guildId: string, state: DraftCoinState): boolean {
-  return setSetting('draft_coin_state', JSON.stringify(state), guildId)
+export async function setDraftCoinState(guildId: string, state: DraftCoinState): Promise<boolean> {
+  return await setSetting('draft_coin_state', JSON.stringify(state), guildId)
 }
 
 /**
  * Resets/deletes the draft coin toss state for a guild.
  */
-export function resetDraftCoinState(guildId: string): boolean {
-  return deleteSetting('draft_coin_state', guildId)
+export async function resetDraftCoinState(guildId: string): Promise<boolean> {
+  return await deleteSetting('draft_coin_state', guildId)
 }

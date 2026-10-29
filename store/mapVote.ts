@@ -1,51 +1,23 @@
-import { MapDefinition, MapVoteSession, MapVoteTally } from '../types/mapVote'
-import { db } from './db'
+import {
+  MAP_VOTE_TABLE_SCHEMA_SQL,
+  MapDefinition,
+  MapVoteRow,
+  MapVoteSession,
+  MapVoteSessionRow,
+  MapVoteTally,
+} from '../types/mapVote'
+import { sql } from './db'
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS map_vote_sessions (
-    id TEXT PRIMARY KEY,
-    guild_id TEXT NOT NULL DEFAULT 'global',
-    channel_id TEXT NOT NULL,
-    message_ids TEXT NOT NULL,
-    created_by TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    active INTEGER NOT NULL DEFAULT 1,
-    title TEXT
-  );
-`)
-
-const mapVoteCols = db.prepare<[], { name: string }>('PRAGMA table_info(map_vote_sessions)').all()
-if (mapVoteCols.length > 0 && !mapVoteCols.some(c => c.name === 'guild_id')) {
-  db.exec('ALTER TABLE map_vote_sessions RENAME TO map_vote_sessions_old')
-  db.exec(`
-    CREATE TABLE map_vote_sessions (
-      id TEXT PRIMARY KEY,
-      guild_id TEXT NOT NULL DEFAULT 'global',
-      channel_id TEXT NOT NULL,
-      message_ids TEXT NOT NULL,
-      created_by TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      active INTEGER NOT NULL DEFAULT 1,
-      title TEXT
-    );
-  `)
-  db.exec(
-    "INSERT INTO map_vote_sessions (id, guild_id, channel_id, message_ids, created_by, created_at, active, title) SELECT id, 'global', channel_id, message_ids, created_by, created_at, active, title FROM map_vote_sessions_old"
-  )
-  db.exec('DROP TABLE map_vote_sessions_old')
+/**
+ * Initializes the `map_vote_sessions` and `map_votes` tables in PostgreSQL.
+ */
+export async function initMapVoteTables(): Promise<void> {
+  await sql.unsafe(MAP_VOTE_TABLE_SCHEMA_SQL)
 }
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS map_votes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    session_id TEXT NOT NULL,
-    user_id TEXT NOT NULL,
-    user_name TEXT NOT NULL,
-    map_id TEXT NOT NULL,
-    voted_at TEXT NOT NULL,
-    UNIQUE(session_id, user_id)
-  );
-`)
+initMapVoteTables().catch(error => {
+  console.error('Error initializing map vote tables:', error)
+})
 
 export const HOTS_MAPS: MapDefinition[] = [
   {
@@ -126,39 +98,22 @@ export const HOTS_MAPS: MapDefinition[] = [
   },
 ]
 
-interface SessionRow {
-  id: string
-  channel_id: string
-  message_ids: string
-  created_by: string
-  created_at: string
-  active: number
-  title: string | null
-}
-
-interface VoteRow {
-  id: number
-  session_id: string
-  user_id: string
-  user_name: string
-  map_id: string
-  voted_at: string
-}
-
-interface ReplayMapRow {
+type ReplayMapCountRow = {
   map: string
   count: number
 }
 
 /**
- * Returns names of maps played in the last N hours (default 15 hours).
+ * Returns names of maps played in the last N hours (default 15 hours) from the `replays` table.
  */
-export function getRecentlyPlayedMapNames(hours: number = 15): string[] {
+export async function getRecentlyPlayedMapNames(hours = 15): Promise<string[]> {
   try {
-    const cutoffDate = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString()
-    const rows = db
-      .prepare<[string], { map: string }>(`SELECT DISTINCT map FROM hots_replays WHERE date >= ?`)
-      .all(cutoffDate)
+    const cutoffDate = new Date(Date.now() - hours * 60 * 60 * 1000)
+    const rows = await sql<{ map: string }[]>`
+      SELECT DISTINCT map
+      FROM replays
+      WHERE date >= ${cutoffDate}
+    `
     return rows.map(r => r.map)
   } catch (err) {
     console.error('Error fetching recently played maps:', err)
@@ -169,13 +124,15 @@ export function getRecentlyPlayedMapNames(hours: number = 15): string[] {
 /**
  * Returns the game number for tonight based on replays played in the last N hours (default 15 hours).
  */
-export function getGameNumberTonight(hours: number = 15): number {
+export async function getGameNumberTonight(hours = 15): Promise<number> {
   try {
-    const cutoffDate = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString()
-    const row = db
-      .prepare<[string], { count: number }>(`SELECT COUNT(*) as count FROM hots_replays WHERE date >= ?`)
-      .get(cutoffDate)
-    return (row?.count ?? 0) + 1
+    const cutoffDate = new Date(Date.now() - hours * 60 * 60 * 1000)
+    const rows = await sql<{ count: number }[]>`
+      SELECT COUNT(*)::int AS count
+      FROM replays
+      WHERE date >= ${cutoffDate}
+    `
+    return (rows[0]?.count ?? 0) + 1
   } catch (err) {
     console.error('Error fetching game number tonight:', err)
     return 1
@@ -183,30 +140,33 @@ export function getGameNumberTonight(hours: number = 15): number {
 }
 
 /**
- * Queries play counts for each map directly from hots_replays table, ordered by count DESC
+ * Queries play counts for each map directly from the `replays` table, ordered by count DESC.
  */
-export function getHistoricalPlayCounts(): Record<string, number> {
+export async function getHistoricalPlayCounts(): Promise<Record<string, number>> {
   const countsMap: Record<string, number> = {}
   try {
-    const rows = db
-      .prepare<[], ReplayMapRow>(`SELECT map, COUNT(*) as count FROM hots_replays GROUP BY map ORDER BY count DESC`)
-      .all()
+    const rows = await sql<ReplayMapCountRow[]>`
+      SELECT map, COUNT(*)::int AS count
+      FROM replays
+      GROUP BY map
+      ORDER BY count DESC
+    `
     for (const r of rows) {
       if (r.map) {
         countsMap[r.map.toLowerCase()] = r.count
       }
     }
   } catch (err) {
-    console.error('Error querying hots_replays counts:', err)
+    console.error('Error querying replays map counts:', err)
   }
   return countsMap
 }
 
 /**
- * Returns HOTS_MAPS dynamically sorted by historical play count DESC from hots_replays.
+ * Returns HOTS_MAPS dynamically sorted by historical play count DESC from `replays`.
  */
-export function getSortedHotsMaps(): MapDefinition[] {
-  const historicalCounts = getHistoricalPlayCounts()
+export async function getSortedHotsMaps(): Promise<MapDefinition[]> {
+  const historicalCounts = await getHistoricalPlayCounts()
   return [...HOTS_MAPS].sort((a, b) => {
     const countA = historicalCounts[a.name.toLowerCase()] ?? 0
     const countB = historicalCounts[b.name.toLowerCase()] ?? 0
@@ -221,24 +181,28 @@ export function getSortedHotsMaps(): MapDefinition[] {
  * Returns active maps (excluding maps played in the last 15 hours),
  * sorted by current session votes DESC, then historical play count DESC.
  */
-export function getMapVoteSortedList(sessionId?: string): {
+export async function getMapVoteSortedList(sessionId?: string): Promise<{
   activeMaps: MapDefinition[]
   recentlyPlayedMaps: MapDefinition[]
   tallies: MapVoteTally[]
-} {
-  const tallies = sessionId ? getMapVoteResults(sessionId) : []
+}> {
+  const [tallies, recentlyPlayedRaw, historicalCounts, sortedMaps] = await Promise.all([
+    sessionId ? getMapVoteResults(sessionId) : Promise.resolve([]),
+    getRecentlyPlayedMapNames(15),
+    getHistoricalPlayCounts(),
+    getSortedHotsMaps(),
+  ])
+
   const talliesByMapId: Record<string, MapVoteTally> = {}
   for (const t of tallies) {
     talliesByMapId[t.mapId] = t
   }
 
-  const recentlyPlayedNames = getRecentlyPlayedMapNames(15).map(n => n.toLowerCase())
-  const historicalCounts = getHistoricalPlayCounts()
+  const recentlyPlayedNames = recentlyPlayedRaw.map(n => n.toLowerCase())
 
   const activeMaps: MapDefinition[] = []
   const recentlyPlayedMaps: MapDefinition[] = []
 
-  const sortedMaps = getSortedHotsMaps()
   for (const mapDef of sortedMaps) {
     const lowerName = mapDef.name.toLowerCase()
     if (recentlyPlayedNames.includes(lowerName)) {
@@ -254,10 +218,6 @@ export function getMapVoteSortedList(sessionId?: string): {
     recentlyPlayedMaps.length = 0
   }
 
-  // Sort active maps:
-  // 1. Current votes in session DESC
-  // 2. Historical play count DESC
-  // 3. Base sortedMaps index
   activeMaps.sort((a, b) => {
     const currentVotesA = talliesByMapId[a.id]?.count ?? 0
     const currentVotesB = talliesByMapId[b.id]?.count ?? 0
@@ -280,24 +240,27 @@ export function getMapVoteSortedList(sessionId?: string): {
 }
 
 /**
- * Creates a new active map vote session
+ * Creates a new active map vote session in PostgreSQL.
  */
-export function startMapVoteSession(
+export async function startMapVoteSession(
   sessionId: string,
   guildId: string,
   channelId: string,
   messageIds: string[],
   createdBy: string,
   title?: string
-): MapVoteSession {
-  db.prepare(`UPDATE map_vote_sessions SET active = 0 WHERE guild_id = ? AND channel_id = ?`).run(guildId, channelId)
+): Promise<MapVoteSession> {
+  await sql`
+    UPDATE map_vote_sessions
+    SET active = FALSE
+    WHERE guild_id = ${guildId} AND channel_id = ${channelId}
+  `
 
   const createdAt = new Date()
-  const stmt = db.prepare(`
+  await sql`
     INSERT INTO map_vote_sessions (id, guild_id, channel_id, message_ids, created_by, created_at, active, title)
-    VALUES (?, ?, ?, ?, ?, ?, 1, ?)
-  `)
-  stmt.run(sessionId, guildId, channelId, JSON.stringify(messageIds), createdBy, createdAt.toISOString(), title ?? null)
+    VALUES (${sessionId}, ${guildId}, ${channelId}, ${messageIds}, ${createdBy}, ${createdAt}, TRUE, ${title ?? null})
+  `
 
   return {
     id: sessionId,
@@ -310,14 +273,14 @@ export function startMapVoteSession(
   }
 }
 
-function mapSessionRowToSession(row: SessionRow): MapVoteSession {
+function mapSessionRowToSession(row: MapVoteSessionRow): MapVoteSession {
   return {
     id: row.id,
     channelId: row.channel_id,
-    messageIds: JSON.parse(row.message_ids || '[]'),
+    messageIds: Array.isArray(row.message_ids) ? row.message_ids : [],
     createdBy: row.created_by,
-    createdAt: new Date(row.created_at),
-    active: row.active === 1,
+    createdAt: row.created_at instanceof Date ? row.created_at : new Date(row.created_at),
+    active: Boolean(row.active),
     title: row.title ?? undefined,
   }
 }
@@ -325,38 +288,59 @@ function mapSessionRowToSession(row: SessionRow): MapVoteSession {
 /**
  * Retrieves the active vote session in a channel for a specific guild.
  */
-export function getActiveMapVoteSession(guildId: string, channelId: string): MapVoteSession | undefined {
-  const row = db
-    .prepare<[string, string], SessionRow>(
-      `SELECT * FROM map_vote_sessions WHERE guild_id = ? AND channel_id = ? AND active = 1 ORDER BY created_at DESC LIMIT 1`
-    )
-    .get(guildId, channelId)
-
-  return row ? mapSessionRowToSession(row) : undefined
+export async function getActiveMapVoteSession(
+  guildId: string,
+  channelId: string
+): Promise<MapVoteSession | undefined> {
+  const rows = await sql<MapVoteSessionRow[]>`
+    SELECT *
+    FROM map_vote_sessions
+    WHERE guild_id = ${guildId}
+      AND channel_id = ${channelId}
+      AND active = TRUE
+    ORDER BY created_at DESC
+    LIMIT 1
+  `
+  return rows[0] ? mapSessionRowToSession(rows[0]) : undefined
 }
 
 /**
  * Retrieves the newest vote session in a channel (active or ended).
  * If no session is found for the channel, falls back to the newest session overall.
  */
-export function getNewestMapVoteSession(guildId?: string, channelId?: string): MapVoteSession | undefined {
-  let row: SessionRow | undefined
+export async function getNewestMapVoteSession(
+  guildId?: string,
+  channelId?: string
+): Promise<MapVoteSession | undefined> {
+  let row: MapVoteSessionRow | undefined
   if (guildId && channelId) {
-    row = db
-      .prepare<[string, string], SessionRow>(
-        `SELECT * FROM map_vote_sessions WHERE guild_id = ? AND channel_id = ? ORDER BY created_at DESC LIMIT 1`
-      )
-      .get(guildId, channelId)
+    const rows = await sql<MapVoteSessionRow[]>`
+      SELECT *
+      FROM map_vote_sessions
+      WHERE guild_id = ${guildId} AND channel_id = ${channelId}
+      ORDER BY created_at DESC
+      LIMIT 1
+    `
+    row = rows[0]
   } else if (guildId) {
-    row = db
-      .prepare<[string], SessionRow>(
-        `SELECT * FROM map_vote_sessions WHERE guild_id = ? ORDER BY created_at DESC LIMIT 1`
-      )
-      .get(guildId)
+    const rows = await sql<MapVoteSessionRow[]>`
+      SELECT *
+      FROM map_vote_sessions
+      WHERE guild_id = ${guildId}
+      ORDER BY created_at DESC
+      LIMIT 1
+    `
+    row = rows[0]
   }
 
   if (!row) {
-    row = db.prepare<[], SessionRow>(`SELECT * FROM map_vote_sessions ORDER BY created_at DESC LIMIT 1`).get()
+    const rows = await sql<MapVoteSessionRow[]>`
+      SELECT *
+      FROM map_vote_sessions
+      ORDER BY created_at DESC
+      LIMIT 1
+    `
+    row = rows[0]
   }
 
   return row ? mapSessionRowToSession(row) : undefined
@@ -365,51 +349,71 @@ export function getNewestMapVoteSession(guildId?: string, channelId?: string): M
 /**
  * Updates the stored message IDs for a vote session.
  */
-export function updateMapVoteSessionMessageIds(sessionId: string, messageIds: string[]): void {
-  db.prepare(`UPDATE map_vote_sessions SET message_ids = ? WHERE id = ?`).run(JSON.stringify(messageIds), sessionId)
+export async function updateMapVoteSessionMessageIds(sessionId: string, messageIds: string[]): Promise<void> {
+  await sql`
+    UPDATE map_vote_sessions
+    SET message_ids = ${messageIds}
+    WHERE id = ${sessionId}
+  `
 }
 
 /**
  * Retrieves a session by its ID.
  */
-export function getMapVoteSessionById(sessionId: string): MapVoteSession | undefined {
-  const row = db.prepare<[string], SessionRow>(`SELECT * FROM map_vote_sessions WHERE id = ?`).get(sessionId)
-  return row ? mapSessionRowToSession(row) : undefined
+export async function getMapVoteSessionById(sessionId: string): Promise<MapVoteSession | undefined> {
+  const rows = await sql<MapVoteSessionRow[]>`
+    SELECT *
+    FROM map_vote_sessions
+    WHERE id = ${sessionId}
+    LIMIT 1
+  `
+  return rows[0] ? mapSessionRowToSession(rows[0]) : undefined
 }
 
 /**
  * Casts or changes a user's vote for a map.
  */
-export function castMapVote(sessionId: string, userId: string, userName: string, mapId: string): void {
-  const stmt = db.prepare(`
+export async function castMapVote(
+  sessionId: string,
+  userId: string,
+  userName: string,
+  mapId: string
+): Promise<void> {
+  await sql`
     INSERT INTO map_votes (session_id, user_id, user_name, map_id, voted_at)
-    VALUES (?, ?, ?, ?, ?)
-    ON CONFLICT(session_id, user_id) DO UPDATE SET
-      map_id = excluded.map_id,
-      user_name = excluded.user_name,
-      voted_at = excluded.voted_at
-  `)
-  stmt.run(sessionId, userId, userName, mapId, new Date().toISOString())
+    VALUES (${sessionId}, ${userId}, ${userName}, ${mapId}, CURRENT_TIMESTAMP)
+    ON CONFLICT (session_id, user_id) DO UPDATE SET
+      map_id = EXCLUDED.map_id,
+      user_name = EXCLUDED.user_name,
+      voted_at = CURRENT_TIMESTAMP
+  `
 }
 
 /**
  * Removes a user's vote.
  */
-export function removeMapVote(sessionId: string, userId: string): void {
-  db.prepare(`DELETE FROM map_votes WHERE session_id = ? AND user_id = ?`).run(sessionId, userId)
+export async function removeMapVote(sessionId: string, userId: string): Promise<void> {
+  await sql`
+    DELETE FROM map_votes
+    WHERE session_id = ${sessionId} AND user_id = ${userId}
+  `
 }
 
 /**
  * Gets vote results tally for a given session.
  */
-export function getMapVoteResults(sessionId: string): MapVoteTally[] {
-  const votes = db
-    .prepare<[string], VoteRow>(`SELECT * FROM map_votes WHERE session_id = ? ORDER BY voted_at ASC`)
-    .all(sessionId)
+export async function getMapVoteResults(sessionId: string): Promise<MapVoteTally[]> {
+  const [votes, sortedMaps] = await Promise.all([
+    sql<MapVoteRow[]>`
+      SELECT *
+      FROM map_votes
+      WHERE session_id = ${sessionId}
+      ORDER BY voted_at ASC
+    `,
+    getSortedHotsMaps(),
+  ])
 
   const talliesMap: Record<string, { count: number; voters: string[] }> = {}
-
-  const sortedMaps = getSortedHotsMaps()
 
   for (const mapDef of sortedMaps) {
     talliesMap[mapDef.id] = { count: 0, voters: [] }
@@ -434,24 +438,37 @@ export function getMapVoteResults(sessionId: string): MapVoteTally[] {
 /**
  * Gets the current vote cast by a specific user.
  */
-export function getUserVote(sessionId: string, userId: string): string | undefined {
-  const row = db
-    .prepare<[string, string], VoteRow>(`SELECT map_id FROM map_votes WHERE session_id = ? AND user_id = ?`)
-    .get(sessionId, userId)
-  return row?.map_id
+export async function getUserVote(sessionId: string, userId: string): Promise<string | undefined> {
+  const rows = await sql<Pick<MapVoteRow, 'map_id'>[]>`
+    SELECT map_id
+    FROM map_votes
+    WHERE session_id = ${sessionId} AND user_id = ${userId}
+    LIMIT 1
+  `
+  return rows[0]?.map_id
 }
 
 /**
  * Marks a vote session as ended/inactive.
  */
-export function endMapVoteSession(sessionId: string): void {
-  db.prepare(`UPDATE map_vote_sessions SET active = 0 WHERE id = ?`).run(sessionId)
+export async function endMapVoteSession(sessionId: string): Promise<void> {
+  await sql`
+    UPDATE map_vote_sessions
+    SET active = FALSE
+    WHERE id = ${sessionId}
+  `
 }
 
 /**
- * Completely deletes a map vote session and all associated user votes from the database.
+ * Completely deletes a map vote session and all associated user votes from PostgreSQL.
  */
-export function deleteMapVoteSession(sessionId: string): void {
-  db.prepare(`DELETE FROM map_votes WHERE session_id = ?`).run(sessionId)
-  db.prepare(`DELETE FROM map_vote_sessions WHERE id = ?`).run(sessionId)
+export async function deleteMapVoteSession(sessionId: string): Promise<void> {
+  await sql`
+    DELETE FROM map_votes
+    WHERE session_id = ${sessionId}
+  `
+  await sql`
+    DELETE FROM map_vote_sessions
+    WHERE id = ${sessionId}
+  `
 }

@@ -123,13 +123,12 @@ dotenv.config()
  * Generates the current lobby status message with active players
  * @returns The formatted lobby status message
  */
-function generateLobbyStatusMessage(guildId: string, pPreviousPlayersList?: string): string {
-  const prevPlayersFromDb: string[] = JSON.parse(
-    getLobbyMessages(guildId, [CommandIds.NEW_GAME])?.[0]?.previousPlayersList ?? '[]'
-  )
+async function generateLobbyStatusMessage(guildId: string, pPreviousPlayersList?: string): Promise<string> {
+  const lobbyMessages = await getLobbyMessages(guildId, [CommandIds.NEW_GAME])
+  const prevPlayersFromDb: string[] = JSON.parse(lobbyMessages?.[0]?.previousPlayersList ?? '[]')
   const previousPlayersMessage = generatePreviousPlayersMessage(prevPlayersFromDb)
   const previousPlayersList = pPreviousPlayersList ?? previousPlayersMessage ?? ''
-  const activePlayers = getActivePlayers(guildId)
+  const activePlayers = await getActivePlayers(guildId)
   activePlayers.sort((a, b) => a.lastActive.getTime() - b.lastActive.getTime()) // sort by last_active ascending
   const lobbyPlayers = activePlayers.map((p, index) => {
     const subAccount = p.usernames.accounts?.find(a => a.ownerDiscordId)
@@ -185,8 +184,8 @@ function generateLobbyStatusMessage(guildId: string, pPreviousPlayersList?: stri
 }
 
 /** generates the list of previous players */
-function generatePreviousPlayersList(guildId: string): string[] {
-  return getActivePlayers(guildId)
+async function generatePreviousPlayersList(guildId: string): Promise<string[]> {
+  return (await getActivePlayers(guildId))
     .map(p => p.discordId)
     .filter((id): id is string => typeof id === 'string')
 }
@@ -211,7 +210,7 @@ export async function updateLobbyMessage(
     await updateAdminActiveButtons(interaction, previousPlayersList)
   }
 
-  const lobbyMessages = getLobbyMessages(guildId, [CommandIds.NEW_GAME])
+  const lobbyMessages = await getLobbyMessages(guildId, [CommandIds.NEW_GAME])
   if (!lobbyMessages || lobbyMessages.length === 0) {
     return // No lobby message to update
   }
@@ -223,7 +222,7 @@ export async function updateLobbyMessage(
     if (targetChannel?.isTextBased()) {
       const message = await targetChannel.messages.fetch(lobbyMessages[0].messageId)
       // purposely don't pass in the previousPlayersList, so it uses the stored value in the database
-      const updatedContent = generateLobbyStatusMessage(guildId)
+      const updatedContent = await generateLobbyStatusMessage(guildId)
       await message.edit({
         content: updatedContent,
         components: [new ActionRowBuilder<ButtonBuilder>().addComponents(imPlayingBtn)],
@@ -264,12 +263,12 @@ export async function handleNewGameCommand(
   /**
    * Array of discord IDs of the players that were active before starting the new game
    */
-  const previousPlayersList = generatePreviousPlayersList(guildId)
-  markAllPlayersInactive(guildId)
+  const previousPlayersList = await generatePreviousPlayersList(guildId)
+  await markAllPlayersInactive(guildId)
 
   // Generate the initial lobby status message
   const previousPlayersMessage = generatePreviousPlayersMessage(previousPlayersList)
-  const lobbyStatusMessage = generateLobbyStatusMessage(guildId, previousPlayersMessage)
+  const lobbyStatusMessage = await generateLobbyStatusMessage(guildId, previousPlayersMessage)
 
   let sentMessage: Message<boolean> | undefined
 
@@ -298,7 +297,7 @@ export async function handleNewGameCommand(
 
   // Store the message ID so we can update it later
   if (sentMessage) {
-    saveLobbyMessage(
+    await saveLobbyMessage(
       guildId,
       CommandIds.NEW_GAME,
       sentMessage.id,
@@ -415,7 +414,7 @@ async function applyTeamsFromScan(
   if (scanSummary.team1DiscordIds.length === 0 && scanSummary.team2DiscordIds.length === 0) {
     return
   }
-  const sortedPlayers = getSortedActivePlayers(guildId, true)
+  const sortedPlayers = await getSortedActivePlayers(guildId, true)
   sortedPlayers.forEach((p, index) => {
     p.lobbyRank = index
   })
@@ -463,7 +462,7 @@ async function applyTeamsFromScan(
     p.draftOrder = NaN
   })
 
-  setTeamsFromPlayers(guildId, team1, team2, spectators)
+  await setTeamsFromPlayers(guildId, team1, team2, spectators)
   await generateTeamsMessage(interaction, team1, team2, false, true)
 }
 
@@ -570,7 +569,7 @@ export async function handleSetTeamsCommand(
     .map(n => parseInt(n, 10))
     .filter(n => !isNaN(n))
   // now that we have the new team assignments
-  const sortedPlayers = getSortedActivePlayers(guildId)
+  const sortedPlayers = await getSortedActivePlayers(guildId)
   sortedPlayers.forEach((p, index) => (p.lobbyRank = index))
   if (team1Input.length > sortedPlayers.length) {
     // the maximum length is the total number of players
@@ -621,7 +620,7 @@ export async function handleSetTeamsCommand(
   )
 
   // set the teams in the database
-  setTeamsFromPlayers(guildId, newTeam1, newTeam2, newSpectators)
+  await setTeamsFromPlayers(guildId, newTeam1, newTeam2, newSpectators)
   await generateTeamsMessage(interaction, newTeam1, newTeam2)
 }
 
@@ -647,7 +646,7 @@ export async function handleMakeTeamsCommand(
   const modeInput = interaction.options.getString('mode', false)
   const mode: MakeTeamsMode = isMakeTeamsMode(modeInput) ? modeInput : MakeTeamsMode.STANDARD
 
-  const sortedPlayers = getSortedActivePlayers(guildId)
+  const sortedPlayers = await getSortedActivePlayers(guildId)
   if (sortedPlayers.length < 1) {
     await safeReply(interaction, {
       content: 'Not enough players to make teams.',
@@ -659,7 +658,7 @@ export async function handleMakeTeamsCommand(
   const { team1, team2, spectators } = createTeams(sortedPlayers, mode, MAX_PLAYERS_PER_TEAM)
 
   // set the teams in the database
-  setTeamsFromPlayers(guildId, team1, team2, spectators)
+  await setTeamsFromPlayers(guildId, team1, team2, spectators)
   await generateTeamsMessage(interaction, team1, team2, publish, true)
 }
 
@@ -669,7 +668,7 @@ export async function handleMakeTeamsCommand(
 export async function handleDraftAutocomplete(interaction: AutocompleteInteraction): Promise<void> {
   const guildId = await requireGuildId(interaction)
   if (!guildId) return
-  let sortedPlayers = getSortedActivePlayers(guildId)
+  let sortedPlayers = await getSortedActivePlayers(guildId)
 
   if (interaction.commandName === CommandIds.DRAFT_TEAM_ASSIGN) {
     const selectedTeam = interaction.options.getString('team')
@@ -706,12 +705,12 @@ export async function updateDraftUIMessage(
   guildId: string,
   interactionForGuild?: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
 ) {
-  const draftMessages = getLobbyMessages(guildId, [CommandIds.DRAFT])
+  const draftMessages = await getLobbyMessages(guildId, [CommandIds.DRAFT])
   if (!draftMessages || draftMessages.length === 0) {
     return
   }
 
-  const uiData = generateDraftUI(guildId)
+  const uiData = await generateDraftUI(guildId)
   try {
     const channelId = draftMessages[0].channelId
     const messageId = draftMessages[0].messageId
@@ -742,7 +741,7 @@ export async function handleDraftCommand(
 ) {
   const guildId = await requireGuildId(interaction)
   if (!guildId) return
-  const activeSortedPlayers = getSortedActivePlayers(guildId)
+  const activeSortedPlayers = await getSortedActivePlayers(guildId)
   if (activeSortedPlayers.length < 2) {
     await safeReply(interaction, {
       content: 'Not enough active players in the lobby to start a draft. Need at least 2 active players.',
@@ -752,7 +751,7 @@ export async function handleDraftCommand(
   }
 
   // Reset team assignments for active players
-  resetActivePlayerTeams(guildId)
+  await resetActivePlayerTeams(guildId)
 
   let t1CaptainId = interaction.isChatInputCommand()
     ? (interaction.options.getString('team1_captain') ?? undefined)
@@ -774,27 +773,27 @@ export async function handleDraftCommand(
 
   const modeOpt = interaction.isChatInputCommand() ? (interaction.options.getString('mode') ?? 'captains') : 'captains'
 
-  setSetting('draft_mode', modeOpt, guildId)
+  await setSetting('draft_mode', modeOpt, guildId)
 
   // Automatically assign Captain 1 to Team 1 (rank #1) and Captain 2 to Team 2 (rank #2)
-  if (t1CaptainId) assignPlayerToTeam(guildId, t1CaptainId, 1, 1)
-  if (t2CaptainId) assignPlayerToTeam(guildId, t2CaptainId, 2, 2)
+  if (t1CaptainId) await assignPlayerToTeam(guildId, t1CaptainId, 1, 1)
+  if (t2CaptainId) await assignPlayerToTeam(guildId, t2CaptainId, 2, 2)
 
   if (modeOpt === 'captains') {
-    setDraftCoinState(guildId, {
+    await setDraftCoinState(guildId, {
       status: 'awaiting_call',
       callerTeam: Math.random() < 0.5 ? 1 : 2,
     })
   } else {
-    resetDraftCoinState(guildId)
+    await resetDraftCoinState(guildId)
   }
 
-  const uiData = generateDraftUI(guildId)
+  const uiData = await generateDraftUI(guildId)
 
   const sentMessage = await announce(interaction, uiData)
 
   if (sentMessage) {
-    saveLobbyMessage(guildId, CommandIds.DRAFT, sentMessage.id, sentMessage.channelId, '')
+    await saveLobbyMessage(guildId, CommandIds.DRAFT, sentMessage.id, sentMessage.channelId, '')
   }
 
   const sentReply = await safeReply(interaction, {
@@ -827,17 +826,17 @@ export function getFirstPickTeam(coinState: DraftCoinState | null): 1 | 2 {
 /**
  * Builds the interactive draft message content and component buttons.
  */
-export function generateDraftUI(guildId: string): {
+export async function generateDraftUI(guildId: string): Promise<{
   content: string
   embeds: EmbedBuilder[]
   components: ActionRowBuilder<ButtonBuilder>[]
   allowedMentions: { parse: [] }
-} {
-  const activePlayers = getSortedActivePlayers(guildId, true)
-  const { team1, team2, spectators, t1Captain, t2Captain } = getTeams(guildId, activePlayers)
+}> {
+  const activePlayers = await getSortedActivePlayers(guildId, true)
+  const { team1, team2, spectators, t1Captain, t2Captain } = await getTeams(guildId, activePlayers)
 
-  const mode = getSetting('draft_mode', guildId) ?? 'captains'
-  const coinState = getDraftCoinState(guildId)
+  const mode = (await getSetting('draft_mode', guildId)) ?? 'captains'
+  const coinState = await getDraftCoinState(guildId)
   const firstPickTeam = getFirstPickTeam(coinState)
   const turnInfo = getCurrentDraftTurn({ 1: team1.length, 2: team2.length }, activePlayers.length, firstPickTeam)
 
@@ -875,7 +874,7 @@ export function generateDraftUI(guildId: string): {
     unpickedCount: spectators.length,
   })
 
-  const components = buildDraftActionRows(guildId, spectators, turnInfo, mode, coinState, t1Captain, t2Captain)
+  const components = await buildDraftActionRows(guildId, spectators, turnInfo, mode, coinState, t1Captain, t2Captain)
 
   return {
     content: '',
@@ -1164,7 +1163,7 @@ function buildDraftEmbed(params: {
 /**
  * Builds interactive button component action rows for picks, removals, and controls.
  */
-function buildDraftActionRows(
+async function buildDraftActionRows(
   guildId: string,
   unpickedPlayers: Player[],
   turnInfo: ReturnType<typeof getCurrentDraftTurn>,
@@ -1172,7 +1171,7 @@ function buildDraftActionRows(
   coinState: DraftCoinState | null,
   t1Captain?: Player,
   t2Captain?: Player
-): ActionRowBuilder<ButtonBuilder>[] {
+): Promise<ActionRowBuilder<ButtonBuilder>[]> {
   const rows: ActionRowBuilder<ButtonBuilder>[] = []
   let currentRow = new ActionRowBuilder<ButtonBuilder>()
 
@@ -1235,7 +1234,7 @@ function buildDraftActionRows(
   }
 
   // Control Row
-  const canUndo = getDraftPickedCount(guildId, t1Captain?.discordId ?? '', t2Captain?.discordId ?? '') > 0
+  const canUndo = (await getDraftPickedCount(guildId, t1Captain?.discordId ?? '', t2Captain?.discordId ?? '')) > 0
 
   let modeBtnLabel = 'Mode: Captains (1-2-2)'
   if (mode === 'free_team1') modeBtnLabel = 'Mode: Free Pick ➡️ Team 1 (🔵)'
@@ -1279,11 +1278,11 @@ export async function handleDraftCaptainCommand(
   const updated: string[] = []
 
   if (t1CaptainId) {
-    assignPlayerToTeam(guildId, t1CaptainId, 1, 1)
+    await assignPlayerToTeam(guildId, t1CaptainId, 1, 1)
     updated.push(`Team 1 captain to <@${t1CaptainId}>`)
   }
   if (t2CaptainId) {
-    assignPlayerToTeam(guildId, t2CaptainId, 2, 2)
+    await assignPlayerToTeam(guildId, t2CaptainId, 2, 2)
     updated.push(`Team 2 captain to <@${t2CaptainId}>`)
   }
 
@@ -1304,12 +1303,12 @@ export async function handleDraftCoinCallButton(interaction: ButtonInteraction<C
   if (!guildId) return
   await safeDeferUpdate(interaction)
 
-  const coinState = getDraftCoinState(guildId)
+  const coinState = await getDraftCoinState(guildId)
   if (!coinState || coinState.status !== 'awaiting_call') {
     return
   }
 
-  const { t1Captain, t2Captain } = getTeams(guildId)
+  const { t1Captain, t2Captain } = await getTeams(guildId)
   const callerTeam = coinState.callerTeam ?? 1
   const callerCap = callerTeam === 1 ? t1Captain : t2Captain
 
@@ -1333,7 +1332,7 @@ export async function handleDraftCoinCallButton(interaction: ButtonInteraction<C
     flipResult,
   }
 
-  setDraftCoinState(guildId, nextState)
+  await setDraftCoinState(guildId, nextState)
   await updateDraftUIMessage(guildId, interaction)
 }
 
@@ -1345,12 +1344,12 @@ export async function handleDraftChoiceButton(interaction: ButtonInteraction<Cac
   if (!guildId) return
   await safeDeferUpdate(interaction)
 
-  const coinState = getDraftCoinState(guildId)
+  const coinState = await getDraftCoinState(guildId)
   if (!coinState || coinState.status !== 'awaiting_choice') {
     return
   }
 
-  const { t1Captain, t2Captain } = getTeams(guildId)
+  const { t1Captain, t2Captain } = await getTeams(guildId)
   const callerTeam = coinState.callerTeam ?? 1
   const callerWon =
     coinState.call !== undefined && coinState.flipResult !== undefined && coinState.call === coinState.flipResult
@@ -1380,7 +1379,7 @@ export async function handleDraftChoiceButton(interaction: ButtonInteraction<Cac
     firstPickTeam,
   }
 
-  setDraftCoinState(guildId, nextState)
+  await setDraftCoinState(guildId, nextState)
   await updateDraftUIMessage(guildId, interaction)
 }
 
@@ -1392,11 +1391,11 @@ export async function handleDraftPickButton(interaction: ButtonInteraction<Cache
   if (!guildId) return
   // Instantly acknowledge button interaction to Discord (< 50ms) to prevent timeouts
   await safeDeferUpdate(interaction)
-  const mode = getSetting('draft_mode', guildId) ?? 'captains'
+  const mode = (await getSetting('draft_mode', guildId)) ?? 'captains'
 
-  const sortedPlayers = getSortedActivePlayers(guildId, true)
-  const { team1, team2, t1Captain, t2Captain } = getTeams(guildId, sortedPlayers)
-  const coinState = getDraftCoinState(guildId)
+  const sortedPlayers = await getSortedActivePlayers(guildId, true)
+  const { team1, team2, t1Captain, t2Captain } = await getTeams(guildId, sortedPlayers)
+  const coinState = await getDraftCoinState(guildId)
   const firstPickTeam = getFirstPickTeam(coinState)
   const turnInfo = getCurrentDraftTurn({ 1: team1.length, 2: team2.length }, sortedPlayers.length, firstPickTeam)
 
@@ -1441,8 +1440,8 @@ export async function handleDraftPickButton(interaction: ButtonInteraction<Cache
   const assignedTeam = mode === 'captains' ? turnInfo.currentTeam : mode === 'free_team1' ? 1 : 2
 
   // Assign player in DB with next draft order (#3, #4, #5...)
-  const nextOrder = getNextDraftOrder(guildId)
-  assignPlayerToTeam(guildId, pickedPlayerDiscordId, assignedTeam, nextOrder)
+  const nextOrder = await getNextDraftOrder(guildId)
+  await assignPlayerToTeam(guildId, pickedPlayerDiscordId, assignedTeam, nextOrder)
 
   await updateDraftUIMessage(guildId, interaction)
 }
@@ -1467,7 +1466,7 @@ export async function handleDraftUndoCommand(
     await safeDeferUpdate(interaction)
   }
 
-  const { team1, team2, t1Captain, t2Captain } = getTeams(guildId)
+  const { team1, team2, t1Captain, t2Captain } = await getTeams(guildId)
   const allTeams = [...team1, ...team2]
 
   const nonCaptainPicks = allTeams
@@ -1477,12 +1476,12 @@ export async function handleDraftUndoCommand(
   const picksToUndo = nonCaptainPicks.slice(0, all ? nonCaptainPicks.length : count)
 
   for (const player of picksToUndo) {
-    assignPlayerToTeam(guildId, getPlayerIdentifier(player), null, null)
+    await assignPlayerToTeam(guildId, getPlayerIdentifier(player), null, null)
   }
 
   if (all || picksToUndo.length === nonCaptainPicks.length) {
     if (t1Captain && t2Captain) {
-      setDraftCoinState(guildId, {
+      await setDraftCoinState(guildId, {
         status: 'awaiting_call',
         callerTeam: Math.random() < 0.5 ? 1 : 2,
       })
@@ -1521,7 +1520,7 @@ export async function handleDraftTeamAssignCommand(
   const targetTeamOption = interaction.options.getString('team', true)
   const playerDiscordId = interaction.options.getString('player', true)
 
-  const activePlayers = getSortedActivePlayers(guildId, true)
+  const activePlayers = await getSortedActivePlayers(guildId, true)
   const player =
     activePlayers.find(p => p.discordId === playerDiscordId) ??
     activePlayers.find(
@@ -1551,7 +1550,7 @@ export async function handleDraftTeamAssignCommand(
       return
     }
 
-    assignPlayerToTeam(guildId, getPlayerIdentifier(player), null, null)
+    await assignPlayerToTeam(guildId, getPlayerIdentifier(player), null, null)
 
     await updateDraftUIMessage(guildId, interaction)
 
@@ -1570,8 +1569,8 @@ export async function handleDraftTeamAssignCommand(
       return
     }
 
-    const draftOrder = player.draftOrder || getNextDraftOrder(guildId)
-    assignPlayerToTeam(guildId, getPlayerIdentifier(player), targetTeam, draftOrder)
+    const draftOrder = player.draftOrder || (await getNextDraftOrder(guildId))
+    await assignPlayerToTeam(guildId, getPlayerIdentifier(player), targetTeam, draftOrder)
 
     await updateDraftUIMessage(guildId, interaction)
 
@@ -1591,7 +1590,7 @@ export async function handleDraftToggleModeButton(interaction: ButtonInteraction
   if (!guildId) return
   await safeDeferUpdate(interaction)
 
-  const currentMode = getSetting('draft_mode', guildId) ?? 'captains'
+  const currentMode = (await getSetting('draft_mode', guildId)) ?? 'captains'
   let newMode = 'captains'
   if (currentMode === 'captains') {
     newMode = 'free_team1'
@@ -1600,7 +1599,7 @@ export async function handleDraftToggleModeButton(interaction: ButtonInteraction
   } else {
     newMode = 'captains'
   }
-  setSetting('draft_mode', newMode, guildId)
+  await setSetting('draft_mode', newMode, guildId)
 
   await updateDraftUIMessage(guildId, interaction)
 }
@@ -1617,7 +1616,7 @@ export async function handleDraftModeCommand(
   const guildId = await requireGuildId(interaction)
   if (!guildId) return
   const mode = interaction.options.getString('mode', true)
-  setSetting('draft_mode', mode, guildId)
+  await setSetting('draft_mode', mode, guildId)
 
   await updateDraftUIMessage(guildId, interaction)
 
@@ -1674,7 +1673,7 @@ async function generateTeamsMessage(
   }
   const guildId = await requireGuildId(interaction)
   if (!guildId) return
-  const activePlayers = getSortedActivePlayers(guildId)
+  const activePlayers = await getSortedActivePlayers(guildId)
   activePlayers.forEach((p, index) => (p.lobbyRank = index))
   team1.forEach(p => {
     if (p.lobbyRank === undefined || Number.isNaN(p.lobbyRank)) {
@@ -1719,7 +1718,7 @@ async function generateTeamsMessage(
       ? [new EmbedBuilder().setTitle('Spectators').setDescription(spectatorList).setColor(`#909000`)]
       : []
   const embeds = [team1embed, team2embed, ...spectatorEmbedAr]
-  let messages = getLobbyMessages(guildId, [CommandIds.TEAMS_EPHEMERAL, CommandIds.TEAMS])
+  let messages = await getLobbyMessages(guildId, [CommandIds.TEAMS_EPHEMERAL, CommandIds.TEAMS])
   if (publish || isDraft) {
     // clear the previous message from the database, so it doesn't get updated until it's published again
     if (messages) {
@@ -1735,7 +1734,7 @@ async function generateTeamsMessage(
     }
 
     // if publish or isDraft is true, we're deleting the old messages from the database
-    deleteLobbyMessages(guildId, [CommandIds.TEAMS_EPHEMERAL, CommandIds.TEAMS])
+    await deleteLobbyMessages(guildId, [CommandIds.TEAMS_EPHEMERAL, CommandIds.TEAMS])
   }
 
   if (publish) {
@@ -1747,7 +1746,7 @@ async function generateTeamsMessage(
     })
     if (message) {
       const fetchedMessage = await message.fetch()
-      saveLobbyMessage(guildId, CommandIds.TEAMS, fetchedMessage.id, interaction.channelId, '') // store the interaction ID as the message ID, so we know it was a draft
+      await saveLobbyMessage(guildId, CommandIds.TEAMS, fetchedMessage.id, interaction.channelId, '') // store the interaction ID as the message ID, so we know it was a draft
     }
     return // no need to update anything
   }
@@ -1760,7 +1759,7 @@ async function generateTeamsMessage(
     })
     if (message) {
       storeInteraction(message.id, interaction.channelId, interaction)
-      saveLobbyMessage(guildId, CommandIds.TEAMS_EPHEMERAL, message.id, interaction.channelId, '')
+      await saveLobbyMessage(guildId, CommandIds.TEAMS_EPHEMERAL, message.id, interaction.channelId, '')
     }
     return
   }
@@ -1783,7 +1782,7 @@ async function generateTeamsMessage(
           if (msg.messageType === CommandIds.TEAMS_EPHEMERAL) {
             const prevInteraction = getStoredInteraction(msg.messageId, msg.channelId)
             if (!prevInteraction) {
-              deleteLobbyMessages(guildId, [msg.messageType])
+              await deleteLobbyMessages(guildId, [msg.messageType])
               continue
             }
             try {
@@ -1809,7 +1808,7 @@ async function generateTeamsMessage(
                 updatedMessage = true
                 continue
               } catch (error) {
-                deleteLobbyMessages(guildId, [msg.messageType])
+                await deleteLobbyMessages(guildId, [msg.messageType])
                 console.error('Failed to update draft message:', [msg.messageType], error)
               }
             }
@@ -1823,11 +1822,11 @@ async function generateTeamsMessage(
           })
           // only save the message if we successfully edited it
           const fetchedMessage = await message.fetch()
-          saveLobbyMessage(guildId, CommandIds.TEAMS, fetchedMessage.id, interaction.channelId, '') // store the interaction ID as the message ID, so we know it was a draft
+          await saveLobbyMessage(guildId, CommandIds.TEAMS, fetchedMessage.id, interaction.channelId, '') // store the interaction ID as the message ID, so we know it was a draft
           continue
         } catch (error) {
           // if we couldn't edit the message, then delete it from the database
-          deleteLobbyMessages(guildId, [msg.messageType])
+          await deleteLobbyMessages(guildId, [msg.messageType])
           console.error('Failed to update draft message:', [msg.messageType], error)
         }
       }
@@ -1855,7 +1854,7 @@ export async function handleSwapTeamsCommand(
   const playerANumber = interaction.options.getInteger('player-a', true) - 1
   /** this is a 1-based index */
   const playerBNumber = interaction.options.getInteger('player-b', true) - 1
-  const activePlayers = getSortedActivePlayers(guildId)
+  const activePlayers = await getSortedActivePlayers(guildId)
   // we don't need to recalculate the lobbyRank here
   // because it should be calculated when the team command is run,
   // and the swap command should only be used after a team command,
@@ -1895,11 +1894,11 @@ Player B: \`team: ${playerB.team}\` \`${playerBNumber + 1}: ${playerB.mmr}\` <@$
 
   // swap the teams
   // note we set playerA to playerB's team, and playerB to playerA's team
-  changeTeams(guildId, [
+  await changeTeams(guildId, [
     { discordId: getPlayerIdentifier(playerA), newTeam: playerB.team ?? null },
     { discordId: getPlayerIdentifier(playerB), newTeam: playerA.team ?? null },
   ])
-  const { team1, team2 } = getTeams(guildId, getSortedActivePlayers(guildId, true))
+  const { team1, team2 } = await getTeams(guildId, await getSortedActivePlayers(guildId, true))
   await generateTeamsMessage(interaction, team1, team2)
 }
 
@@ -1918,7 +1917,7 @@ export async function handlePublishTeamsCommand(
   const guildId = await requireGuildId(interaction)
   if (!guildId) return
   // get the teams from the database
-  const { team1, team2 } = getTeams(guildId)
+  const { team1, team2 } = await getTeams(guildId)
   if (team1.length === 0 && team2.length === 0) {
     await safeReply(interaction, {
       content: '❌ No teams have been set yet. Use `/make_teams`, `/scan_lobby`, or `/draft` first.',
@@ -1957,7 +1956,7 @@ export async function handleShowTeamsCommand(
   if (!guildId) return
 
   const publish = interaction.options.getBoolean(CommandIds.PUBLISH, false) ?? false
-  const { team1, team2 } = getTeams(guildId)
+  const { team1, team2 } = await getTeams(guildId)
 
   if (team1.length === 0 && team2.length === 0) {
     await safeReply(interaction, {
@@ -2016,11 +2015,11 @@ export async function handleCheckTeamsCommand(
     const scanSummary = await scanLobbyScreenshot(imageBuffer, guildId, false)
 
     // Bot's stored teams
-    const activePlayers = getSortedActivePlayers(guildId)
+    const activePlayers = await getSortedActivePlayers(guildId)
     activePlayers.forEach((p, index) => {
       p.lobbyRank = index
     })
-    const { team1, team2 } = getTeams(guildId, activePlayers)
+    const { team1, team2 } = await getTeams(guildId, activePlayers)
 
     const lobbyTeam1Ids = scanSummary.team1DiscordIds ?? []
     const lobbyTeam2Ids = scanSummary.team2DiscordIds ?? []
@@ -2077,12 +2076,13 @@ export async function handleCheckTeamsCommand(
         reply += `**Missing from lobby:** ${missingFromLobby.map(p => formatPlayerDisplay(p, guildId)).join(', ')}\n`
       }
       if (extraInLobby.length > 0) {
-        reply += `**Extra in lobby:** ${extraInLobby
-          .map(id => {
-            const p = getPlayerByDiscordId(id, guildId)
+        const extraDisplays = await Promise.all(
+          extraInLobby.map(async id => {
+            const p = await getPlayerByDiscordId(id, guildId)
             return p ? formatPlayerDisplay(p, guildId) : `<@${id}>`
           })
-          .join(', ')}\n`
+        )
+        reply += `**Extra in lobby:** ${extraDisplays.join(', ')}\n`
       }
       if (unregisteredInLobby.length > 0) {
         reply += `**Unregistered in lobby:** ${unregisteredInLobby.map(name => `\`${name}\``).join(', ')}\n`
@@ -2104,14 +2104,14 @@ export async function handleMoveToLobbyCommand(
   if (!guildId) return
   // 1. Immediately defer the reply
   await interaction.deferReply({ flags: MessageFlags.Ephemeral })
-  const result = getChannels(guildId, ['lobby'])
+  const result = await getChannels(guildId, ['lobby'])
   if (!result || result.length === 0) {
     await interaction.editReply({
       content: 'No lobby channel set. Please set a lobby channel first using `/set_lobby_channel`.',
     })
     return
   }
-  const lobby = getChannels(guildId, ['lobby'])?.[0]
+  const lobby = result[0]
   if (!lobby) {
     await interaction.editReply({
       content: 'No lobby channel set. Please set a lobby channel first using `/set_lobby_channel`.',
@@ -2126,7 +2126,7 @@ export async function handleMoveToLobbyCommand(
     })
     return
   }
-  const players = getActivePlayers(guildId)
+  const players = await getActivePlayers(guildId)
   if (players.length === 0) {
     await interaction.editReply({
       content: 'No active players to move.',
@@ -2198,7 +2198,7 @@ export async function handleMoveToTeamsCommand(
   const guildId = await requireGuildId(interaction)
   if (!guildId) return
   await interaction.deferReply({ flags: MessageFlags.Ephemeral })
-  const result = getChannels(guildId, ['team1', 'team2'])
+  const result = await getChannels(guildId, ['team1', 'team2'])
   if (!result || result.length === 0) {
     await interaction.editReply({
       content: 'No team channels set. Please set team channels first using `/set_channel_team_id`.',
@@ -2212,7 +2212,7 @@ export async function handleMoveToTeamsCommand(
     })
     return
   }
-  const teams = getTeams(guildId)
+  const teams = await getTeams(guildId)
   let numberMoved = 0
   /** array for storing the ids of all the players that it failed to move: */
   const failedToMove: Player[] = []
@@ -2313,7 +2313,7 @@ export async function handleSetChannelTeamIdCommand(
     })
     return
   }
-  saveChannel(guildId, teamId, channel)
+  await saveChannel(guildId, teamId, channel)
   await safeReply(interaction, {
     content: `\`${teamId}\` channel set to <#${channel.id}>.`,
     flags: MessageFlags.Ephemeral,
@@ -2345,7 +2345,7 @@ export async function handleSetLobbyChannelCommand(
     })
     return
   }
-  saveChannel(guildId, 'lobby', channel)
+  await saveChannel(guildId, 'lobby', channel)
   // This command is not implemented yet
   await safeReply(interaction, {
     content: `\`lobby\` channel set to <#${channel.id}>`,
@@ -2371,7 +2371,7 @@ export async function handleSetBotChannelCommand(
     })
   }
 
-  setSetting('bot_channel_id', channel.id, guildId)
+  await setSetting('bot_channel_id', channel.id, guildId)
 
   return await safeReply(interaction, {
     content: `Bot channel set to <#${channel.id}>.`,
@@ -2426,7 +2426,7 @@ export async function handleGetChannelsCommand(
 ) {
   const guildId = await requireGuildId(interaction)
   if (!guildId) return
-  const channels = getChannels(guildId, ['lobby', 'team1', 'team2'])
+  const channels = await getChannels(guildId, ['lobby', 'team1', 'team2'])
   if (!channels || channels.length === 0) {
     await safeReply(interaction, {
       content: 'No channels set. Please set a lobby channel and team channels first.',
@@ -2515,7 +2515,7 @@ export async function handlePlayersCommand(
   const guildId = await requireGuildId(interaction)
   if (!guildId) return
 
-  const players = getActivePlayers(guildId)
+  const players = await getActivePlayers(guildId)
 
   const playerList =
     players
@@ -2589,7 +2589,7 @@ export async function handlePlayersAllCommand(
     newInteraction = getStoredInteraction(`${playerId}_${CommandIds.PLAYERS_ALL}`, interaction.channelId)
   }
   const pageNumber = parseInt(pageString, 10)
-  const players = getAllPlayers(pageNumber, sort, ascending)
+  const players = await getAllPlayers(pageNumber, sort, ascending)
   const playerList = players
     .map(
       ({ discordId, usernames, role, mmr }) =>
@@ -2660,7 +2660,7 @@ export async function handleLeaveCommand(
 ) {
   const guildId = await requireGuildId(interaction)
   if (!guildId) return
-  const { player } = setPlayerActive(interaction.user.id, false, guildId) // Mark player as inactive in the database
+  const { player } = await setPlayerActive(interaction.user.id, false, guildId) // Mark player as inactive in the database
   await updateLobbyMessage(guildId, interaction)
   // TODO recalculate lobby ranks
   if (player) {
@@ -2683,7 +2683,7 @@ export async function handleClearCommand(
 ) {
   const guildId = await requireGuildId(interaction)
   if (!guildId) return
-  markAllPlayersInactive(guildId) // Mark all players as inactive in the database
+  await markAllPlayersInactive(guildId) // Mark all players as inactive in the database
   await updateLobbyMessage(guildId, interaction) // Update the lobby message to show no players
   await safeReply(interaction, {
     content: 'All players have been removed from the lobby.',
@@ -2704,13 +2704,13 @@ export async function handleRejoinCommand(
   const guildId = await requireGuildId(interaction)
   if (!guildId) return
   // first check it the user has a hotsBattleTag in the database
-  const existingPlayer = getPlayerByDiscordId(interaction.user.id, guildId)
+  const existingPlayer = await getPlayerByDiscordId(interaction.user.id, guildId)
   if (!existingPlayer?.usernames.accounts?.find(a => a.isPrimary)) {
     // if they don't have a hotsBattleTag, show the modal to collect it
     await showJoinModal(guildId, interaction, pBattleTag)
     return
   }
-  const { player, updated } = setPlayerActive(interaction.user.id, true, guildId) // Mark player as active in the database
+  const { player, updated } = await setPlayerActive(interaction.user.id, true, guildId) // Mark player as active in the database
   if (player) {
     // always update the lobby message instead of announcing
     await updateLobbyMessage(guildId, interaction)
@@ -2769,7 +2769,7 @@ ${validationResult.rules}
   let roleSelectMenuDisplayed = false
   let hpCalled = false
   const discordData = fetchDiscordNames(modalInteraction)
-  const player = getPlayerByDiscordId(modalInteraction.user.id, guildId)
+  const player = await getPlayerByDiscordId(modalInteraction.user.id, guildId)
   if (!player) {
     await savePlayer(
       interaction,
@@ -2789,14 +2789,14 @@ ${validationResult.rules}
     )
     hpCalled = true
   }
-  const currentPlayer = player ?? getPlayerByDiscordId(modalInteraction.user.id, guildId)
+  const currentPlayer = player ?? (await getPlayerByDiscordId(modalInteraction.user.id, guildId))
   if (!currentPlayer?.role) {
     // only show the edit role buttons if the player doesn't have a role yet
     await handleEditRoleCommand(modalInteraction, true, hotsBattleTag) // Show the edit role buttons
     roleSelectMenuDisplayed = true
   }
   if (!roleSelectMenuDisplayed) {
-    setPlayerActive(modalInteraction.user.id, true, guildId, hotsBattleTag)
+    await setPlayerActive(modalInteraction.user.id, true, guildId, hotsBattleTag)
     await updateLobbyMessage(guildId, modalInteraction)
     const reply = await safeReply(modalInteraction, {
       content: `Looking up \`${hotsBattleTag}\` please wait...`,
@@ -2846,7 +2846,7 @@ export async function handleLookupAutocomplete(interaction: AutocompleteInteract
   }
 
   const query = focusedOption.value.trim().toLowerCase()
-  const registeredAccounts = getAllRegisteredHotSAccounts(guildId)
+  const registeredAccounts = await getAllRegisteredHotSAccounts(guildId)
 
   const rawDiscordId = interaction.options.get(CommandIds.DISCORD_ID)?.value
   const targetDiscordId =
@@ -2897,28 +2897,30 @@ export async function handleLookupAutocomplete(interaction: AutocompleteInteract
     })
   }
 
-  const choices = filtered.slice(0, 25).map(acc => {
-    let discordStr = `@${acc.discordDisplayName}`
-    if (acc.ownerDiscordId) {
-      const owner = getPlayerByDiscordId(acc.ownerDiscordId, guildId)
-      const ownerName =
-        owner?.usernames.discordDisplayName ??
-        owner?.usernames.discordGlobalName ??
-        owner?.usernames.discordName ??
-        'unknown'
-      discordStr += `, owned by @${ownerName}`
-    }
-    const label = `${acc.hotsBattleTag} (${discordStr})`.slice(0, 100)
-    return {
-      name: label,
-      value: acc.hotsBattleTag,
-    }
-  })
+  const choices = await Promise.all(
+    filtered.slice(0, 25).map(async acc => {
+      let discordStr = `@${acc.discordDisplayName}`
+      if (acc.ownerDiscordId) {
+        const owner = await getPlayerByDiscordId(acc.ownerDiscordId, guildId)
+        const ownerName =
+          owner?.usernames.discordDisplayName ??
+          owner?.usernames.discordGlobalName ??
+          owner?.usernames.discordName ??
+          'unknown'
+        discordStr += `, owned by @${ownerName}`
+      }
+      const label = `${acc.hotsBattleTag} (${discordStr})`.slice(0, 100)
+      return {
+        name: label,
+        value: acc.hotsBattleTag,
+      }
+    })
+  )
 
   // Fallback to unlinked replay accounts if choices under limit and not filtering for a specific player
   if (choices.length < 25 && !targetDiscordId) {
     const remainingSlots = 25 - choices.length
-    const unlinked = getUnlinkedReplayAccountsForAutocomplete(query, remainingSlots)
+    const unlinked = await getUnlinkedReplayAccountsForAutocomplete(query, remainingSlots)
     const existingTags = new Set(choices.map(c => c.value.toLowerCase()))
     for (const u of unlinked) {
       if (existingTags.has(u.hotsBattleTag.toLowerCase())) {
@@ -2991,7 +2993,7 @@ export async function handleLookupCommand(
       }
     }
 
-    const player = getPlayerByDiscordId(targetDiscordId, guildId)
+    const player = await getPlayerByDiscordId(targetDiscordId, guildId)
 
     // If neither Discord nor our database has a record of this user
     if (!resolvedUser && !player) {
@@ -3020,10 +3022,10 @@ export async function handleLookupCommand(
 
   // 2. If HotS BattleTag or account name was provided (without discord-id)
   if (hotsBattleTag) {
-    const matches = findPlayersByHotSAccount(hotsBattleTag, guildId)
+    const matches = await findPlayersByHotSAccount(hotsBattleTag, guildId)
 
     if (matches.length === 0) {
-      const unlinkedMatches = getUnlinkedReplayAccounts({ search: hotsBattleTag, limit: 1 })
+      const unlinkedMatches = await getUnlinkedReplayAccounts({ search: hotsBattleTag, limit: 1 })
       const exactUnlinked = unlinkedMatches.accounts.find(
         u => u.hotsBattleTag.toLowerCase() === hotsBattleTag.toLowerCase() || u.name.toLowerCase() === hotsBattleTag.toLowerCase()
       ) ?? unlinkedMatches.accounts[0]
@@ -3115,7 +3117,7 @@ export async function handleLookupCommand(
 
     // Multiple matches found: list all matched players
     const publish = interaction.options.getString(CommandIds.PUBLISH) === 'true'
-    const activeSubs = getActiveSubstitutions(guildId)
+    const activeSubs = await getActiveSubstitutions(guildId)
     const list = matches
       .map(({ player, matchedAccounts }) => {
         const accountsStr =
@@ -3176,7 +3178,7 @@ async function handleLookupCommandSub(
   matchedHotSTag?: string
 ) {
   const hotsBattleTag = matchedHotSTag ?? interaction.options.getString(CommandIds.BATTLE_TAG, false) ?? ''
-  const player = getPlayerByDiscordId(discordId, guildId)
+  const player = await getPlayerByDiscordId(discordId, guildId)
   if (player || (!player && hotsBattleTag === '')) {
     const message = player
       ? matchedHotSTag
@@ -3190,7 +3192,7 @@ async function handleLookupCommandSub(
         const bMMR = Math.max(b.hpSlMMR || 0, b.hpArMMR || 0, b.hpQmMMR || 0)
         return bMMR - aMMR
       }) || []
-    const activeSubs = getActiveSubstitutions(guildId)
+    const activeSubs = await getActiveSubstitutions(guildId)
     const accounts =
       hotsAccounts
         ?.map(
@@ -3207,7 +3209,7 @@ async function handleLookupCommandSub(
     const limit = interaction.options.getInteger(CommandIds.RECENT_MATCHES_LIMIT, false) ?? 30
     const minHeroGames = interaction.options.getInteger(CommandIds.MIN_HERO_GAMES, false) ?? 5
     const numHeroes = interaction.options.getInteger(CommandIds.NUM_HEROES, false) ?? 6
-    const matchStats = getPlayerMatchStats(discordId, limit, minHeroGames, numHeroes)
+    const matchStats = await getPlayerMatchStats(discordId, limit, minHeroGames, numHeroes)
 
     const embed = new EmbedBuilder()
       .setTitle(`Player Lookup: ${discordData.discordDisplayName || discordData.discordName}`)
@@ -3512,13 +3514,13 @@ async function handleLookupCommandSub(
     return
   }
   // update the player's Discord data in the database
-  setPlayerDiscordNames(discordId, guildId, discordData)
+  await setPlayerDiscordNames(discordId, guildId, discordData)
   // If a hotsBattleTag is provided, and does this player already have this specific battle tag?
   if (
     hotsBattleTag &&
     player.usernames.accounts?.some(a => a.hotsBattleTag.toLowerCase() === hotsBattleTag.toLowerCase())
   ) {
-    setPlayerName(interaction, guildId, discordId, hotsBattleTag) // Update the player's Heroes of the Storm name in the database
+    await setPlayerName(interaction, guildId, discordId, hotsBattleTag) // Update the player's Heroes of the Storm name in the database
   } else if (hotsBattleTag) {
     await handleAddHotsAccountCommandSub(interaction, guildId, discordId, hotsBattleTag) // Add the new battle tag to the player's accounts in the database
   }
@@ -3560,7 +3562,7 @@ export async function handleDeleteHotsAccountCommand(
     return
   }
   const hotsBattleTag = interaction.options.getString(CommandIds.BATTLE_TAG, true)
-  deleteHotsAccount(hotsBattleTag)
+  await deleteHotsAccount(hotsBattleTag)
   await safeReply(interaction, {
     content: `Deleted HotS account: \`${hotsBattleTag}\`.`,
     flags: MessageFlags.Ephemeral,
@@ -3594,7 +3596,7 @@ export async function handleAdminShowRoleButtons(
 ) {
   const guildId = await requireGuildId(interaction)
   if (!guildId) return
-  const player = getPlayerByDiscordId(discordId, guildId) // Get player by Discord ID
+  const player = await getPlayerByDiscordId(discordId, guildId) // Get player by Discord ID
   if (!player) {
     if (interaction.replied) {
       await interaction.followUp({
@@ -3643,7 +3645,7 @@ export async function handleAdminAddHotsAccountButton(interaction: ButtonInterac
     // If modal interaction is undefined, it means the user did not respond in time
     return
   }
-  const player = getPlayerByDiscordId(discordId, guildId)
+  const player = await getPlayerByDiscordId(discordId, guildId)
   if (player) {
     await handleAddHotsAccount(modalInteraction, discordId, hotsBattleTag) // Update the player's battle tag in the database
   }
@@ -3712,7 +3714,7 @@ export async function handleAddHotsAccountCommand(
       // If modal interaction is undefined, it means the user did not respond in time
       return
     }
-    const player = getPlayerByDiscordId(modalInteraction.user.id, guildId)
+    const player = await getPlayerByDiscordId(modalInteraction.user.id, guildId)
     if (player) {
       await handleAddHotsAccount(modalInteraction, modalInteraction.user.id, hotsBattleTag) // Update the player's battle tag in the database
     }
@@ -3786,7 +3788,7 @@ export async function handleAdminPrimaryCommand(
     })
     return
   }
-  const player = getPlayerByDiscordId(discordId, guildId)
+  const player = await getPlayerByDiscordId(discordId, guildId)
   if (!player) {
     await safeReply(interaction, {
       content: 'The specified user does not exist in the database.',
@@ -3876,7 +3878,7 @@ export async function handleAdminRealIdNameCommand(interaction: ChatInputCommand
 
   // Case 1: battleTag provided without discordId
   if (!discordId && battleTag) {
-    const account = getHotsAccountByBattleTag(battleTag.trim())
+    const account = await getHotsAccountByBattleTag(battleTag.trim())
     if (!account) {
       await safeReply(interaction, {
         content: `HotS account \`${battleTag}\` was not found in the database.`,
@@ -3888,7 +3890,7 @@ export async function handleAdminRealIdNameCommand(interaction: ChatInputCommand
     const ownerInfo = account.discord_id ? `<@${account.discord_id}>` : 'unlinked'
 
     if (clear) {
-      setHotsAccountRealIdName(account.hots_battle_tag, null)
+      await setHotsAccountRealIdName(account.hots_battle_tag, null)
       await safeReply(interaction, {
         content: `Cleared Real ID name for \`${account.hots_battle_tag}\` (${ownerInfo}).`,
         flags: MessageFlags.Ephemeral,
@@ -3899,7 +3901,7 @@ export async function handleAdminRealIdNameCommand(interaction: ChatInputCommand
     if (name !== null && name !== undefined) {
       const trimmed = name.trim()
       if (trimmed.length === 0) {
-        setHotsAccountRealIdName(account.hots_battle_tag, null)
+        await setHotsAccountRealIdName(account.hots_battle_tag, null)
         await safeReply(interaction, {
           content: `Cleared Real ID name for \`${account.hots_battle_tag}\` (${ownerInfo}).`,
           flags: MessageFlags.Ephemeral,
@@ -3907,7 +3909,7 @@ export async function handleAdminRealIdNameCommand(interaction: ChatInputCommand
         return
       }
 
-      setHotsAccountRealIdName(account.hots_battle_tag, trimmed)
+      await setHotsAccountRealIdName(account.hots_battle_tag, trimmed)
       await safeReply(interaction, {
         content: `Set Real ID name for \`${account.hots_battle_tag}\` (${ownerInfo}) to **${trimmed}**.`,
         flags: MessageFlags.Ephemeral,
@@ -3927,7 +3929,7 @@ export async function handleAdminRealIdNameCommand(interaction: ChatInputCommand
   // Case 2: discordId is provided (with optional battleTag)
   if (!discordId) return
 
-  const player = getPlayerByDiscordId(discordId, guildId)
+  const player = await getPlayerByDiscordId(discordId, guildId)
   if (!player) {
     await safeReply(interaction, {
       content: `Player <@${discordId}> was not found in the database.`,
@@ -3966,7 +3968,7 @@ export async function handleAdminRealIdNameCommand(interaction: ChatInputCommand
   const displayName = player.usernames.discordDisplayName || player.usernames.discordName
 
   if (clear) {
-    setHotsAccountRealIdName(targetAccount.hotsBattleTag, null)
+    await setHotsAccountRealIdName(targetAccount.hotsBattleTag, null)
     await safeReply(interaction, {
       content: `Cleared Real ID name for **${displayName}** (\`${targetAccount.hotsBattleTag}\`).`,
       flags: MessageFlags.Ephemeral,
@@ -3977,7 +3979,7 @@ export async function handleAdminRealIdNameCommand(interaction: ChatInputCommand
   if (name !== null && name !== undefined) {
     const trimmed = name.trim()
     if (trimmed.length === 0) {
-      setHotsAccountRealIdName(targetAccount.hotsBattleTag, null)
+      await setHotsAccountRealIdName(targetAccount.hotsBattleTag, null)
       await safeReply(interaction, {
         content: `Cleared Real ID name for **${displayName}** (\`${targetAccount.hotsBattleTag}\`).`,
         flags: MessageFlags.Ephemeral,
@@ -3985,7 +3987,7 @@ export async function handleAdminRealIdNameCommand(interaction: ChatInputCommand
       return
     }
 
-    setHotsAccountRealIdName(targetAccount.hotsBattleTag, trimmed)
+    await setHotsAccountRealIdName(targetAccount.hotsBattleTag, trimmed)
     await safeReply(interaction, {
       content: `Set Real ID name for **${displayName}** (\`${targetAccount.hotsBattleTag}\`) to **${trimmed}**.`,
       flags: MessageFlags.Ephemeral,
@@ -3994,7 +3996,7 @@ export async function handleAdminRealIdNameCommand(interaction: ChatInputCommand
   }
 
   // View current Real ID names for the player
-  const activeSubs = getActiveSubstitutions(guildId)
+  const activeSubs = await getActiveSubstitutions(guildId)
   const accountList = accounts
     .map(
       a =>
@@ -4044,7 +4046,7 @@ async function handleAddHotsAccountCommandSub(
 ) {
   if (!hotsBattleTag) {
     // if they didn't provide a battle tag, then show them all the accounts they have associated with their discord id
-    const player = getPlayerByDiscordId(discordId, guildId)
+    const player = await getPlayerByDiscordId(discordId, guildId)
     if (!player?.usernames.accounts || player.usernames.accounts.length === 0) {
       await safeReply(interaction, {
         content: 'You have no Heroes of the Storm accounts associated with your Discord ID.',
@@ -4052,7 +4054,7 @@ async function handleAddHotsAccountCommandSub(
       })
       return
     }
-    const activeSubs = getActiveSubstitutions(guildId)
+    const activeSubs = await getActiveSubstitutions(guildId)
     const accountsList = player.usernames.accounts
       .map(
         account =>
@@ -4094,7 +4096,7 @@ async function handleUserNameModalSubmit(
   hotsBattleTag: string | undefined
   modalInteraction: ModalSubmitInteraction<CacheType> | undefined
 }> {
-  const previousPlayer = getPlayerByDiscordId(discordId ?? interaction.user.id, guildId)
+  const previousPlayer = await getPlayerByDiscordId(discordId ?? interaction.user.id, guildId)
 
   // create a modal with a text field to collect the battle tag
   let suggestedBattleTag =
@@ -4168,7 +4170,7 @@ export async function handleEditRoleCommand(
 ): Promise<void> {
   const guildId = await requireGuildId(interaction)
   if (!guildId) return
-  const player = getPlayerByDiscordId(interaction.user.id, guildId) // Get player by Discord ID
+  const player = await getPlayerByDiscordId(interaction.user.id, guildId) // Get player by Discord ID
   if (!player) {
     if (interaction.replied) {
       await interaction.followUp({
@@ -4222,7 +4224,7 @@ export async function handleEditRoleButtonCommand(
 
   const guildId = await requireGuildId(interaction)
   if (!guildId) return
-  const player = getPlayerByDiscordId(discordId, guildId)
+  const player = await getPlayerByDiscordId(discordId, guildId)
   if (!player) {
     await safeReply(interaction, {
       content: 'You are not in the lobby. Click the button below to join.',
@@ -4238,7 +4240,7 @@ export async function handleEditRoleButtonCommand(
   let setActiveNext: boolean
   if (setActive === true && player.active === false && role !== undefined) {
     // If the action is set to active, we need to handle it differently
-    setPlayerActive(discordId, true, guildId, hotsBattleTag) // Set the player as active
+    await setPlayerActive(discordId, true, guildId, hotsBattleTag) // Set the player as active
     setActiveNext = false // Reset the active state for the next interaction
   } else {
     setActiveNext = setActive // Keep the active state as is
@@ -4273,7 +4275,7 @@ async function showAddButtons(
   if (role && !player.role?.includes(role)) {
     // If the role is specified and does not exist in the player's roles, add it
     const newRoles = (player.role ?? '') + role // Append the new role
-    setPlayerRole(discordId, guildId, newRoles) // Update the player's role in the database
+    await setPlayerRole(discordId, guildId, newRoles) // Update the player's role in the database
     player.role = newRoles
     roles = ', current role: ' + getPlayerRolesFormatted(newRoles)
   }
@@ -4308,7 +4310,7 @@ async function showRemoveButtons(
       .split('')
       .filter(r => r !== role)
       .join('')
-    setPlayerRole(discordId, guildId, newRoles) // Update the player's role in the database
+    await setPlayerRole(discordId, guildId, newRoles) // Update the player's role in the database
     player.role = newRoles || undefined
     roles = ', current role: ' + getPlayerRolesFormatted(newRoles)
   }
@@ -4338,7 +4340,7 @@ async function showReplaceButtons(
   activeSuffix: string
 ) {
   if (role) {
-    setPlayerRole(discordId, guildId, role)
+    await setPlayerRole(discordId, guildId, role)
     player.role = role
     roles = ', current role: ' + getPlayerRolesFormatted(role)
   }
@@ -4478,7 +4480,7 @@ async function deleteMessage(
     }
 
     await message.delete()
-    deleteLobbyMessagesById([messageId]) // if the message was a lobby message, remove it from the stored messages
+    await deleteLobbyMessagesById([messageId]) // if the message was a lobby message, remove it from the stored messages
 
     const preview = message.content
       ? `"${message.content.length > 50 ? message.content.substring(0, 50) + '...' : message.content}"`
@@ -4515,12 +4517,12 @@ function fetchDiscordNames(interaction: Interaction, id?: string, resolvedUser?:
   }
 }
 
-function getMemberFromInteraction(
+async function getMemberFromInteraction(
   interaction:
     ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType> | ModalSubmitInteraction<CacheType>,
   guildId: string,
   pId?: string
-) {
+): Promise<string | null> {
   if (interaction.isChatInputCommand()) {
     const discordId = extractDiscordIdFromInteraction(interaction, CommandIds.DISCORD_ID)
     if (discordId) {
@@ -4529,7 +4531,7 @@ function getMemberFromInteraction(
     return null
   }
   if (pId) {
-    const player = getPlayerByDiscordId(pId, guildId)
+    const player = await getPlayerByDiscordId(pId, guildId)
     if (!player) {
       return null
     }
@@ -4538,23 +4540,23 @@ function getMemberFromInteraction(
   return null
 }
 
-export function handleAdminSetRoleCommand(interaction: ChatInputCommandInteraction<CacheType>): void
+export function handleAdminSetRoleCommand(interaction: ChatInputCommandInteraction<CacheType>): Promise<void>
 export function handleAdminSetRoleCommand(
   interaction: ButtonInteraction<CacheType>,
   discordId: string,
   pRole: keyof typeof roleMap
-): void
+): Promise<void>
 export async function handleAdminSetRoleCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
   discordId?: string,
   pRole?: keyof typeof roleMap
 ) {
-  if (!userIsAdmin(interaction)) {
+  if (!(await userIsAdmin(interaction))) {
     return
   }
   const guildId = await requireGuildId(interaction)
   if (!guildId) return
-  const member = getMemberFromInteraction(interaction, guildId, discordId)
+  const member = await getMemberFromInteraction(interaction, guildId, discordId)
   if (member === null) {
     await safeReply(interaction, {
       content: 'Please provide a valid Discord member to set their name.',
@@ -4575,7 +4577,7 @@ export async function handleAdminSetRoleCommand(
     return
   }
   const id = member
-  const player = setPlayerRole(id, guildId, role)
+  const player = await setPlayerRole(id, guildId, role)
   if (player === false) {
     await safeReply(interaction, {
       content: 'Player not found in the lobby. Please make sure they have joined first.',
@@ -4654,7 +4656,7 @@ export async function handleAdminSetActiveCommand(
     const battleTag = interaction.options.getString(CommandIds.BATTLE_TAG, false)?.trim()
 
     if (battleTag) {
-      const matches = findPlayersByHotSAccount(battleTag, guildId)
+      const matches = await findPlayersByHotSAccount(battleTag, guildId)
       if (matches.length === 0) {
         playerIdentifier = battleTag
         matchedBattleTag = battleTag
@@ -4698,7 +4700,7 @@ export async function handleAdminSetActiveCommand(
           }
         }
 
-        playerIdentifier = getPlayerIdentifier(matchedPlayer)
+        playerIdentifier = matchedPlayer ? getPlayerIdentifier(matchedPlayer) : null
       }
     } else if (targetDiscordId) {
       playerIdentifier = targetDiscordId
@@ -4711,7 +4713,7 @@ export async function handleAdminSetActiveCommand(
     await handleAdminShowPlayerActiveButtons(interaction, previousPlayersList)
     return
   }
-  const storedPlayer = getPlayerByIdentifier(playerIdentifier, guildId)
+  const storedPlayer = await getPlayerByIdentifier(playerIdentifier, guildId)
   if (storedPlayer && pActive === undefined) {
     pActive = !storedPlayer.active // Toggle the active status if not provided
   } else {
@@ -4719,7 +4721,7 @@ export async function handleAdminSetActiveCommand(
   }
   const isActive = getActiveFromInteraction(interaction, pActive) // Get the active status from the interaction or use the provided value
   const id = playerIdentifier
-  const { player, updated } = setPlayerActive(id, isActive, guildId, matchedBattleTag) // Set player as active in the database
+  const { player, updated } = await setPlayerActive(id, isActive, guildId, matchedBattleTag) // Set player as active in the database
   if (!player) {
     await safeReply(interaction, {
       content: 'Player not found in the lobby. Please make sure they have joined first.',
@@ -4807,8 +4809,8 @@ async function getPlayersByGuild(
 
   // get previously stored players from the buttons of the previously stored interaction
   const players = await getPreviousSetActivePlayers(storedInteraction, guildId)
-  const previousPlayers = getLobbyPreviousPlayers(guildId, previousPlayersList)
-  const activePlayers = getActivePlayers(guildId)
+  const previousPlayers = await getLobbyPreviousPlayers(guildId, previousPlayersList)
+  const activePlayers = await getActivePlayers(guildId)
   const hasPlayer = (list: Player[], target: Player) => {
     const targetId = getPlayerIdentifier(target)
     return list.some(p => {
@@ -4823,7 +4825,7 @@ async function getPlayersByGuild(
   players.push(...activePlayers.filter(ap => !hasPlayer(players, ap)))
 
   // Always include the command runner if they are registered
-  const selfPlayer = getPlayerByDiscordId(interaction.user.id, guildId)
+  const selfPlayer = await getPlayerByDiscordId(interaction.user.id, guildId)
   if (selfPlayer && !hasPlayer(players, selfPlayer)) {
     players.push(selfPlayer)
   }
@@ -4831,7 +4833,7 @@ async function getPlayersByGuild(
   if (interaction.guild) {
     for (const [, voiceState] of interaction.guild.voiceStates.cache) {
       if (voiceState.channelId) {
-        const player = getPlayerByDiscordId(voiceState.id, guildId)
+        const player = await getPlayerByDiscordId(voiceState.id, guildId)
         if (player && !hasPlayer(players, player)) {
           players.push(player)
         }
@@ -4859,47 +4861,44 @@ async function getPreviousSetActivePlayers(
     // console.error('Error fetching stored interaction reply:', error);
     return []
   }
-  return (
-    reply?.components.reduce<Player[]>((acc, actionRow) => {
-      if ('components' in actionRow && Array.isArray(actionRow.components)) {
-        for (const button of actionRow.components) {
-          if (button instanceof ButtonComponent) {
-            if (button.customId?.startsWith(`${CommandIds.ADMIN}_${CommandIds.ACTIVE}_`)) {
-              const parts = button.customId.split('_')
-              const playerId = parts[2]
-              if (playerId && playerId !== 'null') {
-                const player = getPlayerByIdentifier(playerId, guildId)
-                if (player) {
-                  acc.push(player)
-                }
+  const acc: Player[] = []
+  for (const actionRow of reply.components) {
+    if ('components' in actionRow && Array.isArray(actionRow.components)) {
+      for (const button of actionRow.components) {
+        if (button instanceof ButtonComponent) {
+          if (button.customId?.startsWith(`${CommandIds.ADMIN}_${CommandIds.ACTIVE}_`)) {
+            const parts = button.customId.split('_')
+            const playerId = parts[2]
+            if (playerId && playerId !== 'null') {
+              const player = await getPlayerByIdentifier(playerId, guildId)
+              if (player) {
+                acc.push(player)
               }
             }
           }
         }
       }
-      return acc
-    }, []) ?? []
-  )
+    }
+  }
+  return acc
 }
 
-function getLobbyPreviousPlayers(guildId: string, previousPlayersList?: string[]): Player[]
-function getLobbyPreviousPlayers(guildId: string): Player[]
-function getLobbyPreviousPlayers(guildId: string, previousPlayersList?: string[]): Player[] {
+async function getLobbyPreviousPlayers(guildId: string, previousPlayersList?: string[]): Promise<Player[]> {
   if (previousPlayersList && previousPlayersList.length > 0) {
-    const players: Player[] = previousPlayersList
-      .map((discordId: string) => getPlayerByDiscordId(discordId, guildId))
-      .filter((player: Player | undefined): player is Player => player !== undefined)
-    return players
+    const resolved = await Promise.all(
+      previousPlayersList.map((discordId: string) => getPlayerByDiscordId(discordId, guildId))
+    )
+    return resolved.filter((player: Player | undefined): player is Player => player !== undefined)
   }
-  const lobbyMessages = getLobbyMessages(guildId, [CommandIds.NEW_GAME])
+  const lobbyMessages = await getLobbyMessages(guildId, [CommandIds.NEW_GAME])
   if (!lobbyMessages || lobbyMessages.length === 0) {
     return [] // No lobby message to update
   }
   const playerIds: string[] = JSON.parse(lobbyMessages[0].previousPlayersList ?? '[]')
-  const players: Player[] = (Array.isArray(playerIds) ? playerIds : [])
-    .map((discordId: string) => getPlayerByDiscordId(discordId, guildId))
-    .filter((player: Player | undefined): player is Player => player !== undefined)
-  return players
+  const resolved = await Promise.all(
+    (Array.isArray(playerIds) ? playerIds : []).map((discordId: string) => getPlayerByDiscordId(discordId, guildId))
+  )
+  return resolved.filter((player: Player | undefined): player is Player => player !== undefined)
 }
 
 const adminActiveMessageIds = new Map<string, string>()
@@ -5164,7 +5163,7 @@ function parseSingleDate(inputStr: string, isEndOfDay: boolean): Date | null {
 
 function isReplayInFilterRange(
   file: string,
-  replayDate: unknown,
+  replayDate: string | number | Date | null | undefined,
   startDate: Date | null,
   endDate: Date | null
 ): boolean {
@@ -5172,7 +5171,7 @@ function isReplayInFilterRange(
 
   if (replayDate) {
     try {
-      const d = new Date(replayDate as any)
+      const d = new Date(replayDate)
       if (!isNaN(d.getTime())) {
         fileTime = d.getTime()
       }
@@ -5219,13 +5218,13 @@ function formatReplayPlayerLine(p: ReplayPlayerInfo): string {
 /**
  * Builds a standardized Discord Embed for a replay, fetching resolved players and substitutions from DB.
  */
-function buildReplayOverviewEmbed(
+async function buildReplayOverviewEmbed(
   replayOrId: RecentReplaySummary | number,
   fileName?: string
-): EmbedBuilder {
+): Promise<EmbedBuilder> {
   const r: RecentReplaySummary =
     typeof replayOrId === 'number'
-      ? (getReplaySummary(replayOrId) ?? {
+      ? ((await getReplaySummary(replayOrId)) ?? {
         id: replayOrId,
         map: 'Unknown Map',
         date: '',
@@ -5241,7 +5240,7 @@ function buildReplayOverviewEmbed(
   const durationStr = r.length ? `${durationMin}m ${durationSec}s` : 'Unknown'
   const dateStr = r.date ? formatDateToMMDDYYYY(new Date(r.date)) : 'Unknown'
 
-  const players = getReplayPlayers(r.id)
+  const players = await getReplayPlayers(r.id)
   const bluePlayers = players.filter(p => p.team === 0).map(formatReplayPlayerLine)
   const redPlayers = players.filter(p => p.team === 1).map(formatReplayPlayerLine)
 
@@ -5347,7 +5346,7 @@ export async function syncRecentReplays(
   // Find the first file that is already imported in the database
   let firstImportedIndex = -1
   for (let i = 0; i < files.length; i++) {
-    if (isReplayImported(files[i])) {
+    if (await isReplayImported(files[i])) {
       firstImportedIndex = i
       break
     }
@@ -5371,14 +5370,14 @@ export async function syncRecentReplays(
     const replayData = await parseReplay(file)
     if (replayData && replayData.mode === -1) {
       importedCount++
-      const replayId = saveReplayToDb(replayData, guildId)
+      const replayId = await saveReplayToDb(replayData, guildId)
       const destPath = path.join('/mnt/CustomsCruncher', fileName)
       try {
         fs.copyFileSync(file, destPath)
       } catch (error) {
         console.error('Error copying replay:', fileName, error)
       }
-      embeds.push(buildReplayOverviewEmbed(replayId, fileName))
+      embeds.push(await buildReplayOverviewEmbed(replayId, fileName))
     }
   }
 
@@ -5488,7 +5487,7 @@ export async function handleImportReplaysCommand(
       isReplayInFilterRange(file, replayData.date, filterParams.startDate, filterParams.endDate)
     ) {
       count++
-      const replayId = saveReplayToDb(replayData, guildId)
+      const replayId = await saveReplayToDb(replayData, guildId)
       // copy the replay from its nested path 'file' to /mnt/CustomsCruncher/
       const destPath = path.join('/mnt/CustomsCruncher', fileName)
       try {
@@ -5496,12 +5495,12 @@ export async function handleImportReplaysCommand(
       } catch (error) {
         console.error('Error copying replay:', fileName, error)
       }
-      embeds.push(buildReplayOverviewEmbed(replayId, fileName))
+      embeds.push(await buildReplayOverviewEmbed(replayId, fileName))
     }
   }
 
   if (count > 0) {
-    optimizeDb()
+    await optimizeDb()
     await sendReplayEmbedBatches(
       interaction,
       `📥 **Finished importing ${count.toLocaleString('en-US')} custom replay${count === 1 ? '' : 's'}:**`,
@@ -5667,7 +5666,7 @@ export async function handlePlayerAdjustCommand(interaction: ChatInputCommandInt
   const targetUser = interaction.options.getUser('player', true)
   const amount = interaction.options.getNumber('amount')
 
-  const player = getPlayerByDiscordId(targetUser.id, guildId)
+  const player = await getPlayerByDiscordId(targetUser.id, guildId)
   if (!player) {
     await safeReply(interaction, {
       content: `Player <@${targetUser.id}> was not found in the database.`,
@@ -5691,7 +5690,7 @@ export async function handlePlayerAdjustCommand(interaction: ChatInputCommandInt
   }
 
   // Update adjustment
-  const result = setPlayerAdjustment(targetUser.id, guildId, amount)
+  const result = await setPlayerAdjustment(targetUser.id, guildId, amount)
   if (!result) {
     await safeReply(interaction, {
       content: `Failed to update MMR adjustment for <@${targetUser.id}>.`,
@@ -5708,7 +5707,6 @@ export async function handlePlayerAdjustCommand(interaction: ChatInputCommandInt
 
   await safeReply(interaction, {
     content: `Updated MMR adjustment for **${displayName}** from **${prevAdjStr}** to **${newAdjStr}** (Net MMR: **${newNetMMR}**).`,
-    flags: MessageFlags.Ephemeral,
   })
 }
 
@@ -5725,7 +5723,7 @@ export async function handleAssignAccountCommand(
   const accountInput = interaction.options.getString(CommandIds.ACCOUNT, true).trim()
   const targetUser = interaction.options.getUser(CommandIds.TO, true)
 
-  const result = setAccountSubstitution(guildId, accountInput, targetUser.id)
+  const result = await setAccountSubstitution(guildId, accountInput, targetUser.id)
   if (!result.success) {
     await safeReply(interaction, {
       content: `Could not find an account matching "${accountInput}". Please verify the account exists.`,
@@ -5758,7 +5756,7 @@ export async function handleAssignAccountClearCommand(
 
   const accountInput = interaction.options.getString(CommandIds.ACCOUNT)?.trim()
 
-  const clearedCount = clearAccountSubstitutions(guildId, accountInput ?? undefined)
+  const clearedCount = await clearAccountSubstitutions(guildId, accountInput ?? undefined)
 
   if (accountInput) {
     await safeReply(interaction, {
@@ -5791,8 +5789,8 @@ export async function handleAssignAccountAutocomplete(
   const query = focusedOption.value
   const choices =
     interaction.commandName === CommandIds.ASSIGN_ACCOUNT_CLEAR
-      ? getAssignAccountClearChoices(guildId, query)
-      : getAssignAccountChoices(guildId, query)
+      ? await getAssignAccountClearChoices(guildId, query)
+      : await getAssignAccountChoices(guildId, query)
 
   await interaction.respond(choices)
 }
@@ -5820,7 +5818,7 @@ export async function handleAdminUnlinkedCommand(
   }
 
   const pageSize = 10
-  const { accounts, totalCount } = getUnlinkedReplayAccounts({
+  const { accounts, totalCount } = await getUnlinkedReplayAccounts({
     search,
     minGames,
     sortBy,
@@ -5938,7 +5936,7 @@ export async function handleReassignReplayPlayerAutocomplete(
 
   if (focusedOption.name === CommandIds.REPLAY) {
     const query = String(focusedOption.value || '').trim().toLowerCase()
-    const recents = getRecentReplays(20)
+    const recents = await getRecentReplays(20)
 
     const choices: { name: string; value: number }[] = []
 
@@ -5970,7 +5968,7 @@ export async function handleReassignReplayPlayerAutocomplete(
     const choices: { name: string; value: string }[] = []
 
     if (replayIdOption) {
-      const players = getReplayPlayers(replayIdOption)
+      const players = await getReplayPlayers(replayIdOption)
       for (const p of players) {
         const isSub = Boolean(p.owner_discord_id && p.owner_discord_id !== p.discord_id)
         const subSuffix = isSub && p.substitute_display_name ? ` 🔄 sub: ${p.substitute_display_name}` : ''
@@ -5987,7 +5985,7 @@ export async function handleReassignReplayPlayerAutocomplete(
     } else {
       const guildId = interaction.guildId
       if (guildId) {
-        const generalChoices = getAssignAccountChoices(guildId, query)
+        const generalChoices = await getAssignAccountChoices(guildId, query)
         for (const c of generalChoices) {
           choices.push(c)
         }
@@ -6017,7 +6015,7 @@ export async function handleReassignReplayPlayerCommand(
 
   await interaction.deferReply({ flags: MessageFlags.Ephemeral })
 
-  const result = reassignReplayPlayer(guildId, replayId, accountInput, targetUser.id)
+  const result = await reassignReplayPlayer(guildId, replayId, accountInput, targetUser.id)
 
   if (!result.success) {
     await interaction.editReply({
@@ -6055,7 +6053,7 @@ export async function handleRecentReplaysCommand(
   await interaction.deferReply({ flags: MessageFlags.Ephemeral })
 
   if (replayIdOption !== null && replayIdOption !== undefined) {
-    const replay = getReplaySummary(replayIdOption)
+    const replay = await getReplaySummary(replayIdOption)
     if (!replay) {
       await interaction.editReply({
         content: `❌ Replay ID **#${replayIdOption}** was not found in the database.`,
@@ -6063,7 +6061,7 @@ export async function handleRecentReplaysCommand(
       return
     }
 
-    const embed = buildReplayOverviewEmbed(replay)
+    const embed = await buildReplayOverviewEmbed(replay)
     await interaction.editReply({
       content: `📋 **Match Details for Replay #${replay.id}:**`,
       embeds: [embed],
@@ -6071,7 +6069,7 @@ export async function handleRecentReplaysCommand(
     return
   }
 
-  const replays = getRecentReplays(clampedCount)
+  const replays = await getRecentReplays(clampedCount)
   if (replays.length === 0) {
     await interaction.editReply({
       content: 'No custom replays found in the database.',
@@ -6079,7 +6077,7 @@ export async function handleRecentReplaysCommand(
     return
   }
 
-  const embeds = replays.map(r => buildReplayOverviewEmbed(r))
+  const embeds = await Promise.all(replays.map(r => buildReplayOverviewEmbed(r)))
   await sendReplayEmbedBatches(
     interaction,
     `📋 **Showing ${replays.length} Most Recent Custom Match Replay${replays.length === 1 ? '' : 's'}:**`,
@@ -6098,7 +6096,7 @@ export async function handleLookupReplaySelect(
 
   await interaction.deferReply({ flags: MessageFlags.Ephemeral })
 
-  const replay = getReplaySummary(replayId)
+  const replay = await getReplaySummary(replayId)
   if (!replay) {
     await interaction.editReply({
       content: `❌ Replay ID **#${replayId}** was not found in the database.`,
@@ -6106,7 +6104,7 @@ export async function handleLookupReplaySelect(
     return
   }
 
-  const embed = buildReplayOverviewEmbed(replay)
+  const embed = await buildReplayOverviewEmbed(replay)
   await interaction.editReply({
     content: `📋 **Match Details for Replay #${replay.id}:**`,
     embeds: [embed],

@@ -17,7 +17,7 @@ export async function getBotChannel(guild: Guild | null | undefined): Promise<Te
   }
 
   // 1. Try saved channel ID from settings table
-  const savedChannelId = getSetting('bot_channel_id', guild.id)
+  const savedChannelId = await getSetting('bot_channel_id', guild.id)
   if (savedChannelId) {
     const channelById =
       guild.channels.cache.get(savedChannelId) ?? (await guild.channels.fetch(savedChannelId).catch(() => null))
@@ -31,7 +31,7 @@ export async function getBotChannel(guild: Guild | null | undefined): Promise<Te
   const channelByName = guild.channels.cache.find(ch => ch.name === botChannelName)
   if (channelByName && channelByName.isTextBased()) {
     // Automatically persist to settings so future lookups are fast and immune to renames
-    setSetting('bot_channel_id', channelByName.id, guild.id)
+    await setSetting('bot_channel_id', channelByName.id, guild.id)
     return channelByName
   }
 
