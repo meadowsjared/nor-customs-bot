@@ -12,6 +12,6 @@ if (!connectionString) {
   )
 }
 
-export const sql = postgres(connectionString)
+export const sql = postgres(connectionString, { onnotice: () => {} })
 
 export const db = sql

@@ -1,11 +1,22 @@
 import { Database } from 'bun:sqlite'
+import dotenv from 'dotenv'
 import { existsSync } from 'fs'
 import { resolve } from 'path'
-import { sql } from '../store/db'
+import postgres from 'postgres'
 import { CHANNELS_TABLE_SCHEMA_SQL } from '../types/channel'
 import { MAP_VOTE_TABLE_SCHEMA_SQL } from '../types/mapVote'
 import { PLAYERS_TABLES_SCHEMA_SQL } from '../types/player'
 import { SETTINGS_TABLE_SCHEMA_SQL } from '../types/settings'
+
+dotenv.config()
+
+// Always connect to development database (discord_bot_dev) for safety
+const devConnectionString = process.env.DATABASE_URL_DEV
+if (!devConnectionString) {
+  throw new Error('Missing DATABASE_URL_DEV in environment / .env')
+}
+
+const sql = postgres(devConnectionString, { onnotice: () => {} })
 
 type SQLitePlayerRow = {
   discord_id: string
@@ -113,7 +124,15 @@ export async function migrateFromSqlite(sqlitePath: string): Promise<void> {
     throw new Error(`SQLite database not found at path: ${resolvedPath}`)
   }
 
-  console.log(`🚀 Starting migration from SQLite: ${resolvedPath}\n`)
+  console.log(`🚀 Starting migration from SQLite: ${resolvedPath}`)
+
+  const dbInfo = await sql<Array<{ current_user: string; current_database: string }>>`
+    SELECT current_user, current_database()
+  `
+  const targetUser = dbInfo[0]?.current_user ?? 'unknown'
+  const targetDb = dbInfo[0]?.current_database ?? 'unknown'
+  console.log(`🎯 Target PostgreSQL: ${targetDb} (connected as ${targetUser}) [DEV ONLY]\n`)
+
   const sqlite = new Database(resolvedPath, { readonly: true })
 
   try {
