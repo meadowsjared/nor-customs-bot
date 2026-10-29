@@ -27,9 +27,6 @@ jobs:
       - name: Typecheck
         run: bun x tsc --noEmit
 
-      - name: Run Unit Tests
-        run: bun test
-
       - uses: phips28/gh-action-bump-version@v11.0.7
         name: Automated Version Bump
         with:

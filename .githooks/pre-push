@@ -1,0 +1,9 @@
+#!/bin/sh
+set -e
+
+echo "🔍 Running pre-push checks (unit tests & typecheck)..."
+
+bun test commands store utils
+bun x tsc --noEmit
+
+echo "✅ All pre-push checks passed! Proceeding with push."
