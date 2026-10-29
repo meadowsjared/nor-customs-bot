@@ -1,3 +1,5 @@
+import fs from 'fs'
+import path from 'path'
 import {
   AccountSubstitution,
   AccountSubstitutionRow,
@@ -349,6 +351,12 @@ export async function getOrCreateSubstituteAccount(
   return inserted[0].id
 }
 
+const resolvedAccountCache = new Map<string, { id: number; discordId: string | null }>()
+
+export function clearResolvedAccountCache(): void {
+  resolvedAccountCache.clear()
+}
+
 /**
  * Retrieves the effective HotS account information for a BattleTag, taking any active
  * or historical substitution (for a specific replay) into account.
@@ -365,6 +373,17 @@ export async function getAccountWithSubstitution(
       hotsAccountId,
       discordId: sub.substituteDiscordId,
       ownerDiscordId: sub.originalDiscordId,
+      battleTag,
+    }
+  }
+
+  const cacheKey = battleTag.toLowerCase()
+  const cached = resolvedAccountCache.get(cacheKey)
+  if (cached) {
+    return {
+      hotsAccountId: cached.id,
+      discordId: cached.discordId,
+      ownerDiscordId: null,
       battleTag,
     }
   }
@@ -387,6 +406,8 @@ export async function getAccountWithSubstitution(
     `
     accountRow = inserted[0]
   }
+
+  resolvedAccountCache.set(cacheKey, { id: accountRow.id, discordId: accountRow.discord_id })
 
   return {
     hotsAccountId: accountRow.id,
@@ -419,5 +440,131 @@ export async function clearAccountSubstitutions(guildId: string, battleTag?: str
     WHERE guild_id = ${guildId} AND is_active = TRUE
   `
   return result.count
+}
+
+interface SqliteFilenameRow {
+  filename: string | null
+}
+
+interface SqliteSubReplayIdRow {
+  replay_id: number | null
+}
+
+interface SqliteReader {
+  getFilename(replayId: number): string | null
+  getOrigReplayId(subId: number): number | null
+  close(): void
+}
+
+async function openSqliteReader(filePath: string): Promise<SqliteReader | null> {
+  if (typeof process !== 'undefined' && process.versions?.bun) {
+    const { Database } = await import('bun:sqlite')
+    const db = new Database(filePath, { readonly: true })
+    const filenameQuery = db.query<SqliteFilenameRow, [number]>('SELECT filename FROM hots_replays WHERE id = ?')
+    const subQuery = db.query<SqliteSubReplayIdRow, [number]>('SELECT replay_id FROM account_substitutions WHERE id = ?')
+
+    return {
+      getFilename(replayId: number): string | null {
+        const row = filenameQuery.get(replayId)
+        return row?.filename ?? null
+      },
+      getOrigReplayId(subId: number): number | null {
+        const row = subQuery.get(subId)
+        return row?.replay_id ?? null
+      },
+      close(): void {
+        db.close()
+      },
+    }
+  }
+
+  const { createRequire } = await import('module')
+  const require = createRequire(import.meta.url)
+  const DatabaseConstructor = require('better-sqlite3')
+  const db = new DatabaseConstructor(filePath, { readonly: true })
+  const filenameStmt = db.prepare('SELECT filename FROM hots_replays WHERE id = ?')
+  const subStmt = db.prepare('SELECT replay_id FROM account_substitutions WHERE id = ?')
+
+  return {
+    getFilename(replayId: number): string | null {
+      const row: unknown = filenameStmt.get(replayId)
+      if (typeof row === 'object' && row !== null && 'filename' in row) {
+        const fn = row.filename
+        return typeof fn === 'string' ? fn : null
+      }
+      return null
+    },
+    getOrigReplayId(subId: number): number | null {
+      const row: unknown = subStmt.get(subId)
+      if (typeof row === 'object' && row !== null && 'replay_id' in row) {
+        const id = row.replay_id
+        return typeof id === 'number' ? id : null
+      }
+      return null
+    },
+    close(): void {
+      db.close()
+    },
+  }
+}
+
+/**
+ * Re-links any historical account_substitutions whose replay_id points to an old/missing replay ID
+ * (e.g. after re-importing replays into a fresh PostgreSQL database) by matching original replay filenames.
+ */
+export async function relinkAccountSubstitutions(): Promise<number> {
+  const orphaned = await sql<Array<{ id: number; replay_id: number; hots_battle_tag: string }>>`
+    SELECT a.id, a.replay_id, a.hots_battle_tag
+    FROM account_substitutions a
+    LEFT JOIN replays r ON a.replay_id = r.id
+    WHERE a.replay_id IS NOT NULL AND r.id IS NULL
+  `
+
+  if (orphaned.length === 0) {
+    return 0
+  }
+
+  let remappedCount = 0
+  const sqliteCandidate = 'store/customs_cruncher.db'
+  if (fs.existsSync(sqliteCandidate)) {
+    try {
+      const reader = await openSqliteReader(sqliteCandidate)
+      if (!reader) return 0
+
+      for (const sub of orphaned) {
+        let replayFilename = reader.getFilename(sub.replay_id)
+        if (!replayFilename) {
+          const origReplayId = reader.getOrigReplayId(sub.id)
+          if (origReplayId) {
+            replayFilename = reader.getFilename(origReplayId)
+          }
+        }
+
+        if (replayFilename) {
+          const baseName = path.basename(replayFilename)
+          const searchPattern = `%${baseName}`
+          const matches = await sql<Array<{ id: number }>>`
+            SELECT id
+            FROM replays
+            WHERE file LIKE ${searchPattern} OR filename LIKE ${searchPattern}
+            LIMIT 1
+          `
+          if (matches[0]) {
+            await sql`
+              UPDATE account_substitutions
+              SET replay_id = ${matches[0].id}
+              WHERE id = ${sub.id}
+            `
+            remappedCount++
+          }
+        }
+      }
+      reader.close()
+    } catch (err) {
+      console.error('Error re-linking account substitutions from SQLite:', err)
+    }
+  }
+
+  return remappedCount
 }
 

@@ -56,6 +56,7 @@ import {
   getOrCreateSubstituteAccount,
   getSubstitutedAccountOwnerTag,
   getSubstitutionForAccount,
+  relinkAccountSubstitutions,
   setAccountSubstitution,
 } from './substitutions'
 import {
@@ -102,6 +103,7 @@ export {
   PlayerIdPrefix,
   recalculateLobbyRanks,
   refreshPlayerStatsView,
+  relinkAccountSubstitutions,
   removeInteraction,
   resetActivePlayerTeams,
   setAccountSubstitution,

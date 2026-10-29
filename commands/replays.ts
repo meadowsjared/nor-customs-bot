@@ -11,20 +11,22 @@ import fs from 'fs'
 import path from 'path'
 import { CommandIds } from '../constants'
 import {
+  getImportedReplayFilenames,
   getRecentReplays,
   getReplayPlayers,
   getReplaySummary,
-  isReplayImported,
+  linkActiveSubstitutionsForReplays,
   optimizeDb,
-  parseReplay,
   reassignReplayPlayer,
   RecentReplaySummary,
   ReplayPlayerInfo,
+  SaveReplayOptions,
   saveReplayToDb,
 } from '../store/hotsReplays'
 import { getAssignAccountChoices } from '../store/player'
 import { ReplayData } from '../types/replay'
 import { requireGuildId, safeReply } from '../utils/interaction'
+import { processReplaysInPool } from '../utils/replayWorkerPool'
 import { updateLobbyMessage } from './lobby'
 import { formatDateToMMDDYYYY, userIsAdmin } from './shared'
 
@@ -48,6 +50,26 @@ export function findStormReplays(dir: string): string[] {
     console.error(`Error scanning ${dir} for replays:`, error)
   }
   return files
+}
+
+/**
+ * Scans directories and returns all unique .StormReplay files (deduplicating by filename).
+ * Directories earlier in the array take precedence.
+ */
+export function collectReplayFiles(dirs: string[]): string[] {
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const dir of dirs) {
+    const found = findStormReplays(dir)
+    for (const f of found) {
+      const base = path.basename(f)
+      if (!seen.has(base)) {
+        seen.add(base)
+        result.push(f)
+      }
+    }
+  }
+  return result
 }
 
 /**
@@ -137,13 +159,13 @@ function isReplayInFilterRange(
       if (!isNaN(d.getTime())) {
         fileTime = d.getTime()
       }
-    } catch {}
+    } catch { }
   }
 
   if (fileTime === null) {
     try {
       fileTime = fs.statSync(file).mtime.getTime()
-    } catch {}
+    } catch { }
   }
 
   if (fileTime === null) {
@@ -187,14 +209,14 @@ export async function buildReplayOverviewEmbed(
   const r: RecentReplaySummary =
     typeof replayOrId === 'number'
       ? ((await getReplaySummary(replayOrId)) ?? {
-          id: replayOrId,
-          map: 'Unknown Map',
-          date: '',
-          length: null,
-          winner: null,
-          team0Takedowns: null,
-          team1Takedowns: null,
-        })
+        id: replayOrId,
+        map: 'Unknown Map',
+        date: '',
+        length: null,
+        winner: null,
+        team0Takedowns: null,
+        team1Takedowns: null,
+      })
       : replayOrId
 
   const durationMin = r.length ? Math.floor(r.length / 60) : 0
@@ -244,57 +266,92 @@ export async function buildReplayOverviewEmbed(
     })
 }
 
+interface SavedCustomReplay {
+  replayId: number
+  fileName: string
+}
+
 /**
- * Shared helper that saves a parsed custom replay to DB, copies the file to `/mnt/CustomsCruncher`,
- * and builds its overview embed.
+ * Shared helper that saves a parsed custom replay to DB and copies the file to `/mnt/CustomsCruncher`.
  */
 async function saveAndCopyCustomReplay(
   file: string,
   replayData: ReplayData,
-  guildId: string
-): Promise<EmbedBuilder> {
+  guildId: string,
+  options?: SaveReplayOptions
+): Promise<SavedCustomReplay> {
   const fileName = path.basename(file)
-  const replayId = await saveReplayToDb(replayData, guildId)
+  const replayId = await saveReplayToDb(replayData, guildId, options)
   const destPath = path.join(REPLAY_DEST_DIR, fileName)
   try {
-    fs.copyFileSync(file, destPath)
+    if (path.resolve(file) !== path.resolve(destPath) && !fs.existsSync(destPath)) {
+      fs.copyFileSync(file, destPath)
+    }
   } catch (error) {
     console.error('Error copying replay:', fileName, error)
   }
-  return await buildReplayOverviewEmbed(replayId, fileName)
+  return { replayId, fileName }
+}
+
+const MAX_INTERACTION_SAFE_MS = 13.5 * 60 * 1000 // 13 minutes 30 seconds
+
+function formatImportProgress(
+  title: string,
+  processedCount: number,
+  totalCount: number,
+  importedCount: number,
+  startTime: number
+): string {
+  const pct = totalCount > 0 ? Math.round((processedCount / totalCount) * 100) : 100
+  const filled = Math.min(10, Math.max(0, Math.floor(pct / 10)))
+  const progressBar = '█'.repeat(filled) + '░'.repeat(10 - filled)
+
+  const elapsedSec = Math.floor((Date.now() - startTime) / 1000)
+  const elapsedMin = Math.floor(elapsedSec / 60)
+  const elapsedRemainingSec = elapsedSec % 60
+  const elapsedStr = `${elapsedMin}m ${elapsedRemainingSec.toString().padStart(2, '0')}s`
+
+  const maxLifetimeSec = 14 * 60 // 14 minutes
+  const remainingSec = Math.max(0, maxLifetimeSec - elapsedSec)
+  const remainingMin = Math.floor(remainingSec / 60)
+  const remainingRemainingSec = remainingSec % 60
+  const remainingStr = `${remainingMin}m ${remainingRemainingSec.toString().padStart(2, '0')}s`
+
+  return (
+    `⏳ **${title}...**\n` +
+    `📊 **Progress:** \`[${progressBar}]\` **${pct}%** (${processedCount.toLocaleString()}/${totalCount.toLocaleString()} files scanned)\n` +
+    `🎮 **Custom matches imported:** **${importedCount.toLocaleString()}**\n` +
+    `⏱️ **Elapsed Time:** \`${elapsedStr}\` • **Token limit in:** \`${remainingStr}\`\n` +
+    `*(Updates every 10 seconds)*`
+  )
 }
 
 /**
- * Sends a list of replay embeds in batches of 5 to respect Discord limits.
+ * Updates the original ephemeral interaction message with the final replay import summary and up to 10 embeds.
  */
 async function sendReplayEmbedBatches(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>,
   headerMessage: string,
   embeds: EmbedBuilder[],
-  numTotalFiles?: number
+  numTotalFiles?: number,
+  totalImportedCount?: number
 ): Promise<void> {
-  const batchSize = 5
-
-  for (let i = 0; i < embeds.length; i += batchSize) {
-    const batch = embeds.slice(i, i + batchSize)
-    if (i === 0) {
-      await interaction.editReply({
-        content: headerMessage,
-        embeds: batch,
-      })
-    } else {
-      await interaction.followUp({
-        flags: MessageFlags.Ephemeral,
-        embeds: batch,
-      })
-    }
+  const totalCount = totalImportedCount ?? embeds.length
+  let content = headerMessage
+  if (totalCount > embeds.length) {
+    content += `\n*(Displaying ${embeds.length} most recent of ${totalCount.toLocaleString('en-US')} imported)*`
+  }
+  if (numTotalFiles && numTotalFiles > totalCount) {
+    content += `\n*Finished importing **${totalCount.toLocaleString('en-US')}** customs files from ${numTotalFiles.toLocaleString('en-US')} scanned.*`
   }
 
-  if (numTotalFiles && numTotalFiles > embeds.length) {
-    await interaction.followUp({
-      flags: MessageFlags.Ephemeral,
-      content: `Finished importing **${embeds.length.toLocaleString('en-US')}** customs files from ${numTotalFiles.toLocaleString('en-US')}.`,
+  try {
+    await interaction.editReply({
+      content,
+      embeds,
     })
+  } catch (err: unknown) {
+    console.error('Failed to edit replay import completion message in Discord:', err)
   }
 }
 
@@ -303,7 +360,8 @@ async function sendReplayEmbedBatches(
  * and importing unimported custom games chronologically.
  */
 export async function syncRecentReplays(
-  guildId: string
+  guildId: string,
+  onProgress?: (processed: number, total: number, imported: number) => Promise<void>
 ): Promise<{ importedCount: number; embeds: EmbedBuilder[] }> {
   let files: string[] = []
   try {
@@ -318,10 +376,11 @@ export async function syncRecentReplays(
   }
 
   const sortedFiles = sortReplayFilesNewestFirst(files).map(entry => entry.file)
+  const importedSet = await getImportedReplayFilenames()
 
   let firstImportedIndex = -1
   for (let i = 0; i < sortedFiles.length; i++) {
-    if (await isReplayImported(sortedFiles[i])) {
+    if (importedSet.has(path.basename(sortedFiles[i]))) {
       firstImportedIndex = i
       break
     }
@@ -336,15 +395,35 @@ export async function syncRecentReplays(
       ? sortedFiles.slice().reverse()
       : sortedFiles.slice(0, firstImportedIndex).reverse()
 
-  const embeds: EmbedBuilder[] = []
+  const importedEntries: SavedCustomReplay[] = []
   let importedCount = 0
+  let lastProgressUpdate = Date.now()
 
-  for (const file of unimportedFiles) {
-    const replayData = await parseReplay(file)
-    if (replayData && replayData.mode === -1) {
-      importedCount++
-      embeds.push(await saveAndCopyCustomReplay(file, replayData, guildId))
-    }
+  await processReplaysInPool(unimportedFiles, {
+    onResult: async ({ file, data, processedCount, totalCount }) => {
+      if (data && data.mode === -1) {
+        importedCount++
+        importedSet.add(path.basename(file))
+        const saved = await saveAndCopyCustomReplay(file, data, guildId, { refreshStats: false, linkSubstitutions: false })
+        importedEntries.push(saved)
+      }
+      if (onProgress && Date.now() - lastProgressUpdate >= 10000) {
+        lastProgressUpdate = Date.now()
+        await onProgress(processedCount, totalCount, importedCount)
+      }
+    },
+  })
+
+  if (importedCount > 0) {
+    await linkActiveSubstitutionsForReplays(guildId, importedEntries.map(e => e.replayId))
+    await optimizeDb()
+  }
+
+  // Build overview embeds for the up to 10 most recent replays, AFTER mv_replay_player_stats is refreshed
+  const recentEntries = importedEntries.slice(-10)
+  const embeds: EmbedBuilder[] = []
+  for (const entry of recentEntries) {
+    embeds.push(await buildReplayOverviewEmbed(entry.replayId, entry.fileName))
   }
 
   return { importedCount, embeds }
@@ -371,38 +450,59 @@ export async function handleImportReplaysCommand(
 
   await interaction.deferReply({ flags: MessageFlags.Ephemeral })
 
+  const startTime = Date.now()
+  let limitNoticeSent = false
+
   if (!rawStartInput && !rawEndInput) {
-    const result = await syncRecentReplays(guildId)
+    await interaction.editReply({
+      content: '🔍 **Checking for new unimported custom replays...**',
+    }).catch(() => { })
+
+    const result = await syncRecentReplays(guildId, async (processed, total, imported) => {
+      const now = Date.now()
+      if (now - startTime >= MAX_INTERACTION_SAFE_MS && !limitNoticeSent) {
+        limitNoticeSent = true
+        await interaction.editReply({
+          content:
+            `⏳ **Large Replay Import in Progress...**\n` +
+            `📊 **Status:** Scanned ${processed.toLocaleString()}/${total.toLocaleString()} files (${imported.toLocaleString()} imported so far).\n` +
+            `⏱️ **Notice:** Approaching Discord's 15-minute interaction limit. The import will continue running in the background to completion! Run \`/recent-replays\` when done to view matches.`,
+        }).catch(() => { })
+        return
+      }
+
+      if (!limitNoticeSent) {
+        await interaction.editReply({
+          content: formatImportProgress('Syncing Recent Replays', processed, total, imported, startTime),
+        }).catch(() => { })
+      }
+    })
+
     if (result.importedCount === 0) {
-      await interaction.editReply({
-        content: 'No new custom replays found to import (all recent replays are already in the database).',
-      })
+      if (!limitNoticeSent) {
+        await interaction.editReply({
+          content: 'No new custom replays found to import (all recent replays are already in the database).',
+        }).catch(() => { })
+      }
       return
     }
 
-    await sendReplayEmbedBatches(
-      interaction,
-      `📥 **Synced ${result.importedCount} new custom replay${result.importedCount > 1 ? 's' : ''} in chronological order:**`,
-      result.embeds
-    )
+    if (!limitNoticeSent) {
+      await sendReplayEmbedBatches(
+        interaction,
+        `📥 **Synced ${result.importedCount} new custom replay${result.importedCount > 1 ? 's' : ''} in chronological order:**`,
+        result.embeds,
+        undefined,
+        result.importedCount
+      )
+    }
     return
   }
 
-  let files: string[] = []
-  try {
-    files = findStormReplays(REPLAY_SOURCE_DIR)
-  } catch (error) {
-    console.error('Error reading replay folder:', error)
-    await safeReply(interaction, {
-      content: `Error reading replay folder. Please make sure the folder path is correct.\n\`${REPLAY_SOURCE_DIR}\``,
-      flags: MessageFlags.Ephemeral,
-    })
-    return
-  }
-
+  const files = collectReplayFiles([REPLAY_DEST_DIR, REPLAY_SOURCE_DIR])
   if (files.length === 0) {
     await safeReply(interaction, {
-      content: `No .StormReplay files found in any Replays folder under:\n\`${REPLAY_SOURCE_DIR}\``,
+      content: `No .StormReplay files found in replay directories:\n\`${REPLAY_DEST_DIR}\`\n\`${REPLAY_SOURCE_DIR}\``,
       flags: MessageFlags.Ephemeral,
     })
     return
@@ -424,40 +524,96 @@ export async function handleImportReplaysCommand(
     })
     .map(entry => entry.file)
 
-  let count = 0
-  const embeds: EmbedBuilder[] = []
+  await interaction.editReply({
+    content: `🔍 **Starting replay import...**\nFound **${filteredFiles.length.toLocaleString()}** files matching the date criteria.\nChecking database for already-imported files...`,
+  }).catch(() => { })
 
-  for (const file of filteredFiles) {
-    if (filterParams.maxFilesLimit !== null && count >= filterParams.maxFilesLimit) {
-      break
-    }
+  const importedSet = await getImportedReplayFilenames()
+  const unimportedFiles = filteredFiles.filter(file => !importedSet.has(path.basename(file)))
+  const alreadyImportedCount = filteredFiles.length - unimportedFiles.length
 
-    const replayData = await parseReplay(file)
-
-    if (
-      replayData &&
-      replayData.mode === -1 &&
-      isReplayInFilterRange(file, replayData.date, filterParams.startDate, filterParams.endDate)
-    ) {
-      count++
-      embeds.push(await saveAndCopyCustomReplay(file, replayData, guildId))
-    }
+  if (unimportedFiles.length === 0) {
+    await interaction.editReply({
+      content: `✅ All **${filteredFiles.length.toLocaleString()}** replay files in this date range are already imported into the database!`,
+    })
+    return
   }
 
+  await interaction.editReply({
+    content:
+      `🔍 **Starting parallel replay import...**\n` +
+      `📁 Total files in range: **${filteredFiles.length.toLocaleString()}** ` +
+      `(*${alreadyImportedCount.toLocaleString()} already imported*)\n` +
+      `⚡ Parsing **${unimportedFiles.length.toLocaleString()}** remaining files with multi-core workers (updates every 10 seconds)...`,
+  }).catch(() => { })
+
+  let count = 0
+  const importedEntries: SavedCustomReplay[] = []
+  let lastProgressUpdate = Date.now()
+  const PROGRESS_INTERVAL_MS = 10 * 1000 // 10 seconds
+
+  await processReplaysInPool(unimportedFiles, {
+    shouldStop: () => filterParams.maxFilesLimit !== null && count >= filterParams.maxFilesLimit,
+    onResult: async ({ file, data, processedCount, totalCount }) => {
+      if (
+        data &&
+        data.mode === -1 &&
+        isReplayInFilterRange(file, data.date, filterParams.startDate, filterParams.endDate)
+      ) {
+        count++
+        importedSet.add(path.basename(file))
+        const saved = await saveAndCopyCustomReplay(file, data, guildId, { refreshStats: false, linkSubstitutions: false })
+        importedEntries.push(saved)
+      }
+
+      const now = Date.now()
+      if (now - startTime >= MAX_INTERACTION_SAFE_MS && !limitNoticeSent) {
+        limitNoticeSent = true
+        await interaction.editReply({
+          content:
+            `⏳ **Large Replay Import in Progress...**\n` +
+            `📊 **Status:** Scanned ${processedCount.toLocaleString()}/${totalCount.toLocaleString()} files (${count.toLocaleString()} imported so far).\n` +
+            `⏱️ **Notice:** Approaching Discord's 15-minute interaction limit. The import will continue running in the background to completion! Run \`/recent-replays\` when done to view matches.`,
+        }).catch(() => { })
+        return
+      }
+
+      if (now - lastProgressUpdate >= PROGRESS_INTERVAL_MS && !limitNoticeSent) {
+        lastProgressUpdate = now
+        await interaction.editReply({
+          content: formatImportProgress('Importing Replays in Progress', processedCount, totalCount, count, startTime),
+        }).catch(err => {
+          console.error('Failed to update replay import progress in Discord:', err)
+        })
+      }
+    },
+  })
+
   if (count > 0) {
+    await linkActiveSubstitutionsForReplays(guildId, importedEntries.map(e => e.replayId))
     await optimizeDb()
-    await sendReplayEmbedBatches(
-      interaction,
-      `📥 **Finished importing ${count.toLocaleString('en-US')} custom replay${count === 1 ? '' : 's'}:**`,
-      embeds,
-      numTotalFiles
-    )
+    if (!limitNoticeSent) {
+      const recentEntries = importedEntries.slice(-10)
+      const embeds: EmbedBuilder[] = []
+      for (const entry of recentEntries) {
+        embeds.push(await buildReplayOverviewEmbed(entry.replayId, entry.fileName))
+      }
+      await sendReplayEmbedBatches(
+        interaction,
+        `📥 **Finished importing ${count.toLocaleString('en-US')} custom replay${count === 1 ? '' : 's'}:**`,
+        embeds,
+        numTotalFiles,
+        count
+      )
+    }
   } else {
-    try {
-      await interaction.editReply({
-        content: `No custom .StormReplay games matched the criteria in:\n\`${REPLAY_SOURCE_DIR}\``,
-      })
-    } catch {}
+    if (!limitNoticeSent) {
+      try {
+        await interaction.editReply({
+          content: `No new custom .StormReplay games matched the criteria in the selected range. (${alreadyImportedCount.toLocaleString()} files were already imported previously)`,
+        })
+      } catch { }
+    }
   }
 }
 

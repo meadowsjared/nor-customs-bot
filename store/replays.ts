@@ -22,11 +22,19 @@ export async function initReplaysTable(): Promise<void> {
   await initPlayerStatsView()
 }
 
+export interface InsertReplaysOptions {
+  refreshStats?: boolean
+}
+
 /**
  * Inserts an array of `ReplayData` or `ReplayDataFile` objects into the `replays` table
- * and refreshes the `mv_replay_player_stats` materialized view.
+ * and optionally refreshes the `mv_replay_player_stats` materialized view (defaults to true).
  */
-export async function insertReplays(items: readonly (ReplayData | ReplayDataFile)[]): Promise<ReplayRow[]> {
+export async function insertReplays(
+  items: readonly (ReplayData | ReplayDataFile)[],
+  options?: InsertReplaysOptions
+): Promise<ReplayRow[]> {
+  const refreshStats = options?.refreshStats ?? true
   if (items.length === 0) {
     return []
   }
@@ -76,7 +84,9 @@ export async function insertReplays(items: readonly (ReplayData | ReplayDataFile
     RETURNING *
   `
 
-  await refreshPlayerStatsView()
+  if (refreshStats) {
+    await refreshPlayerStatsView()
+  }
   return inserted
 }
 

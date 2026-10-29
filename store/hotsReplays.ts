@@ -1,15 +1,19 @@
 import { createRequire } from 'module'
 import path from 'path'
 import type { HotSReplayObject, ReplayData } from '../types/replay'
+import { parseReplay, parseReplaySync } from '../utils/replayParser'
 import { sql } from './db'
 import {
   clearActivePlayersCache,
   getAccountWithSubstitution,
   getOrCreateSubstituteAccount,
   refreshPlayerStatsView,
+  relinkAccountSubstitutions,
   ResolvedHotsAccount,
 } from './player'
 import { initReplaysTable, insertReplays } from './replays'
+
+export { parseReplay, parseReplaySync, relinkAccountSubstitutions }
 
 const require = createRequire(import.meta.url)
 
@@ -20,153 +24,137 @@ initReplaysTable().catch(error => {
 
 export type ParsedReplay = ReplayData
 
-type HeroProtocolDetailsPlayer = {
-  m_name?: string | Buffer
-  m_hero?: string | Buffer
-}
-
-type HeroProtocolDetails = {
-  m_playerList?: HeroProtocolDetailsPlayer[]
-}
-
 /**
- * Parses a Heroes of the Storm replay file using hots-parser and extracts relevant information.
- * @param file The path to the replay file
+ * Loads all imported replay filenames and full paths into a Set of basename strings
+ * for instant O(1) in-memory skip checks.
  */
-export async function parseReplay(file: string): Promise<ReplayData | null> {
-  try {
-    const Parser: {
-      processReplay: (filePath: string, options: { overrideVerifiedBuild: boolean }) => HotSReplayObject | null
-    } = require('hots-parser')
-    const replay = Parser.processReplay(file, {
-      overrideVerifiedBuild: true,
-    })
-    if (!replay || !replay.match) {
-      console.error(`Invalid or incomplete replay data for file: ${file}`)
-      return null
+export async function getImportedReplayFilenames(): Promise<Set<string>> {
+  const rows = await sql<Array<{ file: string | null; filename: string | null }>>`
+    SELECT file, filename FROM replays
+  `
+  const set = new Set<string>()
+  for (const row of rows) {
+    if (row.filename) {
+      set.add(path.basename(row.filename))
     }
-
-    if (!replay.match.filename) {
-      replay.match.filename = file
+    if (row.file) {
+      set.add(path.basename(row.file))
     }
-
-    let mapName = replay.match.map
-    if (mapName === 'Garden of Terror') {
-      const fileNameLower = file.toLowerCase()
-      if (fileNameLower.includes('classic')) {
-        mapName = 'Garden of Terror Classic'
-        replay.match.map = mapName
-      }
-    }
-
-    const players = Object.values(replay.players)
-
-    // Check if any player has an unknown or missing hero (e.g. from Auto-Select in custom lobbies)
-    try {
-      const heroprotocol: {
-        DETAILS: string
-        get: (part: string, filePath: string) => HeroProtocolDetails | null
-      } = require('heroprotocol')
-      const details = heroprotocol.get(heroprotocol.DETAILS, file)
-      if (details && Array.isArray(details.m_playerList)) {
-        for (const player of players) {
-          if (!player.hero || player.hero === 'Unknown' || player.hero === 'RAND' || player.hero === 'Auto') {
-            const match = details.m_playerList.find(p => {
-              const nameStr = p.m_name ? (typeof p.m_name === 'string' ? p.m_name : p.m_name.toString('utf8')) : ''
-              return nameStr === player.name
-            })
-            if (match && match.m_hero) {
-              let heroName = typeof match.m_hero === 'string' ? match.m_hero : match.m_hero.toString('utf8')
-              if (heroName === 'Lúcio') heroName = 'Lucio'
-              player.hero = heroName
-            }
-          }
-        }
-      }
-    } catch {
-      // Ignore if details cannot be parsed
-    }
-
-    const formatPlayerEntry = (p: { name: string; tag: number; hero?: string }) => {
-      const heroStr = p.hero ? ` (${p.hero})` : ''
-      return `${p.name}#${p.tag}${heroStr}`
-    }
-
-    const team0Players = players
-      .filter(p => p.team === 0)
-      .map(formatPlayerEntry)
-      .join(', ')
-    const team1Players = players
-      .filter(p => p.team === 1)
-      .map(formatPlayerEntry)
-      .join(', ')
-
-    return {
-      replayObj: replay,
-      date: replay.match.date,
-      type: replay.match.type,
-      mode: replay.match.mode,
-      map: mapName,
-      length: replay.match.length,
-      winner: replay.match.winner,
-      team0Takedowns: replay.match.team0Takedowns,
-      team1Takedowns: replay.match.team1Takedowns,
-      team0Players,
-      team1Players,
-      file,
-    }
-  } catch (error) {
-    console.error(`Error parsing replay file ${file}:`, error)
-    return null
   }
+  return set
+}
+
+export interface SaveReplayOptions {
+  refreshStats?: boolean
+  linkSubstitutions?: boolean
 }
 
 /**
- * Saves a parsed custom match into the PostgreSQL `replays` table, refreshes `mv_replay_player_stats`,
+ * Saves a parsed custom match into the PostgreSQL `replays` table, optionally refreshes `mv_replay_player_stats`,
  * records any active account substitutions for the replay, and returns its assigned replay ID.
  */
-export async function saveReplayToDb(parsedReplay: ParsedReplay, guildId: string): Promise<number> {
-  const inserted = await insertReplays([parsedReplay])
+export async function saveReplayToDb(
+  parsedReplay: ParsedReplay,
+  guildId: string,
+  options?: SaveReplayOptions
+): Promise<number> {
+  const inserted = await insertReplays([parsedReplay], options)
   const replayRow = inserted[0]
   if (!replayRow) {
     throw new Error('Failed to insert or retrieve replay match record')
   }
   const replayId = replayRow.id
 
-  const players = Object.values(parsedReplay.replayObj.players || {})
-  for (const player of players) {
-    const battleTag = `${player.name}#${player.tag}`
-    const resolvedAccount = await getAccountWithSubstitution(battleTag, guildId, replayId)
+  if (options?.linkSubstitutions !== false) {
+    const players = Object.values(parsedReplay.replayObj.players || {})
+    for (const player of players) {
+      const battleTag = `${player.name}#${player.tag}`
+      const resolvedAccount = await getAccountWithSubstitution(battleTag, guildId, replayId)
 
-    // If an active substitution applied to this player, record a historical substitution entry for this replayId
-    if (resolvedAccount.ownerDiscordId && resolvedAccount.discordId) {
-      const existingSub = await sql<Array<{ id: number }>>`
-        SELECT id
-        FROM account_substitutions
-        WHERE replay_id = ${replayId}
-          AND LOWER(hots_battle_tag) = LOWER(${battleTag})
-        LIMIT 1
-      `
-      if (existingSub[0]) {
-        await sql`
-          UPDATE account_substitutions
-          SET substitute_discord_id = ${resolvedAccount.discordId},
-              original_discord_id = ${resolvedAccount.ownerDiscordId}
-          WHERE id = ${existingSub[0].id}
+      // If an active substitution applied to this player, record a historical substitution entry for this replayId
+      if (resolvedAccount.ownerDiscordId && resolvedAccount.discordId) {
+        const existingSub = await sql<Array<{ id: number }>>`
+          SELECT id
+          FROM account_substitutions
+          WHERE replay_id = ${replayId}
+            AND LOWER(hots_battle_tag) = LOWER(${battleTag})
+          LIMIT 1
         `
-      } else {
-        await sql`
-          INSERT INTO account_substitutions (
-            guild_id, hots_battle_tag, original_discord_id, substitute_discord_id, replay_id, is_active
-          ) VALUES (
-            ${guildId}, ${battleTag}, ${resolvedAccount.ownerDiscordId}, ${resolvedAccount.discordId}, ${replayId}, FALSE
-          )
-        `
+        if (existingSub[0]) {
+          await sql`
+            UPDATE account_substitutions
+            SET substitute_discord_id = ${resolvedAccount.discordId},
+                original_discord_id = ${resolvedAccount.ownerDiscordId}
+            WHERE id = ${existingSub[0].id}
+          `
+        } else {
+          await sql`
+            INSERT INTO account_substitutions (
+              guild_id, hots_battle_tag, original_discord_id, substitute_discord_id, replay_id, is_active
+            ) VALUES (
+              ${guildId}, ${battleTag}, ${resolvedAccount.ownerDiscordId}, ${resolvedAccount.discordId}, ${replayId}, FALSE
+            )
+          `
+        }
       }
     }
   }
 
   return replayId
+}
+
+/**
+ * Links any currently active substitutions in the guild to newly imported replays in one batch.
+ */
+export async function linkActiveSubstitutionsForReplays(
+  guildId: string,
+  replayIds: number[]
+): Promise<number> {
+  if (replayIds.length === 0) return 0
+
+  const activeSubs = await sql<Array<{
+    id: number
+    hots_battle_tag: string
+    original_discord_id: string
+    substitute_discord_id: string
+  }>>`
+    SELECT id, hots_battle_tag, original_discord_id, substitute_discord_id
+    FROM account_substitutions
+    WHERE guild_id = ${guildId} AND is_active = TRUE
+  `
+
+  if (activeSubs.length === 0) return 0
+
+  let linkedCount = 0
+  for (const sub of activeSubs) {
+    const pattern = `%"name": "${sub.hots_battle_tag.split('#')[0]}"%`
+    const matchedReplays = await sql<Array<{ id: number }>>`
+      SELECT id
+      FROM replays
+      WHERE id = ANY(${replayIds})
+        AND players::text ILIKE ${pattern}
+    `
+    for (const r of matchedReplays) {
+      const existing = await sql<Array<{ id: number }>>`
+        SELECT id FROM account_substitutions
+        WHERE replay_id = ${r.id}
+          AND LOWER(hots_battle_tag) = LOWER(${sub.hots_battle_tag})
+        LIMIT 1
+      `
+      if (!existing[0]) {
+        await sql`
+          INSERT INTO account_substitutions (
+            guild_id, hots_battle_tag, original_discord_id, substitute_discord_id, replay_id, is_active
+          ) VALUES (
+            ${guildId}, ${sub.hots_battle_tag}, ${sub.original_discord_id}, ${sub.substitute_discord_id}, ${r.id}, FALSE
+          )
+        `
+        linkedCount++
+      }
+    }
+  }
+
+  return linkedCount
 }
 
 /**
@@ -486,6 +474,8 @@ export async function getPlayerMatchStats(
 
 export async function optimizeDb(): Promise<void> {
   try {
+    console.log('Re-linking any orphaned account substitutions...')
+    await relinkAccountSubstitutions()
     console.log('Refreshing mv_replay_player_stats and analyzing replays table...')
     await refreshPlayerStatsView()
     await sql`ANALYZE replays`

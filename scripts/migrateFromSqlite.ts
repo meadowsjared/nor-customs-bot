@@ -288,10 +288,36 @@ export async function migrateFromSqlite(sqlitePath: string): Promise<void> {
     }
     console.log(`  ✓ channels migrated (${channels.length} rows)`)
 
-    // 5. Migrate account_substitutions
+    // 5. Migrate account_substitutions (remapping replay_id to PostgreSQL replay id if hots_replays exists)
     console.log('⏳ Migrating account_substitutions...')
     const subs = sqlite.query<SQLiteAccountSubstitutionRow, []>('SELECT * FROM account_substitutions').all()
     for (const sub of subs) {
+      let mappedReplayId = sub.replay_id
+      if (sub.replay_id) {
+        try {
+          const origReplay = sqlite.query<{ filename: string | null; map: string; date: string }, [number]>(
+            'SELECT filename, map, date FROM hots_replays WHERE id = ?'
+          ).get(sub.replay_id)
+
+          if (origReplay) {
+            const baseName = origReplay.filename ? origReplay.filename.split('/').pop() : null
+            const searchPattern = baseName ? `%${baseName}` : null
+            const pgMatches = await sql<Array<{ id: number }>>`
+              SELECT id
+              FROM replays
+              WHERE (${searchPattern}::text IS NOT NULL AND (file LIKE ${searchPattern} OR filename LIKE ${searchPattern}))
+                 OR (map = ${origReplay.map} AND date = ${new Date(origReplay.date)})
+              LIMIT 1
+            `
+            if (pgMatches[0]) {
+              mappedReplayId = pgMatches[0].id
+            }
+          }
+        } catch {
+          // Fall back to original replay_id if hots_replays table or match is unavailable
+        }
+      }
+
       await sql`
         INSERT INTO account_substitutions (
           id,
@@ -308,7 +334,7 @@ export async function migrateFromSqlite(sqlitePath: string): Promise<void> {
           ${sub.hots_battle_tag},
           ${sub.original_discord_id},
           ${sub.substitute_discord_id},
-          ${sub.replay_id},
+          ${mappedReplayId},
           ${sub.date ? new Date(sub.date) : new Date()},
           ${Boolean(sub.is_active)}
         )
