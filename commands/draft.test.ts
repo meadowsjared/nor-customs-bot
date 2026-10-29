@@ -21,6 +21,19 @@ describe('draft.getCurrentDraftTurn', () => {
     expect(turn.picksRemaining).toBe(2)
   })
 
+  it('correctly calculates turns when Team 2 has first pick', () => {
+    // Team 2 first pick
+    const initialTurn = getCurrentDraftTurn({ 1: 1, 2: 1 }, 10, 2)
+    expect(initialTurn.isComplete).toBe(false)
+    expect(initialTurn.currentTeam).toBe(2)
+    expect(initialTurn.picksRemaining).toBe(1)
+
+    // After Team 2 picks, Team 1 gets double pick
+    const secondTurn = getCurrentDraftTurn({ 1: 1, 2: 2 }, 10, 2)
+    expect(secondTurn.currentTeam).toBe(1)
+    expect(secondTurn.picksRemaining).toBe(2)
+  })
+
   it('correctly reports draft complete when both teams have 5 players', () => {
     const turn = getCurrentDraftTurn({ 1: 5, 2: 5 }, 10, 1)
     expect(turn.isComplete).toBe(true)
