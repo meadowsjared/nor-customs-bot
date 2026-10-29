@@ -10,7 +10,8 @@
     "outDir": "./dist",
     "rootDir": "./",
     "strict": true,
-    "allowSyntheticDefaultImports": true
+    "allowSyntheticDefaultImports": true,
+    "types": ["bun"]
   },
   "include": ["**/**/*.ts"],
   "exclude": ["node_modules", "store_backup", "store/player_old.ts", "types/player_old.ts"]
