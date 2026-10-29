@@ -1,161 +1,291 @@
-https://discord.com/developers/applications/1376465976551542845/information
+# Discord Developer Portal:
+# https://discord.com/developers/applications/1376465976551542845/information
 
-connect:
-sqlite3 ./store/customs_cruncher.db
+# ==============================================================================
+# 1. CONNECTING & PSQL BASICS
+# ==============================================================================
 
-show tables:
-.tables
+# Connect via psql using environment variables (.env):
+psql "$DATABASE_URL_DEV"
+# or production:
+psql "$DATABASE_URL_PROD"
 
-show schema:
-.schema players
+# Show all tables:
+\dt
 
-Turn on headers and set mode to column for better readability:
-.headers on
-.mode column
+# Show materialized views:
+\dm
 
-get all players:
-SELECT * FROM players;
+# Show schema of a specific table:
+\d players
+\d hots_accounts
+\d lobby_players
+\d replays
+\d mv_replay_player_stats
 
-get player by name:
-SELECT * FROM players WHERE hots_battle_tag = 'player_name';
+# Toggle auto-expanded column mode (great for wide queries):
+\x auto
 
-set player by name to active:
-UPDATE players SET active = 1 WHERE hots_battle_tag = 'player_name';
+# Toggle query execution timer:
+\timing
 
-reload the teams for testing:
-UPDATE players SET active = 1 WHERE discord_id IN ('192116769870184448','243668219712372736','174577718975791105','770559401689743410','370587314474319873','353362612723122197','168240037924831232','85523383193698304','226434789387927552','235235346864930816','845713006796734495');
-UPDATE players SET team = 1 WHERE discord_id IN ('243668219712372736','174577718975791105','770559401689743410','370587314474319873','353362612723122197');
-UPDATE players SET team = 2 WHERE discord_id IN ('168240037924831232','85523383193698304','226434789387927552','235235346864930816','845713006796734495');
+# Exit psql:
+\q
 
-mark all players as inactive:
-UPDATE players SET active = 0, team = NULL, lobby_rank = NULL WHERE active = 1 OR team IS NOT NULL;
 
-get all active players:
-SELECT * FROM players WHERE active = 1 ORDER BY active, team;
+# ==============================================================================
+# 2. PLAYERS & HOTS ACCOUNTS
+# ==============================================================================
 
-get the teams:
-SELECT * FROM players WHERE active = 1 ORDER BY team ASC;
+# Get all registered players:
+SELECT * FROM players ORDER BY discord_name;
 
-set all these players to active:
-UPDATE players SET active = 1 WHERE hots_battle_tag IN ('Nommynoms', 'saika', 'Aviater', 'TravisParty', 'Icon', 'Rev', 'TheCure', 'Aieee', 'Bandayd', 'ducky', 'FeintToAccel', 'selym', 'LadyGeneveve');
-UPDATE players SET active = 1 WHERE hots_battle_tag IN ('Finalstand','W4lterplinge','PiNkBlAcKoUt','Ducky','Bandayd','Urid','Feint','Rift','hunterlust','Okiryu');
-UPDATE players SET active = 1 WHERE discord_name IN ('aieee','nommynoms','norator','downyours','brutalpinkiepie','thelimebus','dohdohdoh','willurd','saikatora','chairglue','kidcanuck');
+# Search player by partial Discord name or display name:
+SELECT * FROM players WHERE discord_name ILIKE '%bandayd%' OR discord_display_name ILIKE '%bandayd%';
 
-find player by part of name:
-select * from players where hots_battle_tag LIKE '%Band%';
+# Find player and their linked HotS accounts:
+SELECT p.discord_id, p.discord_display_name, p.role, p.adjustment, ha.hots_battle_tag, ha.is_primary, ha.hp_qm_mmr, ha.hp_sl_mmr, ha.hp_ar_mmr
+FROM players p
+LEFT JOIN hots_accounts ha ON p.discord_id = ha.discord_id
+WHERE ha.hots_battle_tag ILIKE '%Band%' OR p.discord_display_name ILIKE '%Band%';
 
-show schema for channels:
-.schema channels
+# Get all HotS accounts:
+SELECT id, discord_id, is_primary, updated_at, hots_battle_tag, hp_qm_mmr, hp_sl_mmr, hp_ar_mmr
+FROM hots_accounts
+ORDER BY hots_battle_tag;
 
-get all channels:
-SELECT * FROM channels;
+# Get HotS accounts for a specific Discord ID:
+SELECT * FROM hots_accounts WHERE discord_id = '243668219712372736';
 
-get all hots accounts:
-SELECT id,discord_id,is_primary,updated_at,hots_battle_tag FROM hots_accounts;
+# Get specific account by BattleTag:
+SELECT * FROM hots_accounts WHERE hots_battle_tag ILIKE 'IMcD23#1632';
 
-Bandayd#1631
-/add-account hots_battle_tag:Bandayd#1631
+# Add / insert a player manually:
+INSERT INTO players (discord_id, discord_name, discord_global_name, discord_display_name, role)
+VALUES ('927801814101942303', 'auslesejager3328', 'auslesejager3328', 'Auslesejager', 'F')
+ON CONFLICT (discord_id) DO NOTHING;
 
-ALTER TABLE players RENAME COLUMN discordId TO discord_id;
-ALTER TABLE players RENAME COLUMN discordName TO discord_name;
-ALTER TABLE players RENAME COLUMN discordGlobalName TO discord_global_name;
-ALTER TABLE players RENAME COLUMN discordDisplayName TO discord_display_name;
+# Add / insert a linked HotS account manually:
+INSERT INTO hots_accounts (discord_id, hots_battle_tag, is_primary, hp_qm_mmr, hp_sl_mmr, hp_ar_mmr, hp_qm_games, hp_sl_games, hp_ar_games)
+VALUES ('927801814101942303', 'Auslesejager#1855', TRUE, 2433, 2165, 2100, 396, 68, 50);
 
-# Update the primary account for each user
-UPDATE hots_accounts SET is_primary = 1 WHERE discord_id IN (SELECT discord_id FROM hots_accounts GROUP BY discord_id HAVING COUNT(*) = 1);
+# Ensure single-account players have their account marked as primary:
+UPDATE hots_accounts
+SET is_primary = TRUE
+WHERE discord_id IN (
+  SELECT discord_id FROM hots_accounts GROUP BY discord_id HAVING COUNT(*) = 1
+);
 
-delete me from the database (for testing):
-DELETE FROM hots_accounts WHERE hots_battle_tag='Bandayd#1631';
-DELETE FROM players WHERE discord_name='bandayd.';
+# Delete a player and their accounts (for testing):
+DELETE FROM hots_accounts WHERE discord_id = '243668219712372736';
+DELETE FROM players WHERE discord_id = '243668219712372736';
 
-DELETE FROM hots_accounts WHERE discord_id='243668219712372736';
-DELETE FROM players WHERE discord_id='243668219712372736';
+# Reset auto-increment serial sequences (run after manual ID insertions):
+SELECT setval(pg_get_serial_sequence('hots_accounts', 'id'), COALESCE((SELECT MAX(id) FROM hots_accounts), 1));
+SELECT setval(pg_get_serial_sequence('account_substitutions', 'id'), COALESCE((SELECT MAX(id) FROM account_substitutions), 1));
+SELECT setval(pg_get_serial_sequence('map_votes', 'id'), COALESCE((SELECT MAX(id) FROM map_votes), 1));
 
-SELECT id,discord_id,is_primary,updated_at,hots_battle_tag FROM hots_accounts;
-SELECT * FROM players;
+# Check current sequence value:
+SELECT currval(pg_get_serial_sequence('hots_accounts', 'id'));
 
-# reset the autoincrement counter for hots_accounts table
-UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM hots_accounts) WHERE name = 'hots_accounts';
 
-# check the current value of the autoincrement counter
-SELECT seq FROM sqlite_sequence WHERE name = 'hots_accounts';
+# ==============================================================================
+# 3. LOBBY & TEAM MANAGEMENT (lobby_players table)
+# ==============================================================================
 
-SELECT id,discord_id,is_primary,updated_at,hots_battle_tag, HP_QM_MMR, HP_SL_MMR, HP_AR_MMR, HP_QM_Games, HP_SL_Games, HP_AR_Games FROM hots_accounts WHERE hots_battle_tag='IMcD23#1632';
+# Get all currently active lobby players with roles, MMR, and teams:
+SELECT
+  lp.guild_id,
+  lp.team,
+  lp.lobby_rank,
+  lp.role,
+  p.discord_display_name,
+  ha.hots_battle_tag,
+  GREATEST(COALESCE(ha.hp_qm_mmr, 0), COALESCE(ha.hp_sl_mmr, 0), COALESCE(ha.hp_ar_mmr, 0)) + COALESCE(p.adjustment, 0) AS calculated_mmr
+FROM lobby_players lp
+JOIN players p ON lp.discord_id = p.discord_id
+LEFT JOIN hots_accounts ha ON ha.discord_id = p.discord_id AND ha.is_primary = TRUE
+WHERE lp.active = TRUE
+ORDER BY lp.team NULLS LAST, lp.lobby_rank ASC;
 
-SELECT id,discord_id,is_primary,updated_at,hots_battle_tag, HP_SL_MMR, HP_AR_MMR, HP_SL_Games, HP_AR_Games FROM hots_accounts WHERE discord_id='128651159769448448';
+# Clear active lobby (reset all players):
+DELETE FROM lobby_players WHERE guild_id = '706998529582956654';
+# or for all guilds:
+TRUNCATE TABLE lobby_players;
 
-INSERT INTO players (discord_id, discord_name, discord_global_name, discord_display_name, role, active, team) VALUES ('927801814101942303', 'auslesejager3328', 'auslesejager3328', 'Auslesejager', 'F', 0, NULL);
-INSERT INTO players (discord_id, discord_name, discord_global_name, discord_display_name, role, active, team) VALUES ('196114062369619968', 'kidcanuck', 'kidcanuck', 'Kidcanuck', 'F', 0, NULL);
+# Set active lobby test players:
+INSERT INTO lobby_players (guild_id, discord_id, active)
+SELECT '706998529582956654', discord_id, TRUE
+FROM players
+WHERE discord_id IN (
+  '192116769870184448','243668219712372736','174577718975791105','770559401689743410',
+  '370587314474319873','353362612723122197','168240037924831232','85523383193698304',
+  '226434789387927552','235235346864930816'
+)
+ON CONFLICT (guild_id, discord_id) DO UPDATE SET active = TRUE, team = NULL, lobby_rank = NULL;
 
-INSERT INTO hots_accounts (discord_id, hots_battle_tag, is_primary, HP_QM_MMR, HP_SL_MMR, HP_AR_MMR, HP_QM_Games, HP_SL_Games, HP_AR_Games) VALUES ('927801814101942303', 'Auslesejager#1855', 1, 2433, 2165, 2100, 396, 68, 50);
-INSERT INTO hots_accounts (discord_id, hots_battle_tag, is_primary, HP_QM_MMR, HP_SL_MMR, HP_AR_MMR, HP_QM_Games, HP_SL_Games, HP_AR_Games) VALUES ('196114062369619968', 'KidCanuck#2293', 1, 0, 0, 0, 0, 0, 0);
+# Reload test teams (Team 1 vs Team 2):
+UPDATE lobby_players SET team = 1
+WHERE discord_id IN ('243668219712372736','174577718975791105','770559401689743410','370587314474319873','353362612723122197');
 
-SELECT * FROM players WHERE discord_display_name LIKE '%Band%';
-SELECT hots_battle_tag, HP_QM_Games, HP_SL_Games, HP_AR_Games, is_primary FROM hots_accounts WHERE discord_id='243668219712372736';
+UPDATE lobby_players SET team = 2
+WHERE discord_id IN ('168240037924831232','85523383193698304','226434789387927552','235235346864930816','845713006796734495');
 
-#===================================================#
-# to recreate the hots_accounts table with the data #
-#===================================================#
-# Backup the existing table
-ALTER TABLE hots_accounts RENAME TO hots_accounts_old;
 
-# restart the app to recreate the table with the new schema
+# ==============================================================================
+# 4. CHANNELS, SETTINGS, & SUBSTITUTIONS
+# ==============================================================================
 
-# Copy data from the old table to the new table
-INSERT INTO hots_accounts SELECT * FROM hots_accounts_old;
-# If there are new columns, specify them explicitly
-INSERT INTO hots_accounts SELECT id,discord_id,is_primary,updated_at,hots_battle_tag,HP_Region,HP_Blizz_ID,HP_QM_MMR,HP_SL_MMR,HP_AR_MMR,HP_QM_Games,HP_SL_Games,HP_AR_Games,SotS_Win_Pct,SotS_Games,SotS_Takedowns,SotS_Kills,SotS_Assists,SotS_Deaths,SotS_Kill_Participation,SotS_KDA,SotS_Highest_Kill_Streak,SotS_Vengeances,SotS_Time_Dead,SotS_Time_Dead_Pct,SotS_Deaths_While_Outnumbered,SotS_Escapes,SotS_Team_Fight_Escapes,SotS_Hero_Damage,SotS_DPM,SotS_Physical_Damage,SotS_Ability_Damage,SotS_Damage_per_Death,SotS_Team_Fight_Hero_Damage,SotS_Siege_Damage,SotS_Structure_Damage,SotS_Minion_Damage,SotS_Summon_Damage,SotS_Creep_Damage,SotS_Healing,SotS_HPM,SotS_Healing_per_Death,SotS_Team_Fight_Healing,SotS_Self_Healing,SotS_Allied_Shields,SotS_Clutch_Heals,SotS_Damage_Taken,SotS_Damage_Soaked,SotS_Damage_Taken_per_Death,SotS_Team_Fight_Damage_Taken,SotS_CC_Time,SotS_Root_Time,SotS_Silence_Time,SotS_Stun_Time,SotS_Time_on_Fire,SotS_XP_Contribution,SotS_XPM,SotS_Merc_Camp_Captures,SotS_Watch_Tower_Captures,SotS_Aces,SotS_Wipes,SotS_Pct_of_Game_with_Level_Adv,SotS_Pct_of_Game_with_Hero_Adv,SotS_Passive_XP_Second,SotS_Passive_XP_Gained,SotS_Altar_Damage_Done,SotS_Damage_to_Immortal,SotS_Dragon_Knights_Captured,SotS_Shrines_Captured,SotS_Dubloons_Held_At_End,SotS_Dubloons_Turned_In,SotS_Skulls_Collected,SotS_Shrine_Minion_Damage,SotS_Plant_Damage,SotS_Seeds_Collected,SotS_Garden_Seeds_Collected,SotS_Gems_Turned_In,SotS_Nuke_Damage,SotS_Curse_Damage,SotS_Time_On_Temple,SotS_Damage_Done_to_Zerg,SotS_Cage_Unlocks_Interrupted,SotS_Hero_Pool,SotS_Damage_Ratio,SotS_Pct_of_Team_Damage,SotS_Pct_of_Team_Damage_Taken,SotS_Pct_of_Team_Damage_Healed,SotS_Pct_of_Time_Slow_CC,SotS_Pct_of_Time_Non_Slow_CC,SotS_Votes,SotS_Awards,SotS_Award_Pct,SotS_MVP,SotS_MVP_Pct,SotS_Bsteps,SotS_Bstep_TD,SotS_Bstep_Deaths,SotS_Taunts,SotS_Taunt_TD,SotS_Taunt_Deaths,SotS_Sprays,SotS_Spray_TD,SotS_Spray_Deaths,SotS_Dances,SotS_Dance_TD,SotS_Dance_Deaths FROM hots_accounts_old;
+# View configured bot channels:
+SELECT guild_id, channel_type, channel_id, channel_name, updated_at FROM channels;
 
-# check the data
-SELECT id,discord_id,is_primary,updated_at,hots_battle_tag,HP_Region,HP_Blizz_ID,HP_QM_MMR,HP_SL_MMR,HP_AR_MMR,HP_QM_Games,HP_SL_Games,HP_AR_Games FROM hots_accounts;
+# View guild settings:
+SELECT guild_id, key, value, updated_at FROM settings;
 
-# Drop the old table if everything looks good
-DROP TABLE hots_accounts_old;
+# View account loan substitutions:
+SELECT id, guild_id, hots_battle_tag, original_discord_id, substitute_discord_id, date, is_active
+FROM account_substitutions
+ORDER BY date DESC;
 
-# restart the app again to ensure the indexes are recreated now that the old table is gone
+# Check active map veto voting sessions and votes:
+SELECT s.id AS session_id, s.title, s.created_by, s.active, v.user_name, v.map_id, v.voted_at
+FROM map_vote_sessions s
+LEFT JOIN map_votes v ON s.id = v.session_id
+ORDER BY s.created_at DESC
+LIMIT 50;
 
-# get all players with a team or lobby rank, ordered by team and lobby rank:
-SELECT * FROM players WHERE team IS NOT NULL OR lobby_rank IS NOT NULL ORDER BY team, lobby_rank;
 
-Found 4 accounts in CSV but missing from database:
- 1: IlIlIlIlIlIl#21459          IlIlIlIlIlIl
- 2: Kitty#14207                 Kitty
- 3: Player#1143555              Player
- 4: SgtHammerOTP#1108           SgtHammerOTP
+# ==============================================================================
+# 5. REPLAYS & PLAYER STATS (replays & mv_replay_player_stats)
+# ==============================================================================
 
-📊 Result: 4 accounts found in CSV but missing from database.
+# Refresh the player stats materialized view (run after importing replays):
+REFRESH MATERIALIZED VIEW CONCURRENTLY mv_replay_player_stats;
 
-UPDATE players SET active=1 WHERE discord_id IN ('449951825517477888','235235346864930816','192116769870184448','250079491261595648','168240037924831232','246827228736913408','350371783712702464','155360825895288832','243668219712372736','85523383193698304','85540236855111680');
+# Wipe replays table and reset view:
+TRUNCATE TABLE replays CASCADE;
+REFRESH MATERIALIZED VIEW mv_replay_player_stats;
 
-#clear the hots_replays table and hots_replay_player_game_stats table:
-DELETE FROM hots_replays; DELETE FROM hots_replay_player_game_stats;
+# Get total replays count:
+SELECT COUNT(*) FROM replays;
 
-# get all hots accounts ordered by hots battle tag:
-SELECT discord_id, hots_battle_tag FROM hots_accounts ORDER BY hots_battle_tag;
+# Map popularity across all replays:
+SELECT map, COUNT(*) AS games_played
+FROM replays
+GROUP BY map
+ORDER BY games_played DESC;
 
-# Top sprayers with all BM/emote stats (dances, bsteps, taunts, sprays):
-SELECT p.discord_id, p.discord_name, COALESCE(a.totalDances, 0) as Dances, COALESCE(a.totalDanceTD, 0) as DanceTD, COALESCE(a.totalDanceDeaths, 0) as DanceDeaths, COALESCE(a.totalBsteps, 0) as Bsteps, COALESCE(a.totalBstepTD, 0) as BstepTD, COALESCE(a.totalBstepDeaths, 0) as BstepDeaths, COALESCE(a.totalTaunts, 0) as Taunts, COALESCE(a.totalTauntTD, 0) as TauntTD, COALESCE(a.totalTauntDeaths, 0) as TauntDeaths, COALESCE(a.totalSprays, 0) as totalSprays, COALESCE(a.totalSprayTD, 0) as totalSprayTD, COALESCE(a.totalSprayDeaths, 0) as totalSprayDeaths FROM players p LEFT JOIN (SELECT discord_id, SUM(SotS_Dances) as totalDances, SUM(SotS_Dance_TD) as totalDanceTD, SUM(SotS_Dance_Deaths) as totalDanceDeaths, SUM(SotS_Bsteps) as totalBsteps, SUM(SotS_Bstep_TD) as totalBstepTD, SUM(SotS_Bstep_Deaths) as totalBstepDeaths, SUM(SotS_Taunts) as totalTaunts, SUM(SotS_Taunt_TD) as totalTauntTD, SUM(SotS_Taunt_Deaths) as totalTauntDeaths, SUM(SotS_Sprays) as totalSprays, SUM(SotS_Spray_TD) as totalSprayTD, SUM(SotS_Spray_Deaths) as totalSprayDeaths FROM hots_accounts WHERE discord_id IS NOT NULL GROUP BY discord_id) a ON p.discord_id = a.discord_id ORDER BY totalSprays DESC LIMIT 10;
+# Recent match history by BattleTag:
+SELECT
+  date,
+  map,
+  hots_battle_tag,
+  hero,
+  CASE WHEN win THEN 'WIN' ELSE 'LOSS' END AS result,
+  solo_kills AS kills,
+  assists,
+  deaths,
+  ROUND(hero_damage::numeric) AS hero_damage,
+  ROUND(siege_damage::numeric) AS siege_damage,
+  ROUND(healing::numeric) AS healing
+FROM mv_replay_player_stats
+WHERE hots_battle_tag ILIKE '%Bandayd%'
+ORDER BY date DESC
+LIMIT 20;
 
-# Top dancers with all BM/emote stats (dances, bsteps, taunts, sprays):
-SELECT p.discord_id, p.discord_name, COALESCE(a.totalDances, 0) as Dances, COALESCE(a.totalDanceTD, 0) as DanceTD, COALESCE(a.totalDanceDeaths, 0) as DanceDeaths, COALESCE(a.totalBsteps, 0) as Bsteps, COALESCE(a.totalBstepTD, 0) as BstepTD, COALESCE(a.totalBstepDeaths, 0) as BstepDeaths, COALESCE(a.totalTaunts, 0) as Taunts, COALESCE(a.totalTauntTD, 0) as TauntTD, COALESCE(a.totalTauntDeaths, 0) as TauntDeaths, COALESCE(a.totalSprays, 0) as totalSprays, COALESCE(a.totalSprayTD, 0) as totalSprayTD, COALESCE(a.totalSprayDeaths, 0) as totalSprayDeaths FROM players p LEFT JOIN (SELECT discord_id, SUM(SotS_Dances) as totalDances, SUM(SotS_Dance_TD) as totalDanceTD, SUM(SotS_Dance_Deaths) as totalDanceDeaths, SUM(SotS_Bsteps) as totalBsteps, SUM(SotS_Bstep_TD) as totalBstepTD, SUM(SotS_Bstep_Deaths) as totalBstepDeaths, SUM(SotS_Taunts) as totalTaunts, SUM(SotS_Taunt_TD) as totalTauntTD, SUM(SotS_Taunt_Deaths) as totalTauntDeaths, SUM(SotS_Sprays) as totalSprays, SUM(SotS_Spray_TD) as totalSprayTD, SUM(SotS_Spray_Deaths) as totalSprayDeaths FROM hots_accounts WHERE discord_id IS NOT NULL GROUP BY discord_id) a ON p.discord_id = a.discord_id ORDER BY totalDances DESC LIMIT 10;
+# Recent match history by Discord Name / Display Name:
+SELECT
+  s.date,
+  s.map,
+  p.discord_display_name,
+  s.hots_battle_tag,
+  s.hero,
+  CASE WHEN s.win THEN 'WIN' ELSE 'LOSS' END AS result,
+  s.solo_kills AS kills,
+  s.assists,
+  s.deaths,
+  ROUND(s.hero_damage::numeric) AS hero_damage,
+  ROUND(s.siege_damage::numeric) AS siege_damage,
+  ROUND(s.healing::numeric) AS healing
+FROM mv_replay_player_stats s
+JOIN hots_accounts ha ON LOWER(s.hots_battle_tag) = LOWER(ha.hots_battle_tag)
+JOIN players p ON ha.discord_id = p.discord_id
+WHERE p.discord_name ILIKE '%Bandayd%' OR p.discord_display_name ILIKE '%Bandayd%'
+ORDER BY s.date DESC
+LIMIT 20;
 
-# get the match history by BattleTag:
-SELECT r.date, r.map, s.hots_battle_tag, s.hero, CASE WHEN s.win = 1 THEN 'WIN' ELSE 'LOSS' END as result, s.SoloKill as Kills, s.Assists, s.Deaths, s.HeroDamage, s.SiegeDamage, s.Healing FROM hots_replay_player_game_stats s JOIN hots_replays r ON s.replay_id = r.id WHERE s.hots_battle_tag LIKE '%Bandayd%' ORDER BY r.date DESC LIMIT 20;
+# Top sprayers with full BM / emote stats:
+SELECT
+  s.hots_battle_tag,
+  p.discord_display_name,
+  SUM(s.sprays_count) AS total_sprays,
+  SUM(s.spray_td) AS spray_td,
+  SUM(s.spray_deaths) AS spray_deaths,
+  SUM(s.bsteps_count) AS total_bsteps,
+  SUM(s.bstep_td) AS bstep_td,
+  SUM(s.bstep_deaths) AS bstep_deaths,
+  SUM(s.taunts_count) AS total_taunts,
+  SUM(s.dances_count) AS total_dances
+FROM mv_replay_player_stats s
+LEFT JOIN hots_accounts ha ON LOWER(s.hots_battle_tag) = LOWER(ha.hots_battle_tag)
+LEFT JOIN players p ON ha.discord_id = p.discord_id
+GROUP BY s.hots_battle_tag, p.discord_display_name
+ORDER BY total_sprays DESC
+LIMIT 10;
 
-# get the match history by Discord name/display name:
-SELECT r.date, r.map, p.discord_display_name, s.hots_battle_tag, s.hero, CASE WHEN s.win = 1 THEN 'WIN' ELSE 'LOSS' END as result, s.SoloKill as Kills, s.Assists, s.Deaths, s.HeroDamage, s.SiegeDamage, s.Healing FROM hots_replay_player_game_stats s JOIN hots_replays r ON s.replay_id = r.id JOIN players p ON s.discord_id = p.discord_id WHERE p.discord_name LIKE '%Bandayd%' OR p.discord_display_name LIKE '%Bandayd%' ORDER BY r.date DESC LIMIT 20;
+# Top dancers with full BM / emote stats:
+SELECT
+  s.hots_battle_tag,
+  p.discord_display_name,
+  SUM(s.dances_count) AS total_dances,
+  SUM(s.dance_td) AS dance_td,
+  SUM(s.dance_deaths) AS dance_deaths,
+  SUM(s.bsteps_count) AS total_bsteps,
+  SUM(s.taunts_count) AS total_taunts,
+  SUM(s.sprays_count) AS total_sprays
+FROM mv_replay_player_stats s
+LEFT JOIN hots_accounts ha ON LOWER(s.hots_battle_tag) = LOWER(ha.hots_battle_tag)
+LEFT JOIN players p ON ha.discord_id = p.discord_id
+GROUP BY s.hots_battle_tag, p.discord_display_name
+ORDER BY total_dances DESC
+LIMIT 10;
 
-# include win rate in the previous query:
-SELECT p.discord_id, p.discord_name, COUNT(s.id) as Games, SUM(s.win) as Wins, ROUND(AVG(s.win) * 100, 1) || '%' as WinRate, COALESCE(SUM(s.dances), 0) as Dances, COALESCE(SUM(s.danceTD), 0) as DanceTD, COALESCE(SUM(s.danceDeaths), 0) as DanceDeaths, COALESCE(SUM(s.bsteps), 0) as Bsteps, COALESCE(SUM(s.bstepTD), 0) as BstepTD, COALESCE(SUM(s.bstepDeaths), 0) as BstepDeaths, COALESCE(SUM(s.taunts), 0) as Taunts, COALESCE(SUM(s.tauntTD), 0) as TauntTD, COALESCE(SUM(s.tauntDeaths), 0) as TauntDeaths, COALESCE(SUM(s.sprays), 0) as Sprays, COALESCE(SUM(s.sprayTD), 0) as SprayTD, COALESCE(SUM(s.sprayDeaths), 0) as SprayDeaths FROM players p LEFT JOIN hots_replay_player_game_stats s ON p.discord_id = s.discord_id WHERE s.discord_id IS NOT NULL GROUP BY p.discord_id HAVING AVG(s.win) > 0 ORDER BY AVG(s.win) ASC LIMIT 10;
+# Player overall win rates and performance (min 5 games):
+SELECT
+  s.hots_battle_tag,
+  p.discord_display_name,
+  COUNT(*) AS games,
+  COUNT(*) FILTER (WHERE s.win) AS wins,
+  ROUND((COUNT(*) FILTER (WHERE s.win)::numeric / COUNT(*)) * 100, 1) || '%' AS win_rate,
+  ROUND(AVG(s.kda)::numeric, 2) AS avg_kda,
+  ROUND(AVG(s.dpm)::numeric, 1) AS avg_dpm,
+  SUM(s.bsteps_count) AS total_bsteps,
+  SUM(s.sprays_count) AS total_sprays
+FROM mv_replay_player_stats s
+LEFT JOIN hots_accounts ha ON LOWER(s.hots_battle_tag) = LOWER(ha.hots_battle_tag)
+LEFT JOIN players p ON ha.discord_id = p.discord_id
+GROUP BY s.hots_battle_tag, p.discord_display_name
+HAVING COUNT(*) >= 5
+ORDER BY (COUNT(*) FILTER (WHERE s.win)::numeric / COUNT(*)) DESC
+LIMIT 20;
 
-# check database voting sessions:
-SELECT * FROM map_votes LEFT JOIN map_vote_sessions AS p ON p.id = session_id;
 
-# get the map popularity
-SELECT map, COUNT(*) AS count FROM hots_replays GROUP BY map ORDER BY count DESC;
+# ==============================================================================
+# 6. SCRIPTS & MIGRATION COMMANDS
+# ==============================================================================
 
-# get lobby players with win rates
-SELECT p.*, COUNT(s.id) AS total_games, COALESCE(SUM(CASE WHEN s.team = r.winner THEN 1 ELSE 0 END), 0) AS wins, ROUND(COALESCE(AVG(CASE WHEN s.team = r.winner THEN 1.0 ELSE 0.0 END), 0) * 100, 1) || '%' AS win_rate FROM players p LEFT JOIN hots_replay_player_game_stats s ON p.discord_id = s.discord_id LEFT JOIN hots_replays r ON s.replay_id = r.id WHERE p.active = 1 GROUP BY p.discord_id ORDER BY p.active, p.team;
+# Run the SQLite to PostgreSQL database migration:
+bun run migrate:sqlite
 
-# import replays 
-/import-replays start_date_or_count:08/05/2020 end_date:8/17/2024
+# Run with a specific SQLite backup file:
+bun scripts/migrateFromSqlite.ts ./store/customs_cruncher_backup.db
+
+# CSV Account sync tools:
+bun run csv:help
+bun run check:db
+bun run check:csv
+bun run check:match
+bun run import:csv
+
+# Discord Bot slash command to re-import replays:
+# /import-replays start_date_or_count:08/05/2020 end_date:8/17/2024
