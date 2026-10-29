@@ -122,13 +122,6 @@ export async function parseReplay(file: string): Promise<ReplayData | null> {
 }
 
 /**
- * Legacy helper retained for compatibility; player stats are now pre-aggregated via `mv_replay_player_stats`.
- */
-export async function updateSotsStatsForAccount(_acc: ResolvedHotsAccount): Promise<void> {
-  // Stats are dynamically aggregated via `mv_replay_player_stats` in PostgreSQL
-}
-
-/**
  * Saves a parsed custom match into the PostgreSQL `replays` table, refreshes `mv_replay_player_stats`,
  * records any active account substitutions for the replay, and returns its assigned replay ID.
  */
@@ -519,6 +512,26 @@ export type GetUnlinkedAccountsOptions = {
   offset?: number
 }
 
+function unlinkedReplayWhereClause(clean: string, searchPattern: string) {
+  return sql`
+    s.hots_battle_tag IS NOT NULL
+    AND s.hots_battle_tag != ''
+    AND (${clean} = '' OR s.hots_battle_tag ILIKE ${searchPattern} OR s.player_name ILIKE ${searchPattern})
+    AND NOT EXISTS (
+      SELECT 1
+      FROM hots_accounts ha
+      WHERE LOWER(ha.hots_battle_tag) = LOWER(s.hots_battle_tag)
+        AND ha.discord_id IS NOT NULL
+    )
+    AND NOT EXISTS (
+      SELECT 1
+      FROM account_substitutions sub
+      WHERE sub.replay_id = s.replay_id
+        AND LOWER(sub.hots_battle_tag) = LOWER(s.hots_battle_tag)
+    )
+  `
+}
+
 export async function getUnlinkedReplayAccounts(
   options: GetUnlinkedAccountsOptions = {}
 ): Promise<{ accounts: UnlinkedReplayAccount[]; totalCount: number }> {
@@ -529,36 +542,6 @@ export async function getUnlinkedReplayAccounts(
   const limit = Math.max(1, options.limit ?? 10)
   const offset = Math.max(0, options.offset ?? 0)
 
-  const countRows = await sql<Array<{ total: number }>>`
-    SELECT COUNT(*)::int AS total
-    FROM (
-      SELECT s.hots_battle_tag
-      FROM mv_replay_player_stats s
-      WHERE s.hots_battle_tag IS NOT NULL
-        AND s.hots_battle_tag != ''
-        AND (${clean} = '' OR s.hots_battle_tag ILIKE ${searchPattern} OR s.player_name ILIKE ${searchPattern})
-        AND NOT EXISTS (
-          SELECT 1
-          FROM hots_accounts ha
-          WHERE LOWER(ha.hots_battle_tag) = LOWER(s.hots_battle_tag)
-            AND ha.discord_id IS NOT NULL
-        )
-        AND NOT EXISTS (
-          SELECT 1
-          FROM account_substitutions sub
-          WHERE sub.replay_id = s.replay_id
-            AND LOWER(sub.hots_battle_tag) = LOWER(s.hots_battle_tag)
-        )
-      GROUP BY s.hots_battle_tag
-      HAVING COUNT(DISTINCT s.replay_id) >= ${minGames}
-    ) grouped
-  `
-
-  const totalCount = countRows[0]?.total ?? 0
-  if (totalCount === 0) {
-    return { accounts: [], totalCount: 0 }
-  }
-
   type DataRow = {
     hots_battle_tag: string
     name: string
@@ -566,69 +549,29 @@ export async function getUnlinkedReplayAccounts(
     game_count: number
     last_seen_date: Date | string
     heroes_played: string | null
+    total_count: number
   }
 
-  const rows =
-    sortBy === 'recent'
-      ? await sql<DataRow[]>`
-          SELECT
-            s.hots_battle_tag,
-            MAX(s.player_name) AS name,
-            MAX(s.tag)::int AS tag,
-            COUNT(DISTINCT s.replay_id)::int AS game_count,
-            MAX(s.date) AS last_seen_date,
-            STRING_AGG(DISTINCT s.hero, ',') AS heroes_played
-          FROM mv_replay_player_stats s
-          WHERE s.hots_battle_tag IS NOT NULL
-            AND s.hots_battle_tag != ''
-            AND (${clean} = '' OR s.hots_battle_tag ILIKE ${searchPattern} OR s.player_name ILIKE ${searchPattern})
-            AND NOT EXISTS (
-              SELECT 1
-              FROM hots_accounts ha
-              WHERE LOWER(ha.hots_battle_tag) = LOWER(s.hots_battle_tag)
-                AND ha.discord_id IS NOT NULL
-            )
-            AND NOT EXISTS (
-              SELECT 1
-              FROM account_substitutions sub
-              WHERE sub.replay_id = s.replay_id
-                AND LOWER(sub.hots_battle_tag) = LOWER(s.hots_battle_tag)
-            )
-          GROUP BY s.hots_battle_tag
-          HAVING COUNT(DISTINCT s.replay_id) >= ${minGames}
-          ORDER BY last_seen_date DESC
-          LIMIT ${limit} OFFSET ${offset}
-        `
-      : await sql<DataRow[]>`
-          SELECT
-            s.hots_battle_tag,
-            MAX(s.player_name) AS name,
-            MAX(s.tag)::int AS tag,
-            COUNT(DISTINCT s.replay_id)::int AS game_count,
-            MAX(s.date) AS last_seen_date,
-            STRING_AGG(DISTINCT s.hero, ',') AS heroes_played
-          FROM mv_replay_player_stats s
-          WHERE s.hots_battle_tag IS NOT NULL
-            AND s.hots_battle_tag != ''
-            AND (${clean} = '' OR s.hots_battle_tag ILIKE ${searchPattern} OR s.player_name ILIKE ${searchPattern})
-            AND NOT EXISTS (
-              SELECT 1
-              FROM hots_accounts ha
-              WHERE LOWER(ha.hots_battle_tag) = LOWER(s.hots_battle_tag)
-                AND ha.discord_id IS NOT NULL
-            )
-            AND NOT EXISTS (
-              SELECT 1
-              FROM account_substitutions sub
-              WHERE sub.replay_id = s.replay_id
-                AND LOWER(sub.hots_battle_tag) = LOWER(s.hots_battle_tag)
-            )
-          GROUP BY s.hots_battle_tag
-          HAVING COUNT(DISTINCT s.replay_id) >= ${minGames}
-          ORDER BY game_count DESC, last_seen_date DESC
-          LIMIT ${limit} OFFSET ${offset}
-        `
+  const rows = await sql<DataRow[]>`
+    SELECT
+      s.hots_battle_tag,
+      MAX(s.player_name) AS name,
+      MAX(s.tag)::int AS tag,
+      COUNT(DISTINCT s.replay_id)::int AS game_count,
+      MAX(s.date) AS last_seen_date,
+      STRING_AGG(DISTINCT s.hero, ',') AS heroes_played,
+      COUNT(*) OVER ()::int AS total_count
+    FROM mv_replay_player_stats s
+    WHERE ${unlinkedReplayWhereClause(clean, searchPattern)}
+    GROUP BY s.hots_battle_tag
+    HAVING COUNT(DISTINCT s.replay_id) >= ${minGames}
+    ORDER BY
+      CASE WHEN ${sortBy} = 'games' THEN COUNT(DISTINCT s.replay_id) END DESC,
+      MAX(s.date) DESC
+    LIMIT ${limit} OFFSET ${offset}
+  `
 
+  const totalCount = rows[0]?.total_count ?? 0
   const accounts: UnlinkedReplayAccount[] = rows.map(r => ({
     hotsBattleTag: r.hots_battle_tag,
     name: r.name,
@@ -658,21 +601,7 @@ export async function getUnlinkedReplayAccountsForAutocomplete(
       s.hots_battle_tag,
       COUNT(DISTINCT s.replay_id)::int AS game_count
     FROM mv_replay_player_stats s
-    WHERE s.hots_battle_tag IS NOT NULL
-      AND s.hots_battle_tag != ''
-      AND (${clean} = '' OR s.hots_battle_tag ILIKE ${searchPattern} OR s.player_name ILIKE ${searchPattern})
-      AND NOT EXISTS (
-        SELECT 1
-        FROM hots_accounts ha
-        WHERE LOWER(ha.hots_battle_tag) = LOWER(s.hots_battle_tag)
-          AND ha.discord_id IS NOT NULL
-      )
-      AND NOT EXISTS (
-        SELECT 1
-        FROM account_substitutions sub
-        WHERE sub.replay_id = s.replay_id
-          AND LOWER(sub.hots_battle_tag) = LOWER(s.hots_battle_tag)
-      )
+    WHERE ${unlinkedReplayWhereClause(clean, searchPattern)}
     GROUP BY s.hots_battle_tag
     ORDER BY game_count DESC, MAX(s.replay_id) DESC
     LIMIT ${limit}

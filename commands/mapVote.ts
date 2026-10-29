@@ -30,7 +30,7 @@ import {
 } from '../store/mapVote'
 import { MapDefinition, MapVoteSession, MapVoteTally } from '../types/mapVote'
 import { safeReply, safeDeferUpdate, requireGuildId } from '../utils/interaction'
-import { syncRecentReplays } from './index'
+import { syncRecentReplays } from './replays'
 
 const MAPS_ASSETS_DIR = path.resolve(process.cwd(), 'assets', 'maps')
 
