@@ -29,9 +29,12 @@ export async function puppeteerRefreshXsrfTokenAndCookies(url: string): Promise<
   if (!process.env.CHROME_PATH) {
     try {
       const { execSync } = await import('child_process')
-      const foundPath = execSync('find ~/.cache/puppeteer/chrome -name chrome -type f 2>/dev/null | head -n 1', {
-        encoding: 'utf8',
-      }).trim()
+      const foundPath = execSync(
+        'find ~/.cache/puppeteer/chrome -name chrome -type f 2>/dev/null | sort -V | tail -n 1',
+        {
+          encoding: 'utf8',
+        }
+      ).trim()
       if (foundPath) process.env.CHROME_PATH = foundPath
     } catch {}
   }
@@ -66,31 +69,23 @@ export async function puppeteerRefreshXsrfTokenAndCookies(url: string): Promise<
     // Find the XSRF token
     let xsrfCookie: Protocol.Network.Cookie | undefined
     let cookieObjects: Protocol.Network.Cookie[] = []
-    let hasAttemptedClearanceReload = false
 
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < 45; i++) {
       const client = await page.createCDPSession()
       const res = await client.send('Network.getAllCookies')
       cookieObjects = res.cookies
       xsrfCookie = cookieObjects.find(c => c.name.toUpperCase() === 'XSRF-TOKEN')
       if (xsrfCookie) break
 
-      const hasClearance = cookieObjects.some(c => c.name === 'cf_clearance')
-      // If Cloudflare clearance was granted but the page hasn't transitioned to Heroes Profile yet,
-      // re-navigate so the clearance cookie lets the actual website load and set XSRF-TOKEN
-      if (hasClearance && !hasAttemptedClearanceReload && i >= 3) {
-        hasAttemptedClearanceReload = true
-        try {
-          await page.goto(url, { waitUntil: 'networkidle2', timeout: 15000 })
-        } catch {}
-      }
-
       await new Promise(r => setTimeout(r, 1000))
     }
 
     if (!xsrfCookie) {
+      const currentUrl = page.url()
+      const currentTitle = await page.title().catch(() => 'unknown')
       throw new Error(
-        'XSRF-TOKEN cookie not found! Cookies: ' + cookieObjects.map(c => `${c.name}=${c.value}`).join('; ')
+        `XSRF-TOKEN cookie not found! URL: ${currentUrl} ("${currentTitle}"). Cookies: ` +
+          cookieObjects.map(c => `${c.name}=${c.value}`).join('; ')
       )
     }
 
