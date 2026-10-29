@@ -1,4 +1,4 @@
-import { appendFileSync, mkdirSync } from 'fs'
+import { appendFileSync, existsSync, mkdirSync, unlinkSync } from 'fs'
 import { connect, PageWithCursor } from 'puppeteer-real-browser'
 import type { Browser, Protocol } from 'rebrowser-puppeteer-core'
 
@@ -38,6 +38,16 @@ export async function puppeteerRefreshXsrfTokenAndCookies(url: string): Promise<
 
   const userDataDir = '/tmp/puppeteer_real_browser'
   mkdirSync(userDataDir, { recursive: true })
+
+  // Clean up stale logs and locks so chrome-launcher detects the new DevTools port
+  for (const file of ['chrome-err.log', 'chrome-out.log', 'SingletonLock', 'SingletonSocket', 'SingletonCookie']) {
+    try {
+      const filePath = `${userDataDir}/${file}`
+      if (existsSync(filePath)) {
+        unlinkSync(filePath)
+      }
+    } catch {}
+  }
 
   const { browser, page } = await connect({
     headless: false,
