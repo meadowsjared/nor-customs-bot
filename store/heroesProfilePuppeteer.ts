@@ -64,14 +64,27 @@ export async function puppeteerRefreshXsrfTokenAndCookies(url: string): Promise<
     await new Promise(r => setTimeout(r, 2000))
 
     // Find the XSRF token
-    let xsrfCookie
+    let xsrfCookie: Protocol.Network.Cookie | undefined
     let cookieObjects: Protocol.Network.Cookie[] = []
-    for (let i = 0; i < 15; i++) {
+    let hasAttemptedClearanceReload = false
+
+    for (let i = 0; i < 30; i++) {
       const client = await page.createCDPSession()
       const res = await client.send('Network.getAllCookies')
       cookieObjects = res.cookies
-      xsrfCookie = cookieObjects.find(c => c.name === 'XSRF-TOKEN')
+      xsrfCookie = cookieObjects.find(c => c.name.toUpperCase() === 'XSRF-TOKEN')
       if (xsrfCookie) break
+
+      const hasClearance = cookieObjects.some(c => c.name === 'cf_clearance')
+      // If Cloudflare clearance was granted but the page hasn't transitioned to Heroes Profile yet,
+      // re-navigate so the clearance cookie lets the actual website load and set XSRF-TOKEN
+      if (hasClearance && !hasAttemptedClearanceReload && i >= 3) {
+        hasAttemptedClearanceReload = true
+        try {
+          await page.goto(url, { waitUntil: 'networkidle2', timeout: 15000 })
+        } catch {}
+      }
+
       await new Promise(r => setTimeout(r, 1000))
     }
 
